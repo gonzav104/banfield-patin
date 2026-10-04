@@ -102,8 +102,16 @@ class DbTestsExcluidosPorDefectoTest {
 					.map(p -> p.getFileName().toString()).sorted().toList();
 
 			assertThat(etiquetadas).contains("V2ConstraintsDbTest.java", "ConsultasJpqlDbTest.java",
-					"ConsumoAtomicoDbTest.java");
+					"ConsumoAtomicoDbTest.java", "V3ConstraintsDbTest.java", "UsuarioMfaRepositoryDbTest.java",
+					"MfaServiceDbTest.java");
 		}
+	}
+
+	@Test
+	void laPruebaDeFlujoCompletoDeMfaConAplicacionCompletaEstaEtiquetadaDb() throws Exception {
+		String fuente = leer(RAIZ_TESTS.resolve("com/banfieldpatin/backend/db/MfaFlujoCompletoDbTest.java"));
+
+		assertThat(fuente).contains("@Tag(\"db\")").contains("@Spring" + "BootTest");
 	}
 
 	private static String leer(Path p) {
