@@ -19,6 +19,9 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
 	/** Toda lectura administrativa filtra por escuela: un id de otra escuela es indistinguible de uno inexistente. */
 	Optional<Invitacion> findByIdAndEscuelaId(UUID id, UUID escuelaId);
 
+	/** Lectura sin bloqueo para la validacion publica (no consume ni reserva la invitacion). */
+	Optional<Invitacion> findByTokenHash(String tokenHash);
+
 	/** Reservado para el registro (PR5): SELECT ... FOR UPDATE serializa usos concurrentes del mismo token. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select i from Invitacion i where i.tokenHash = :tokenHash")
