@@ -53,6 +53,18 @@ class ServiciosPublicosContextoTest {
 	}
 
 	@Test
+	void mfaServiceSeConstruyeConSuConstructorDeProduccion() {
+		contexto.withBean(com.banfieldpatin.backend.usuarios.mfa.UsuarioMfaRepository.class,
+				() -> mock(com.banfieldpatin.backend.usuarios.mfa.UsuarioMfaRepository.class))
+				.withBean(com.banfieldpatin.backend.seguridad.mfa.CifradorSecretoMfa.class)
+				.withBean(com.banfieldpatin.backend.usuarios.mfa.MfaService.class)
+				.run(ctx -> {
+					assertThat(ctx).hasNotFailed();
+					assertThat(ctx).hasSingleBean(com.banfieldpatin.backend.usuarios.mfa.MfaService.class);
+				});
+	}
+
+	@Test
 	void unaImplementacionRegistradaReemplazaAlHookPorDefecto() {
 		VinculacionPorInvitacion propia = mock(VinculacionPorInvitacion.class);
 

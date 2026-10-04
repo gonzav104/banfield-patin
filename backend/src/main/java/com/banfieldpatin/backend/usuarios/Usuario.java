@@ -85,6 +85,16 @@ public class Usuario {
 		this.ultimoAccesoEn = ahora;
 	}
 
+	/** Se marca al confirmar el enrolamiento TOTP, en la misma transaccion que fija usuario_mfa.confirmado_en. */
+	public void habilitarMfa() {
+		this.mfaHabilitado = true;
+	}
+
+	/** Reinicio de MFA: se borra usuario_mfa en la misma transaccion y el usuario debe volver a enrolar. */
+	public void deshabilitarMfa() {
+		this.mfaHabilitado = false;
+	}
+
 	public void cambiarPasswordHash(String nuevoHash) {
 		this.passwordHash = nuevoHash;
 	}

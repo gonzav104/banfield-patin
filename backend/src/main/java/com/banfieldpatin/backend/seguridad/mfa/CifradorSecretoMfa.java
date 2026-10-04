@@ -10,6 +10,7 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.banfieldpatin.backend.seguridad.SeguridadPropiedades;
@@ -30,6 +31,8 @@ public class CifradorSecretoMfa {
 	private final SecretKeySpec clave;
 	private final SecureRandom azar = new SecureRandom();
 
+	/** Constructor de Spring. @Autowired explicito: con dos constructores Spring exigiria uno sin argumentos. */
+	@Autowired
 	public CifradorSecretoMfa(SeguridadPropiedades propiedades) {
 		this(propiedades.mfa().claveCifradoBytes());
 	}

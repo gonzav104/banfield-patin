@@ -30,7 +30,11 @@ class InventarioRutasTest {
 			"POST /api/auth/invitaciones/validar",
 			"POST /api/auth/registro/invitacion",
 			"POST /api/admin/invitaciones",
-			"POST /api/admin/invitaciones/{id}/revocar");
+			"POST /api/admin/invitaciones/{id}/revocar",
+			"POST /api/auth/admin/mfa/enrolar",
+			"POST /api/auth/admin/mfa/confirmar",
+			"POST /api/auth/admin/mfa/verificar",
+			"POST /api/admin/usuarios/{id}/mfa/reiniciar");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -79,13 +83,23 @@ class InventarioRutasTest {
 	}
 
 	@Test
+	void lasRutasDeSegundoFactorEstanBajoElPrefijoQueExigeTokenPendiente() throws Exception {
+		assertThat(rutas(true).stream().filter(r -> r.contains("/mfa/") && !r.contains("{id}")))
+				.allMatch(r -> r.startsWith("POST /api/auth/admin/mfa/"));
+	}
+
+	@Test
 	void ningunaRutaHttpCreaAdministradores() throws Exception {
 		Set<String> mutantes = rutas(true);
 
-		assertThat(mutantes).noneMatch(r -> r.contains("/usuarios") || r.contains("/administradores")
-				|| r.contains("/admins") || r.contains("/bootstrap"));
-		// Bajo /api/admin solo se emiten y revocan invitaciones.
+		// La unica ruta mutante bajo /usuarios es el reinicio de MFA (no crea ni modifica cuentas).
+		assertThat(mutantes.stream().filter(r -> r.contains("/usuarios")))
+				.containsExactly("POST /api/admin/usuarios/{id}/mfa/reiniciar");
+		assertThat(mutantes).noneMatch(r -> r.contains("/administradores") || r.contains("/admins")
+				|| r.contains("/bootstrap"));
+		// Bajo /api/admin solo se emiten y revocan invitaciones y se reinicia el MFA de otro ADMIN.
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/"))).containsExactlyInAnyOrder(
-				"POST /api/admin/invitaciones", "POST /api/admin/invitaciones/{id}/revocar");
+				"POST /api/admin/invitaciones", "POST /api/admin/invitaciones/{id}/revocar",
+				"POST /api/admin/usuarios/{id}/mfa/reiniciar");
 	}
 }
