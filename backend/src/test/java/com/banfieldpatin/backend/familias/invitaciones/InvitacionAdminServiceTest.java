@@ -407,4 +407,26 @@ class InvitacionAdminServiceTest {
 		assertThat(servicio.revocar(admin, id, DATOS).estado()).isEqualTo(EstadoInvitacion.REVOCADA);
 		verifyNoInteractions(auditoria);
 	}
+
+	// ---------- obtener ----------
+
+	@Test
+	void obtenerBuscaSiempreDentroDeLaEscuelaDelAdmin() {
+		UUID id = UUID.randomUUID();
+		when(invitaciones.findByIdAndEscuelaId(id, escuelaId))
+				.thenReturn(Optional.of(invitacion(id, AHORA.plus(Duration.ofDays(1)))));
+		familiaExistente(true);
+
+		assertThat(servicio.obtener(admin, id).estado()).isEqualTo(EstadoInvitacion.PENDIENTE);
+		verify(invitaciones).findByIdAndEscuelaId(id, escuelaId);
+	}
+
+	@Test
+	void obtenerDeOtraEscuelaDa404() {
+		UUID id = UUID.randomUUID();
+		when(invitaciones.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> servicio.obtener(admin, id))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class, e -> assertThat(e.getCodigo()).isEqualTo("INVITACION_NO_ENCONTRADA"));
+	}
 }

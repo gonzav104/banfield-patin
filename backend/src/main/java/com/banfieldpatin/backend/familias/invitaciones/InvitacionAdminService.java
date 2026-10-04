@@ -126,6 +126,13 @@ public class InvitacionAdminService {
 		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora));
 	}
 
+	@Transactional(readOnly = true)
+	public InvitacionRespuesta obtener(UsuarioAutenticado admin, UUID id) {
+		Invitacion invitacion = invitaciones.findByIdAndEscuelaId(id, admin.escuelaId())
+				.orElseThrow(InvitacionAdminService::invitacionNoEncontrada);
+		return respuesta(invitacion, reloj.instant());
+	}
+
 	/**
 	 * PENDIENTE o EXPIRADA (sin usar) se revocan; REVOCADA responde 200 sin tocar los datos originales
 	 * (idempotente); USADA da 409. La auditoria solo se escribe cuando esta llamada revoca de verdad.
