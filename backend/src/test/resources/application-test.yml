@@ -1,0 +1,10 @@
+# Solo para tests: secreto ficticio, no usar fuera de pruebas.
+banfield:
+  seguridad:
+    jwt:
+      secreto: dGVzdC1vbmx5LWZpY3RpdGlvdXMtand0LXNlY3JldC0wMTIzNDU2Nzg5YWJjZGVm
+    cookie:
+      secure: false
+spring:
+  flyway:
+    enabled: false

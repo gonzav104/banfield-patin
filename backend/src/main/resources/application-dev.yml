@@ -1,0 +1,6 @@
+banfield:
+  seguridad:
+    cookie:
+      secure: false
+    cors:
+      origenes-permitidos: http://localhost:5173

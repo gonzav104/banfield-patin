@@ -17,3 +17,40 @@ spring:
     locations: classpath:db/migration
     schemas: gestion_patin
     default-schema: gestion_patin
+
+server:
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+banfield:
+  escuela:
+    slug: ${ESCUELA_SLUG:banfield-patin-san-pedro}
+  frontend:
+    url-base: ${FRONTEND_URL_BASE:}
+  seguridad:
+    jwt:
+      secreto: ${JWT_SECRET} # base64, minimo 32 bytes decodificados; sin valor por defecto
+      emisor: banfield-patin-backend
+      duracion: ${JWT_DURACION:PT8H}
+    cookie:
+      nombre: ${AUTH_COOKIE_NOMBRE:BP_SESION}
+      secure: ${AUTH_COOKIE_SECURE:true}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    cors:
+      origenes-permitidos: ${CORS_ORIGENES_PERMITIDOS:}
+    login:
+      max-intentos: ${LOGIN_MAX_INTENTOS:5}
+      ventana: ${LOGIN_VENTANA:PT15M}
+      bloqueo: ${LOGIN_BLOQUEO:PT15M}
+      max-claves: 10000
+  invitaciones:
+    vigencia-por-defecto: P7D
+    vigencia-maxima: P30D
+  bootstrap-admin:
+    habilitado: ${BOOTSTRAP_ADMIN_HABILITADO:false}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    nombre: ${BOOTSTRAP_ADMIN_NOMBRE:}
+    apellido: ${BOOTSTRAP_ADMIN_APELLIDO:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
