@@ -1,11 +1,13 @@
 package com.banfieldpatin.backend;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.banfieldpatin.backend.escuelas.Escuela;
 import com.banfieldpatin.backend.familias.Familia;
+import com.banfieldpatin.backend.familias.invitaciones.Invitacion;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.usuarios.Usuario;
 
@@ -40,6 +42,14 @@ public final class FixturesDominio {
 		ReflectionTestUtils.setField(u, "id", id);
 		ReflectionTestUtils.setField(u, "activo", activo);
 		return u;
+	}
+
+	/** Invitacion pendiente creada en {@code creadoEn} que vence en {@code expiraEn}. */
+	public static Invitacion invitacion(UUID id, UUID escuelaId, UUID familiaId, UUID creadaPor, Instant creadoEn,
+			Instant expiraEn) {
+		Invitacion i = Invitacion.crear(escuelaId, familiaId, "a".repeat(64), null, creadoEn, expiraEn, creadaPor);
+		ReflectionTestUtils.setField(i, "id", id);
+		return i;
 	}
 
 	private static <T> T instancia(Class<T> tipo) {
