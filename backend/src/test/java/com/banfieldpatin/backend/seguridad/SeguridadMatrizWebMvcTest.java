@@ -226,6 +226,18 @@ class SeguridadMatrizWebMvcTest {
 	}
 
 	@Test
+	void unTokenPendienteRenovadoSigueSinAccederARutasProtegidasYUsaLasDeMfa() throws Exception {
+		Cookie renovada = new Cookie(COOKIE, tokens.emitirMfaPendienteRenovado(UUID.randomUUID(), UUID.randomUUID()));
+		for (String ruta : new String[] { "/api/admin/ping", "/api/familia/ping", "/api/inexistente" }) {
+			mvc.perform(get(ruta).cookie(renovada))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+		}
+		mvc.perform(get("/api/auth/me").cookie(renovada)).andExpect(status().isOk());
+		postConCsrf("/api/auth/admin/mfa/ping", renovada).andExpect(status().isOk());
+	}
+
+	@Test
 	void adminConMfaPendienteVeMeCierraSesionYUsaLasRutasDeMfa() throws Exception {
 		mvc.perform(get("/api/auth/me").cookie(pendiente())).andExpect(status().isOk());
 		postConCsrf("/api/auth/logout", pendiente()).andExpect(status().isNoContent());

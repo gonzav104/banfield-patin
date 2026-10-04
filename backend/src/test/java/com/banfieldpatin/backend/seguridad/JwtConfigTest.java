@@ -129,6 +129,25 @@ class JwtConfigTest {
 				.doesNotContain("ROLE_ADMIN", "ROLE_FAMILIA");
 	}
 
+	@Test
+	void adminConMfaPendienteRenovadoSigueSinRoleAdmin() {
+		Jwt jwt = decoder.decode(tokens.emitirMfaPendienteRenovado(UUID.randomUUID(), UUID.randomUUID()));
+		var auth = config.jwtAuthenticationConverter().convert(jwt);
+		assertThat(auth.getAuthorities()).extracting(a -> a.getAuthority()).contains("MFA_PENDIENTE")
+				.doesNotContain("ROLE_ADMIN", "ROLE_FAMILIA");
+	}
+
+	@Test
+	void unTokenDeAdminConLaMarcaDeRenovacionPeroSinEtapaMfaEsRechazado() {
+		JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(clave));
+		JwtClaimsSet claims = JwtClaimsSet.builder().issuer("emisor-test").subject(UUID.randomUUID().toString())
+				.issuedAt(AHORA).expiresAt(AHORA.plusSeconds(3600)).claim("rol", "ADMIN")
+				.claim("escuela_id", UUID.randomUUID().toString()).claim("mfa_renovado", true).build();
+		String token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+				.getTokenValue();
+		assertThatThrownBy(() -> decoder.decode(token)).isInstanceOf(BadJwtException.class);
+	}
+
 	private String tokenDeAdminConClaimMfa(String valor) {
 		JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(clave));
 		JwtClaimsSet.Builder claims = JwtClaimsSet.builder().issuer("emisor-test").subject(UUID.randomUUID().toString())

@@ -25,6 +25,11 @@ public class ServicioTokens {
 	public static final String CLAIM_MFA = "mfa";
 	public static final String MFA_PENDIENTE = "PENDIENTE";
 	public static final String MFA_COMPLETADA = "COMPLETADA";
+	/**
+	 * Marca del token de MFA pendiente que ya es una renovacion: se emite a lo sumo una vez por inicio de sesion
+	 * (en el enrolamiento) y un token marcado no se vuelve a renovar, lo que acota la vida pendiente total a 2 x TTL.
+	 */
+	public static final String CLAIM_MFA_RENOVADO = "mfa_renovado";
 
 	private final JwtEncoder encoder;
 	private final SeguridadPropiedades propiedades;
@@ -62,6 +67,23 @@ public class ServicioTokens {
 		Instant ahora = reloj.instant();
 		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente())
 				.claim(CLAIM_MFA, MFA_PENDIENTE));
+	}
+
+	/**
+	 * Renovacion del token de MFA pendiente tras enrolar con exito: misma identidad, mfa=PENDIENTE (nunca concede
+	 * ROLE_ADMIN), vencimiento nuevo contado desde ahora y marca {@link #CLAIM_MFA_RENOVADO}. Sin ella el token
+	 * vigente no se renueva otra vez.
+	 */
+	public String emitirMfaPendienteRenovado(UUID usuarioId, UUID escuelaId) {
+		Instant ahora = reloj.instant();
+		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente())
+				.claim(CLAIM_MFA, MFA_PENDIENTE)
+				.claim(CLAIM_MFA_RENOVADO, true));
+	}
+
+	/** True si el JWT ya es una renovacion de MFA pendiente (no admite otra). */
+	public static boolean mfaRenovado(Jwt jwt) {
+		return Boolean.TRUE.equals(jwt.getClaim(CLAIM_MFA_RENOVADO));
 	}
 
 	/** True si el JWT es de un ADMIN cuyo segundo factor aun no se completo. */

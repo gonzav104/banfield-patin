@@ -44,12 +44,25 @@ public class MfaController {
 		this.csrfRepo = csrfRepo;
 	}
 
+	/**
+	 * Enrola (o re-enrola, mientras no se confirme) el TOTP del ADMIN. Si el enrolamiento termina bien y el token
+	 * presentado no es ya una renovacion, la respuesta trae una cookie BP_SESION nueva con MFA pendiente y vencimiento
+	 * contado desde ahora: el ADMIN dispone de una ventana propia para instalar la app y confirmar. La cookie se arma
+	 * solo DESPUES de que el servicio vuelve (y con el, el commit de su transaccion): ante cualquier excepcion no hay
+	 * Set-Cookie. Un token ya renovado se re-enrola igual pero NO se renueva: la vida pendiente total queda en 2 x TTL.
+	 */
 	@PostMapping("/enrolar")
 	public ResponseEntity<EnrolamientoMfaRespuesta> enrolar(@AuthenticationPrincipal Jwt jwt,
 			HttpServletRequest request) {
-		EnrolamientoMfaRespuesta respuesta = servicio.enrolar(UsuarioAutenticado.desde(jwt), DatosSolicitud.de(request));
+		UsuarioAutenticado identidad = UsuarioAutenticado.desde(jwt);
+		EnrolamientoMfaRespuesta respuesta = servicio.enrolar(identidad, DatosSolicitud.de(request));
 		// El secreto y la URI se muestran una sola vez: que ninguna cache los retenga.
-		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(respuesta);
+		ResponseEntity.BodyBuilder ok = ResponseEntity.ok().cacheControl(CacheControl.noStore());
+		if (!ServicioTokens.mfaRenovado(jwt)) {
+			String renovado = tokens.emitirMfaPendienteRenovado(identidad.id(), identidad.escuelaId());
+			ok.header(HttpHeaders.SET_COOKIE, cookieSesion.crearMfaPendiente(renovado).toString());
+		}
+		return ok.body(respuesta);
 	}
 
 	@PostMapping("/confirmar")

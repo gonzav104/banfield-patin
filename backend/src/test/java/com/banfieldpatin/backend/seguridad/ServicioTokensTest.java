@@ -55,6 +55,30 @@ class ServicioTokensTest {
 	}
 
 	@Test
+	void elTokenPendienteRenovadoCuentaSuVencimientoDesdeAhoraYLlevaLaMarca() {
+		UUID usuario = UUID.randomUUID();
+		UUID escuela = UUID.randomUUID();
+		var decoder = config.jwtDecoder(clave, props, JwtConfigTest.RELOJ);
+		Jwt original = decoder.decode(tokens.emitirMfaPendiente(usuario, escuela));
+		Jwt renovado = decoder.decode(tokens.emitirMfaPendienteRenovado(usuario, escuela));
+
+		assertThat(renovado.getClaims().keySet())
+				.containsExactlyInAnyOrder("iss", "sub", "iat", "exp", "jti", "rol", "escuela_id", "mfa", "mfa_renovado");
+		assertThat(renovado.getClaimAsString("mfa")).isEqualTo("PENDIENTE");
+		assertThat(renovado.getExpiresAt()).isEqualTo(JwtConfigTest.AHORA.plus(Duration.ofMinutes(5)));
+		assertThat(ServicioTokens.mfaPendiente(renovado)).isTrue();
+		assertThat(ServicioTokens.mfaRenovado(renovado)).isTrue();
+		assertThat(ServicioTokens.mfaRenovado(original)).isFalse();
+		assertThat(renovado.getId()).isNotEqualTo(original.getId());
+	}
+
+	@Test
+	void ningunTokenDeSesionCompletaLlevaLaMarcaDeRenovacion() {
+		assertThat(ServicioTokens.mfaRenovado(emitirYDecodificar(Rol.ADMIN, null))).isFalse();
+		assertThat(ServicioTokens.mfaRenovado(emitirYDecodificar(Rol.FAMILIA, UUID.randomUUID()))).isFalse();
+	}
+
+	@Test
 	void mfaPendienteEsFalsoParaUnAdminConSesionCompleta() {
 		assertThat(ServicioTokens.mfaPendiente(emitirYDecodificar(Rol.ADMIN, null))).isFalse();
 	}

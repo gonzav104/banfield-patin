@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.usuarios.mfa;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -130,6 +132,104 @@ class MfaControllerWebMvcTest {
 		verify(servicio).enrolar(id.capture(), any(DatosSolicitud.class));
 		assertThat(id.getValue().id()).isEqualTo(adminId);
 		assertThat(id.getValue().escuelaId()).isEqualTo(escuelaId);
+	}
+
+	private static final EnrolamientoMfaRespuesta ENROLAMIENTO = new EnrolamientoMfaRespuesta(
+			"otpauth://totp/Banfield%20Patin:admin%40example.com?secret=ABC", "ABC");
+
+	private Cookie renovada() {
+		return new Cookie("BP_SESION", tokens.emitirMfaPendienteRenovado(adminId, escuelaId));
+	}
+
+	private static List<String> sesionesEmitidas(MvcResult r) {
+		return r.getResponse().getHeaders(HttpHeaders.SET_COOKIE).stream().filter(c -> c.startsWith("BP_SESION="))
+				.toList();
+	}
+
+	@Test
+	void enrolarExitosoRenuevaLaCookiePendienteConVencimientoDesdeAhora() throws Exception {
+		when(servicio.enrolar(any(), any())).thenReturn(ENROLAMIENTO);
+		Instant antes = Instant.now();
+
+		MvcResult r = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(pendiente()))
+				.andExpect(status().isOk())
+				.andExpect(header().string(HttpHeaders.CACHE_CONTROL, org.hamcrest.Matchers.containsString("no-store")))
+				.andReturn();
+
+		List<String> cookies = sesionesEmitidas(r);
+		assertThat(cookies).hasSize(1);
+		assertThat(cookies.get(0)).contains("HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=300");
+		var jwt = decoder.decode(valorDeCookie(r));
+		assertThat(jwt.getClaimAsString("mfa")).isEqualTo("PENDIENTE");
+		assertThat(jwt.getClaimAsString("rol")).isEqualTo("ADMIN");
+		assertThat(jwt.getSubject()).isEqualTo(adminId.toString());
+		assertThat(jwt.getClaimAsString("escuela_id")).isEqualTo(escuelaId.toString());
+		assertThat((Boolean) jwt.getClaim("mfa_renovado")).isTrue();
+		// El vencimiento cuenta desde la emision de la renovacion (no desde el login): exp = iat + duracion-pendiente.
+		assertThat(jwt.getIssuedAt()).isBetween(antes.minusSeconds(2), Instant.now().plusSeconds(2));
+		assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt())).isEqualTo(Duration.ofMinutes(5));
+		// El secreto va en el cuerpo y el token renovado nunca lo contiene.
+		assertThat(valorDeCookie(r)).doesNotContain("ABC");
+	}
+
+	@Test
+	void enrolarConUnTokenYaRenovadoReEnrolaPeroNoVuelveARenovar() throws Exception {
+		when(servicio.enrolar(any(), any())).thenReturn(ENROLAMIENTO);
+
+		MvcResult r = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(renovada()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.secretoBase32").value("ABC"))
+				.andReturn();
+
+		verify(servicio).enrolar(any(), any());
+		assertThat(sesionesEmitidas(r)).isEmpty();
+	}
+
+	@Test
+	void enrolarFallidoNuncaEmiteCookie() throws Exception {
+		// 409: MFA ya confirmado.
+		when(servicio.enrolar(any(), any())).thenThrow(MfaService.estadoInvalido());
+		MvcResult conflicto = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(pendiente()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("MFA_ESTADO_INVALIDO"))
+				.andReturn();
+		assertThat(sesionesEmitidas(conflicto)).isEmpty();
+
+		// Falla la auditoria/DB (la transaccion del servicio revierte): 500 sin cookie renovada.
+		doThrow(new IllegalStateException("fallo de base de datos")).when(servicio).enrolar(any(), any());
+		MvcResult interno = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(pendiente()))
+				.andExpect(status().isInternalServerError())
+				.andReturn();
+		assertThat(sesionesEmitidas(interno)).isEmpty();
+	}
+
+	@Test
+	void enrolarSinSesionPendienteNoEmiteCookie() throws Exception {
+		MvcResult anonimo = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar"))).andExpect(status().isUnauthorized())
+				.andReturn();
+		assertThat(sesionesEmitidas(anonimo)).isEmpty();
+		for (Cookie sesion : new Cookie[] { completa(), familia() }) {
+			MvcResult r = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(sesion))
+					.andExpect(status().isForbidden()).andReturn();
+			assertThat(sesionesEmitidas(r)).isEmpty();
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void confirmarConElTokenRenovadoEmiteLaSesionCompletaSinMarcaDeRenovacion() throws Exception {
+		when(servicio.confirmar(any(), eq(CODIGO), any())).thenReturn(admin);
+
+		MvcResult r = mvc.perform(codigo("/api/auth/admin/mfa/confirmar", renovada(), cuerpo(CODIGO)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(false))
+				.andReturn();
+
+		var jwt = decoder.decode(valorDeCookie(r));
+		assertThat(jwt.getClaimAsString("mfa")).isEqualTo("COMPLETADA");
+		assertThat(jwt.getClaimAsString("rol")).isEqualTo("ADMIN");
+		assertThat((Object) jwt.getClaim("mfa_renovado")).isNull();
+		assertThat(sesionesEmitidas(r).get(0)).contains("Max-Age=28800");
 	}
 
 	// ---------- confirmar / verificar ----------
