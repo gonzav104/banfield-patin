@@ -8,6 +8,7 @@ import java.util.Map;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -57,6 +58,7 @@ public class RegistroPorInvitacionService {
 	private final VinculacionPorInvitacion vinculacion;
 	private final Clock reloj;
 
+	@Autowired
 	public RegistroPorInvitacionService(InvitacionRepository invitaciones, UsuarioRepository usuarios,
 			EscuelaRepository escuelas, FamiliaRepository familias, EscuelaActual escuelaActual,
 			PasswordEncoder passwordEncoder, AuditoriaService auditoria,

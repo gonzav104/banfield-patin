@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class ValidarInvitacionService {
 	private final LimitadorIntentosLogin limitador;
 	private final Clock reloj;
 
+	@Autowired
 	public ValidarInvitacionService(InvitacionRepository invitaciones, EscuelaRepository escuelas,
 			FamiliaRepository familias, SeguridadPropiedades propiedades, Clock reloj) {
 		this(invitaciones, escuelas, familias, new LimitadorIntentosLogin(propiedades.login(), reloj), reloj);
