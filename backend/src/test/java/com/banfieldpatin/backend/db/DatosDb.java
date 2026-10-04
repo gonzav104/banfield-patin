@@ -74,6 +74,15 @@ final class DatosDb {
 				.param("h", tokenHash).param("u", usuarioId).param("rp", revocadaPor).query(UUID.class).single();
 	}
 
+	/** Inserta un factor TOTP con SQL directo; confirmadoEn es una expresion SQL fija (p. ej. NULO o HACE_1_HORA). */
+	void usuarioMfa(UUID usuarioId, UUID escuelaId, byte[] secretoCifrado, String confirmadoEn, Long ultimoPaso) {
+		jdbc.sql("""
+				INSERT INTO gestion_patin.usuario_mfa (usuario_id, escuela_id, secreto_cifrado, confirmado_en, ultimo_paso_usado)
+				VALUES (:u, :e, :s, %s, :p)
+				""".formatted(confirmadoEn)).param("u", usuarioId).param("e", escuelaId).param("s", secretoCifrado)
+				.param("p", ultimoPaso).update();
+	}
+
 	boolean usada(UUID invitacionId) {
 		return jdbc.sql("SELECT usado_en IS NOT NULL FROM gestion_patin.invitacion WHERE id = :id")
 				.param("id", invitacionId).query(Boolean.class).single();
@@ -86,7 +95,7 @@ final class DatosDb {
 
 	/** Borra todo lo colgado de la escuela (en orden de dependencias); no borra la escuela. */
 	void limpiarContenido(UUID escuelaId) {
-		for (String tabla : new String[] { "auditoria", "invitacion", "usuario", "familia" }) {
+		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "usuario", "familia" }) {
 			jdbc.sql("DELETE FROM gestion_patin." + tabla + " WHERE escuela_id = :e").param("e", escuelaId).update();
 		}
 	}
