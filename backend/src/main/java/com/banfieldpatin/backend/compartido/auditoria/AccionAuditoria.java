@@ -1,0 +1,13 @@
+package com.banfieldpatin.backend.compartido.auditoria;
+
+public enum AccionAuditoria {
+	LOGIN_EXITOSO,
+	LOGIN_FALLIDO,
+	LOGOUT,
+	ADMIN_BOOTSTRAP,
+	REGISTRO_POR_INVITACION,
+	REGISTRO_FALLIDO,
+	INVITACION_CREADA,
+	INVITACION_REVOCADA,
+	FAMILIA_CREADA
+}
