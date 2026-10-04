@@ -82,7 +82,9 @@ public class BootstrapAdminRunner implements ApplicationRunner {
 			return;
 		}
 
-		Usuario admin = usuarios.save(Usuario.crear(escuela.getId(), null, propiedades.nombre().trim(),
+		// saveAndFlush: el id es generado, Hibernate difiere el INSERT; la auditoria (JDBC, misma transaccion) exige
+		// que la fila del usuario exista fisicamente (fk_auditoria_usuario_misma_escuela).
+		Usuario admin = usuarios.saveAndFlush(Usuario.crear(escuela.getId(), null, propiedades.nombre().trim(),
 				propiedades.apellido().trim(), email, codificador.encode(propiedades.password()), Rol.ADMIN));
 		auditoria.registrar(new EventoAuditoria(escuela.getId(), admin.getId(), AccionAuditoria.ADMIN_BOOTSTRAP,
 				"usuario", admin.getId(), Map.of("email", MascaraEmail.enmascarar(email)), DatosSolicitud.NINGUNA));

@@ -49,7 +49,7 @@ class BootstrapAdminRunnerTest {
 	void preparar() {
 		escuela = FixturesDominio.escuela(ESCUELA_ID, true); // maxAdministradores = 2
 		when(escuelas.findBySlugParaActualizar("escuela-test")).thenReturn(Optional.of(escuela));
-		when(usuarios.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+		when(usuarios.saveAndFlush(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
 	}
 
 	private BootstrapAdminRunner runner(String email, String nombre, String apellido, String password) {
@@ -69,7 +69,7 @@ class BootstrapAdminRunnerTest {
 		runnerValido().run(null);
 
 		ArgumentCaptor<Usuario> guardado = ArgumentCaptor.forClass(Usuario.class);
-		verify(usuarios).save(guardado.capture());
+		verify(usuarios).saveAndFlush(guardado.capture());
 		Usuario admin = guardado.getValue();
 		assertThat(admin.getRol()).isEqualTo(Rol.ADMIN);
 		assertThat(admin.getFamiliaId()).isNull();
@@ -96,7 +96,7 @@ class BootstrapAdminRunnerTest {
 
 		runnerValido().run(null);
 
-		verify(usuarios, never()).save(any());
+		verify(usuarios, never()).saveAndFlush(any());
 		verifyNoInteractions(auditoria);
 		assertThat(salida.getAll()).doesNotContain(PASSWORD).doesNotContain("admin@example.com");
 	}
@@ -108,7 +108,7 @@ class BootstrapAdminRunnerTest {
 
 		runnerValido().run(null);
 
-		verify(usuarios, never()).save(any());
+		verify(usuarios, never()).saveAndFlush(any());
 		verifyNoInteractions(auditoria);
 		assertThat(salida.getAll()).contains("maximo de administradores").doesNotContain(PASSWORD);
 	}
@@ -148,7 +148,7 @@ class BootstrapAdminRunnerTest {
 		when(escuelas.findBySlugParaActualizar("escuela-test"))
 				.thenReturn(Optional.of(FixturesDominio.escuela(ESCUELA_ID, false)));
 		assertThatThrownBy(() -> runnerValido().run(null)).isInstanceOf(IllegalStateException.class);
-		verify(usuarios, never()).save(any());
+		verify(usuarios, never()).saveAndFlush(any());
 	}
 
 	@Test
