@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,8 @@ import com.banfieldpatin.backend.usuarios.dto.UsuarioActualRespuesta;
  */
 @Service
 public class AutenticacionService {
+
+	private static final Logger log = LoggerFactory.getLogger(AutenticacionService.class);
 
 	private static final String MOTIVO_CREDENCIALES = "CREDENCIALES";
 	private static final String MOTIVO_INACTIVO = "INACTIVO";
@@ -120,9 +124,17 @@ public class AutenticacionService {
 				.map(UsuarioActualRespuesta::de);
 	}
 
+	/**
+	 * Audita el LOGOUT sin que un fallo de auditoria impida cerrar la sesion: el controlador siempre debe poder
+	 * expirar la cookie. El error se registra en el log del servidor (sin datos del usuario) y se ignora.
+	 */
 	public void cerrarSesion(UsuarioAutenticado identidad, DatosSolicitud solicitud) {
-		auditoria.registrar(new EventoAuditoria(identidad.escuelaId(), identidad.id(), AccionAuditoria.LOGOUT,
-				"USUARIO", identidad.id(), Map.of(), solicitud));
+		try {
+			auditoria.registrar(new EventoAuditoria(identidad.escuelaId(), identidad.id(), AccionAuditoria.LOGOUT,
+					"USUARIO", identidad.id(), Map.of(), solicitud));
+		} catch (RuntimeException e) {
+			log.error("No se pudo registrar el evento de auditoria {}", AccionAuditoria.LOGOUT, e);
+		}
 	}
 
 	private boolean principalesActivos(Usuario usuario, Escuela escuela) {

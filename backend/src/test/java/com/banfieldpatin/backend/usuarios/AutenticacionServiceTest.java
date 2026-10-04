@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -248,5 +249,16 @@ class AutenticacionServiceTest {
 		assertThat(c.getValue().accion()).isEqualTo(AccionAuditoria.LOGOUT);
 		assertThat(c.getValue().usuarioId()).isEqualTo(id.id());
 		assertThat(c.getValue().detalle()).isEqualTo(Map.of());
+	}
+
+	@Test
+	void unFalloDeAuditoriaNoImpideCerrarSesion() {
+		UsuarioAutenticado id = new UsuarioAutenticado(UUID.randomUUID(), escuelaId, familiaId, Rol.FAMILIA);
+		doThrow(new IllegalStateException("base de auditoria caida")).when(auditoria).registrar(any());
+
+		// No propaga: el controlador puede expirar la cookie aunque la auditoria falle.
+		servicio.cerrarSesion(id, SOLICITUD);
+
+		verify(auditoria).registrar(any(EventoAuditoria.class));
 	}
 }
