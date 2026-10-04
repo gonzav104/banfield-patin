@@ -41,7 +41,7 @@ Cada requisito se redacta para ser:
 | **Actor** | **Acceso** | **Responsabilidades principales** |
 |---|---|---|
 | ADMIN | /admin/login; no visible en la landing | Deportistas, familias, documentos, empadronamientos, aptos, carreras, LBF, rifas y configuración operativa. |
-| FAMILIA | /login y /registro desde la landing | Gestionar deportistas vinculados, cargar documentos y aptos, confirmar carreras y gestionar sus números de rifa. |
+| FAMILIA | /login; registro solo mediante el enlace de una invitación de un ADMIN | Gestionar deportistas vinculados, cargar documentos y aptos, confirmar carreras y gestionar sus números de rifa. |
 | DEPORTISTA | Sin login en el MVP | Entidad central con datos personales, deportivos, federativos, documentales y de participación. |
 
 ## 4. Requerimientos funcionales SMART
@@ -51,9 +51,9 @@ Cada requisito se redacta para ser:
 | **ID** | **Requerimiento SMART** | **Criterio de aceptación / medición** |
 |---|---|---|
 | **RF-01** | La aplicación deberá publicar una landing de Banfield Patín Carrera accesible sin autenticación, con información institucional, horarios/lugar de entrenamiento, contacto y acceso al portal de familias. | La landing deberá cargar sus contenidos principales en ≤ 2,5 s en una conexión 4G razonable y no deberá mostrar enlaces, roles ni llamadas a la acción de ADMIN. |
-| **RF-02** | Una persona responsable deberá poder crear una cuenta FAMILIA con nombre, apellido, correo electrónico y contraseña, sin opción de seleccionar otro rol. | El sistema rechazará correos duplicados dentro de la misma escuela y la cuenta deberá quedar disponible para iniciar sesión luego de completar la validación definida para el MVP. |
+| **RF-02** | Una persona responsable deberá poder crear una cuenta FAMILIA únicamente a partir de una invitación emitida por un ADMIN (de un solo uso, con vencimiento y revocable), indicando nombre, apellido, correo electrónico y contraseña, sin opción de seleccionar otro rol. No existirá registro libre sin invitación. | El sistema rechazará correos duplicados dentro de la misma escuela (la invitación seguirá vigente) y rechazará con un mismo error cualquier invitación inexistente, vencida, revocada o ya utilizada. En el MVP no se exige verificación de correo: la cuenta quedará disponible para iniciar sesión al completar el registro, que no inicia sesión automáticamente. |
 | **RF-03** | El acceso ADMIN deberá realizarse mediante una ruta de acceso separada y no promocionada en la interfaz pública; las cuentas ADMIN no podrán crearse por auto-registro. | En Banfield se habilitarán inicialmente solo dos cuentas ADMIN. Una cuenta FAMILIA que intente acceder a un recurso administrativo deberá recibir HTTP 403. |
-| **RF-04** | El sistema deberá permitir vincular una FAMILIA con uno o más DEPORTISTAS mediante invitación o aprobación de un ADMIN. | Ninguna familia podrá consultar o modificar datos de un deportista hasta que exista una vinculación activa y autorizada; el cambio deberá verse reflejado en ≤ 2 s. |
+| **RF-04** | El sistema deberá permitir vincular una FAMILIA con uno o más DEPORTISTAS mediante invitación o aprobación de un ADMIN. La invitación de registro (RF-02) deja previsto un punto de extensión para asociar un deportista; la vinculación efectiva se implementará en el módulo Deportistas. | Ninguna familia podrá consultar o modificar datos de un deportista hasta que exista una vinculación activa y autorizada; el cambio deberá verse reflejado en ≤ 2 s. |
 
 ### 4.2 Módulo de deportistas
 

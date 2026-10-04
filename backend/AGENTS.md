@@ -121,7 +121,7 @@ Preferencia de sesión:
 - token/sesión en cookie `HttpOnly`, `Secure` en producción y `SameSite` apropiado;
 - no almacenar tokens sensibles en `localStorage`.
 
-La estrategia concreta de autenticación debe documentarse antes de implementar si aún no está fijada.
+La estrategia concreta de autenticación (JWT HS256 en cookie `HttpOnly`, CSRF, invitaciones, bootstrap de ADMIN y riesgos aceptados) está documentada en `../docs/SEGURIDAD.md`.
 
 ## Supabase
 
@@ -343,7 +343,9 @@ Cada módulo debe cubrir:
 - validaciones;
 - persistencia crítica.
 
-Usar Testcontainers cuando una prueba dependa de comportamiento real de PostgreSQL.
+Usar Testcontainers cuando una prueba dependa de comportamiento real de PostgreSQL y haya Docker disponible.
+
+Sin Docker, las pruebas que necesitan PostgreSQL real llevan `@Tag("db")` (anotación `@PruebaDb`), quedan excluidas de `./mvnw clean verify` y se ejecutan con `./mvnw verify -Pdb-tests` contra una PostgreSQL local descartable indicada por `DB_TEST_URL`, `DB_TEST_USER` y `DB_TEST_PASSWORD`. Nunca contra Supabase ni una base compartida. Detalle en `../docs/SEGURIDAD.md`, sección 11.
 
 No sustituir todos los tests de integración por mocks.
 
