@@ -155,28 +155,27 @@ contiene únicamente valores ficticios.
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
-| `DB_TEST_URL`, `DB_TEST_USER`, `DB_TEST_PASSWORD` | solo para pruebas `db` | Base PostgreSQL **local y descartable** (sección 11). No es la base de la aplicación |
 
 ## 11. Pruebas y convención de pruebas con base de datos
 
 - `./mvnw clean verify` (desde `backend/`) no necesita base de datos ni Docker: no abre `DataSource`, no ejecuta Flyway y no usa
   `@SpringBootTest`. Incluye pruebas unitarias y *slices* `@WebMvcTest` con servicios simulados, entre ellas las matrices 401/403,
   CSRF, atributos de cookie y rol forzado.
-- Testcontainers no está disponible en este entorno (no hay Docker). Convención adoptada: las pruebas que necesitan PostgreSQL real
-  llevan la etiqueta JUnit `@Tag("db")` (a través de la anotación `@PruebaDb`), el `pom.xml` las excluye por defecto
+- Las pruebas que necesitan PostgreSQL real usan **Testcontainers** (contenedor `postgres:16-alpine` local y descartable, requiere
+  Docker). Llevan la etiqueta JUnit `@Tag("db")` (a través de la anotación `@PruebaDb`), el `pom.xml` las excluye por defecto
   (`excludedGroups=db`) y solo corren con el perfil Maven `db-tests`:
 
   ```bash
-  createdb banfield_test        # PostgreSQL local, base vacía y descartable (el nombre debe contener "test")
-  DB_TEST_URL=jdbc:postgresql://localhost:5432/banfield_test \
-  DB_TEST_USER=postgres DB_TEST_PASSWORD=... \
-  ./mvnw verify -Pdb-tests
-  dropdb banfield_test
+  ./mvnw verify -Pdb-tests      # levanta el contenedor, aplica Flyway V1+V2 y lo elimina al terminar
   ```
 
-- Salvaguardas: las pruebas `db` rechazan cualquier host que no sea `localhost`, `127.0.0.1` o `::1`, y cualquier base cuyo nombre no
-  contenga `test`. **Nunca** se ejecutan contra Supabase ni contra una base compartida. Cubren: Flyway V1+V2, `ddl-auto=validate` de
-  las entidades, restricciones de V2, consultas JPQL y consumo atómico concurrente de invitaciones.
+  No se necesita configurar variables de entorno ni crear ninguna base: el contenedor es único por ejecución y lo comparten todas
+  las pruebas `db`.
+- Salvaguardas: aunque la base es un contenedor, las pruebas `db` rechazan cualquier host que no sea `localhost`, `127.0.0.1` o
+  `::1` (por ejemplo, un `DOCKER_HOST` remoto) y cualquier base cuyo nombre no contenga `test`. **Nunca** se ejecutan contra
+  Supabase ni contra una base compartida. Cubren: Flyway V1+V2, `ddl-auto=validate` de las entidades, restricciones de V2,
+  consultas JPQL, consumo atómico concurrente de invitaciones y el bootstrap del primer ADMIN (la auditoría exige que el usuario ya
+  exista físicamente: `fk_auditoria_usuario_misma_escuela`, por eso el alta usa `saveAndFlush` antes de auditar).
 - Un test sin base de datos verifica que el pom excluye el grupo `db` por defecto y que toda prueba que abre un contexto con
   base de datos esté etiquetada.
 

@@ -345,7 +345,7 @@ Cada módulo debe cubrir:
 
 Usar Testcontainers cuando una prueba dependa de comportamiento real de PostgreSQL y haya Docker disponible.
 
-Sin Docker, las pruebas que necesitan PostgreSQL real llevan `@Tag("db")` (anotación `@PruebaDb`), quedan excluidas de `./mvnw clean verify` y se ejecutan con `./mvnw verify -Pdb-tests` contra una PostgreSQL local descartable indicada por `DB_TEST_URL`, `DB_TEST_USER` y `DB_TEST_PASSWORD`. Nunca contra Supabase ni una base compartida. Detalle en `../docs/SEGURIDAD.md`, sección 11.
+Las pruebas que necesitan PostgreSQL real usan Testcontainers (`postgres:16-alpine`, requiere Docker), llevan `@Tag("db")` (anotación `@PruebaDb`), quedan excluidas de `./mvnw clean verify` y se ejecutan con `./mvnw verify -Pdb-tests`. El contenedor es local y descartable: nunca Supabase ni una base compartida. Detalle en `../docs/SEGURIDAD.md`, sección 11.
 
 No sustituir todos los tests de integración por mocks.
 
