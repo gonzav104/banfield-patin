@@ -9,7 +9,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  */
 final class PostgresDescartable {
 
-	static final String IMAGEN = "postgres:16-alpine";
+	static final String IMAGEN = "postgres:17-alpine";
 	private static final PostgreSQLContainer CONTENEDOR = new PostgreSQLContainer(IMAGEN)
 			.withDatabaseName("banfield_test").withUsername("banfield_test").withPassword("banfield_test");
 

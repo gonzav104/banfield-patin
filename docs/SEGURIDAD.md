@@ -161,7 +161,7 @@ contiene únicamente valores ficticios.
 - `./mvnw clean verify` (desde `backend/`) no necesita base de datos ni Docker: no abre `DataSource`, no ejecuta Flyway y no usa
   `@SpringBootTest`. Incluye pruebas unitarias y *slices* `@WebMvcTest` con servicios simulados, entre ellas las matrices 401/403,
   CSRF, atributos de cookie y rol forzado.
-- Las pruebas que necesitan PostgreSQL real usan **Testcontainers** (contenedor `postgres:16-alpine` local y descartable, requiere
+- Las pruebas que necesitan PostgreSQL real usan **Testcontainers** (contenedor `postgres:17-alpine` local y descartable, requiere
   Docker). Llevan la etiqueta JUnit `@Tag("db")` (a través de la anotación `@PruebaDb`), el `pom.xml` las excluye por defecto
   (`excludedGroups=db`) y solo corren con el perfil Maven `db-tests`:
 
