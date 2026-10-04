@@ -22,7 +22,7 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
 	/** Lectura sin bloqueo para la validacion publica (no consume ni reserva la invitacion). */
 	Optional<Invitacion> findByTokenHash(String tokenHash);
 
-	/** Reservado para el registro (PR5): SELECT ... FOR UPDATE serializa usos concurrentes del mismo token. */
+	/** Registro: SELECT ... FOR UPDATE serializa usos concurrentes del mismo token. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select i from Invitacion i where i.tokenHash = :tokenHash")
 	Optional<Invitacion> findByTokenHashParaActualizar(@Param("tokenHash") String tokenHash);
@@ -55,4 +55,17 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
 			""")
 	int marcarRevocada(@Param("id") UUID id, @Param("escuelaId") UUID escuelaId,
 			@Param("usuarioId") UUID usuarioId, @Param("ahora") Instant ahora);
+
+	/**
+	 * Consumo atomico: marca la invitacion como usada por {@code usuarioId} solo si sigue pendiente (ni usada, ni
+	 * revocada, ni vencida segun {@code ahora}). Debe afectar exactamente 1 fila; 0 significa que otra transaccion se
+	 * adelanto. Se ejecuta DESPUES de insertar el usuario porque el CHECK ck_invitacion_uso_coherente exige que
+	 * usado_en y usuario_id se completen juntos y la FK compuesta necesita que el usuario ya exista.
+	 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update Invitacion i set i.usadoEn = :ahora, i.usuarioId = :usuarioId
+			where i.id = :id and i.usadoEn is null and i.revocadaEn is null and i.expiraEn > :ahora
+			""")
+	int marcarUsada(@Param("id") UUID id, @Param("usuarioId") UUID usuarioId, @Param("ahora") Instant ahora);
 }
