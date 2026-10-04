@@ -41,9 +41,10 @@ import com.jayway.jsonpath.JsonPath;
  * descartable. Reproduce la secuencia de {@code scripts/smoke-auth.sh}: GET csrf, login, GET csrf, enrolar, GET csrf,
  * confirmar, GET me. El TOTP lo calcula {@link TotpIndependiente}, no el codigo de produccion.
  * <p>
- * Documenta el comportamiento ACTUAL del token de MFA pendiente: vive {@code duracion-pendiente} (PT5M por defecto);
- * pasado ese tiempo la cookie la descarta el cliente y el servidor responde 401 NO_AUTENTICADO sin llegar al servicio
- * de MFA, por lo que NO se registra MFA_FALLO.
+ * Documenta el token de MFA pendiente: vive {@code duracion-pendiente} (PT5M por defecto) y se renueva una vez al
+ * enrolar con exito (la renovacion con reloj controlado esta en {@code MfaRenovacionHttpRealDbTest}); vencido, la
+ * cookie la descarta el cliente y el servidor responde 401 NO_AUTENTICADO sin llegar al servicio de MFA, por lo que NO
+ * se registra MFA_FALLO.
  */
 @Tag("db")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -109,6 +110,8 @@ class MfaHttpRealDbTest extends BaseDbTest {
 		get("/api/auth/csrf");
 		HttpResponse<String> enrolar = post("/api/auth/admin/mfa/enrolar", null);
 		assertThat(enrolar.statusCode()).isEqualTo(200);
+		// Enrolar con exito renueva la cookie pendiente (ventana propia para confirmar); ver MfaRenovacionHttpRealDbTest.
+		assertThat(setCookie(enrolar, COOKIE_SESION)).contains("Max-Age=300").contains("HttpOnly");
 		String secreto = JsonPath.read(enrolar.body(), "$.secretoBase32");
 
 		get("/api/auth/csrf");

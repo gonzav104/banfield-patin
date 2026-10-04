@@ -19,7 +19,7 @@ Este documento describe lo que el código hace hoy; los puntos abiertos están e
 | Aspecto | Valor |
 |---|---|
 | Algoritmo | HS256 con un secreto compartido (`JWT_SECRET`, base64, mínimo 32 bytes decodificados) |
-| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`). Sin email ni datos personales |
+| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`) y `mfa_renovado` (solo en el token pendiente renovado al enrolar, sección 9). Sin email ni datos personales |
 | Duración | `JWT_DURACION`, por defecto `PT8H` (se valida entre `PT5M` y `PT24H`). El token de un ADMIN con MFA pendiente dura `MFA_DURACION_PENDIENTE`, por defecto `PT5M` (entre `PT1M` y `PT15M`) |
 | Cookie | Nombre `BP_SESION` (configurable), `HttpOnly`, `Path=/`, `Max-Age` igual a la duración del JWT |
 | `Secure` | `AUTH_COOKIE_SECURE`; el valor por defecto de la aplicación es `true`. Solo el perfil `dev` y los ejemplos locales lo desactivan |
@@ -165,7 +165,7 @@ Cumple RNF-03. Todo ADMIN necesita contraseña **y** un código TOTP de su aplic
 
 | Ruta | Requiere | Efecto |
 |---|---|---|
-| `/api/auth/admin/mfa/enrolar` | token pendiente, MFA aún no confirmado | Genera el secreto, lo guarda cifrado sin confirmar y devuelve `{otpauthUri, secretoBase32}` una sola vez. Repetirlo antes de confirmar reemplaza el secreto sin confirmar. Ya confirmado: `409 MFA_ESTADO_INVALIDO` |
+| `/api/auth/admin/mfa/enrolar` | token pendiente, MFA aún no confirmado | Genera el secreto, lo guarda cifrado sin confirmar y devuelve `{otpauthUri, secretoBase32}` una sola vez. Repetirlo antes de confirmar reemplaza el secreto sin confirmar. Si termina bien y el token no es ya una renovación, responde además con una **cookie `BP_SESION` renovada** (ver «Renovación del token pendiente»). Ya confirmado: `409 MFA_ESTADO_INVALIDO`, sin cookie |
 | `/api/auth/admin/mfa/confirmar` `{codigo}` | token pendiente y enrolamiento sin confirmar | Verifica el primer código, activa el MFA y emite la **sesión completa** (cookie nueva) |
 | `/api/auth/admin/mfa/verificar` `{codigo}` | token pendiente y MFA confirmado | Verifica el código y emite la **sesión completa** |
 | `/api/admin/usuarios/{id}/mfa/reiniciar` | sesión completa de ADMIN | Reinicia el MFA de **otro** ADMIN de la misma escuela (`204`). Un `id` propio da `403 MFA_AUTOREINICIO_NO_PERMITIDO`; de otra escuela, de FAMILIA o inexistente, `404 USUARIO_NO_ENCONTRADO` |
@@ -173,6 +173,28 @@ Cumple RNF-03. Todo ADMIN necesita contraseña **y** un código TOTP de su aplic
 Secuencia del frontend: `GET /api/auth/csrf` → `POST /api/auth/admin/login` → `GET /api/auth/csrf` (el login descarta el token CSRF anterior)
 → según `mfaEnrolado` de la respuesta: `POST .../mfa/enrolar` y `POST .../mfa/confirmar`, o `POST .../mfa/verificar` → `GET /api/auth/csrf`
 otra vez (la sesión completa también rota el CSRF). El `secretoBase32` o la URI `otpauth` se muestran como QR y se descartan.
+
+### Renovación del token pendiente al enrolar
+
+Instalar y escanear la app autenticadora puede llevar más que `MFA_DURACION_PENDIENTE` (5 min por defecto), así que el token emitido en el login
+podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registrar `MFA_FALLO`). Para darle al enrolamiento su propia ventana:
+
+- Un `POST /api/auth/admin/mfa/enrolar` **exitoso** responde con una `Set-Cookie: BP_SESION` nueva: mismo usuario y escuela, `mfa=PENDIENTE`,
+  `mfa_renovado=true`, `iat` = ahora y `exp` = ahora + `MFA_DURACION_PENDIENTE` (mismos atributos de cookie de siempre, `Max-Age` = esa duración).
+  La ventana por defecto del login (5 min) **no se ensanchó**; se agrega una segunda, que empieza al enrolar.
+- El token renovado sigue siendo **solo pendiente**: autoridad `MFA_PENDIENTE`, sin `ROLE_ADMIN` (`/api/admin/**` da `403`); el validador sigue rechazando un
+  token de ADMIN sin `mfa` válido. `confirmar` lo canjea por la sesión completa (`mfa=COMPLETADA`, sin `mfa_renovado`) igual que antes; `verificar` no cambia.
+- La cookie se arma **después** de que el servicio vuelve (y con él se confirma la transacción). Con `409`, `401`, `403`, `4xx/5xx` o si falla la
+  auditoría/base (rollback), la respuesta **no trae** `Set-Cookie`.
+- **Tope: una sola renovación por inicio de sesión.** Un token que ya tiene `mfa_renovado=true` puede volver a llamar a `enrolar` (el re-enrolamiento sigue siendo
+  idempotente y reemplaza el secreto sin confirmar) pero la respuesta **no extiende** la ventana: no hay `Set-Cookie`. Así un token pendiente robado no se
+  puede mantener vivo repitiendo `enrolar`.
+- **Vida pendiente máxima desde el login:** 2 × `MFA_DURACION_PENDIENTE` (10 min por defecto; el caso extremo es enrolar justo antes de vencer el token del login),
+  más el margen de 60 s del validador JWT sobre el vencimiento de cada token (en la práctica hasta ~11 min). Pasado eso: `401 NO_AUTENTICADO`; el ADMIN vuelve a
+  iniciar sesión y a enrolar (el nuevo `enrolar` reemplaza el secreto sin confirmar, así que hay que escanear de nuevo el QR nuevo).
+- Sin estado en servidor ni migración: el tope viaja en el claim firmado `mfa_renovado`.
+- Riesgo residual: durante esa ventana ampliada quien robe la cookie pendiente (HttpOnly, `Secure`) y conozca la contraseña ya la tenía; con ella solo podría enrolar su
+  propio secreto **antes** de la confirmación legítima. Es el mismo riesgo del «Ventana de enrolamiento» (sección 13), acotado a ≤ 2 × TTL.
 
 ### Reinicio y recuperación (sin códigos de respaldo)
 
@@ -260,6 +282,8 @@ contiene únicamente valores ficticios.
   - **Ventana de enrolamiento:** una cuenta ADMIN nueva (por ejemplo la del bootstrap) no tiene segundo factor hasta que alguien confirma el primero; quien
     conozca su contraseña en ese intervalo puede enrolar **su** dispositivo. Mitigación operativa: el responsable enrola inmediatamente después del bootstrap.
     Una vez confirmado, el enrolamiento solo se reemplaza con un reinicio hecho por otro ADMIN.
+  - **Token pendiente renovado:** `enrolar` renueva una vez la cookie pendiente; la vida pendiente total desde el login es ≤ 2 × `MFA_DURACION_PENDIENTE` (más 60 s de margen JWT por token). Una cookie pendiente robada
+    permite, en ese lapso y conociendo la contraseña, enrolar un secreto propio antes de la confirmación legítima (sección 9).
   - **Sin códigos de respaldo:** perder el dispositivo exige que el otro ADMIN reinicie el MFA o una intervención manual en la base (sección 9).
   - **Bloqueo dirigido:** quien conozca la contraseña de un ADMIN puede provocar el bloqueo de sus intentos de MFA (por usuario, no por IP) durante la ventana
     de bloqueo; es una denegación de servicio temporal, no un acceso.

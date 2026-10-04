@@ -70,6 +70,8 @@ csrf
 if [ "$ENROLADO" != "true" ]; then
   post /api/auth/admin/mfa/enrolar
   esperar 200 "enrolar TOTP"
+  # enrolar renueva la cookie BP_SESION pendiente (ventana nueva para confirmar); el jar (-c) la guarda solo.
+  # Tras enrolar hay MFA_DURACION_PENDIENTE (5 min por defecto) para escribir el codigo.
   echo "  Agrega este secreto a tu app autenticadora (Base32): $(echo "$CUERPO" | campo secretoBase32)"
   echo "  o escanea/pega el URI: $(echo "$CUERPO" | campo otpauthUri)"
   read -r -p "Codigo de 6 digitos: " CODIGO
