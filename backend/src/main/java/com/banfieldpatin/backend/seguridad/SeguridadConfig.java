@@ -1,5 +1,6 @@
 package com.banfieldpatin.backend.seguridad;
 
+import java.time.Clock;
 import java.util.List;
 
 import org.springframework.context.annotation.Bean;
@@ -34,6 +35,11 @@ public class SeguridadConfig {
 	@Bean
 	PasswordEncoder passwordEncoder() {
 		return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+	}
+
+	@Bean
+	LimitadorIntentosLogin limitadorLogin(SeguridadPropiedades propiedades, Clock reloj) {
+		return new LimitadorIntentosLogin(propiedades.login(), reloj);
 	}
 
 	@Bean
