@@ -21,6 +21,11 @@ public class CookieSesion {
 		return base(token).maxAge(propiedades.jwt().duracion()).build();
 	}
 
+	/** Cookie del token con MFA pendiente: su vida es la del token (corta), no la de una sesion completa. */
+	public ResponseCookie crearMfaPendiente(String token) {
+		return base(token).maxAge(propiedades.mfa().duracionPendiente()).build();
+	}
+
 	public ResponseCookie borrar() {
 		return base("").maxAge(0).build();
 	}

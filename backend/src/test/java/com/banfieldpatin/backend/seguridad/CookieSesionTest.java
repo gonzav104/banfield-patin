@@ -36,6 +36,14 @@ class CookieSesionTest {
 	}
 
 	@Test
+	void laCookieConMfaPendienteDuraLoQueElTokenPendienteConLosMismosAtributos() {
+		ResponseCookie c = con(true, "Lax").crearMfaPendiente("tok");
+		assertThat(c.getMaxAge()).isEqualTo(Duration.ofMinutes(5));
+		assertThat(c.getName()).isEqualTo("BP_SESION");
+		assertThat(c.toString()).contains("HttpOnly", "Secure", "SameSite=Lax", "Path=/");
+	}
+
+	@Test
 	void borrarUsaMismosAtributosConValorVacioYMaxAgeCero() {
 		ResponseCookie c = con(true, "Strict").borrar();
 		assertThat(c.getValue()).isEmpty();

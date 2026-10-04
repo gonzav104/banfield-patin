@@ -28,6 +28,19 @@ class ControladorSondaSeguridad {
 		return "me";
 	}
 
+	/** Ruta de segundo factor: solo debe responder con un token de MFA pendiente. */
+	@PostMapping("/api/auth/admin/mfa/ping")
+	String mfa() {
+		INVOCACIONES.incrementAndGet();
+		return "mfa";
+	}
+
+	/** Ruta fuera de /api/admin y /api/familia: cae en la regla "anyRequest" de la cadena. */
+	@GetMapping("/api/otra/ruta")
+	String otra() {
+		return "otra";
+	}
+
 	@PostMapping("/api/auth/login")
 	String login() {
 		INVOCACIONES.incrementAndGet();

@@ -28,6 +28,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -203,6 +207,98 @@ class SeguridadMatrizWebMvcTest {
 	@Test
 	void logoutConCookieYCsrfProcede() throws Exception {
 		postConCsrf("/api/auth/logout", sesion(Rol.FAMILIA)).andExpect(status().isNoContent());
+	}
+
+	// ---------- MFA de ADMIN (RNF-03) ----------
+
+	private Cookie pendiente() {
+		return new Cookie(COOKIE, tokens.emitirMfaPendiente(UUID.randomUUID(), UUID.randomUUID()));
+	}
+
+	@Test
+	void adminConMfaPendienteNoAccedeANingunaRutaProtegidaSalvoMeLogoutYMfa() throws Exception {
+		for (String ruta : new String[] { "/api/admin/ping", "/api/familia/ping", "/api/otra/ruta",
+				"/api/inexistente" }) {
+			mvc.perform(get(ruta).cookie(pendiente()))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+		}
+	}
+
+	@Test
+	void adminConMfaPendienteVeMeCierraSesionYUsaLasRutasDeMfa() throws Exception {
+		mvc.perform(get("/api/auth/me").cookie(pendiente())).andExpect(status().isOk());
+		postConCsrf("/api/auth/logout", pendiente()).andExpect(status().isNoContent());
+		postConCsrf("/api/auth/admin/mfa/ping", pendiente()).andExpect(status().isOk());
+	}
+
+	@Test
+	void lasRutasDeMfaExigenCsrfAunConTokenPendiente() throws Exception {
+		mvc.perform(post("/api/auth/admin/mfa/ping").cookie(pendiente()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
+		assertThat(ControladorSondaSeguridad.INVOCACIONES.get()).isZero();
+	}
+
+	@Test
+	void lasRutasDeMfaRechazanAAdminConSesionCompletaYAFamilia() throws Exception {
+		postConCsrf("/api/auth/admin/mfa/ping", sesion(Rol.ADMIN)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+		postConCsrf("/api/auth/admin/mfa/ping", sesion(Rol.FAMILIA)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+		assertThat(ControladorSondaSeguridad.INVOCACIONES.get()).isZero();
+	}
+
+	@Test
+	void lasRutasDeMfaRechazanAlAnonimoConUnoYNoLlegaAlHandler() throws Exception {
+		postConCsrf("/api/auth/admin/mfa/ping").andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
+		assertThat(ControladorSondaSeguridad.INVOCACIONES.get()).isZero();
+	}
+
+	@Test
+	void adminConSesionCompletaYFamiliaNoSeVenAfectadosEnSusRutas() throws Exception {
+		mvc.perform(get("/api/admin/ping").cookie(sesion(Rol.ADMIN))).andExpect(status().isOk());
+		mvc.perform(get("/api/familia/ping").cookie(sesion(Rol.FAMILIA))).andExpect(status().isOk());
+		// Rutas fuera de /api/admin y /api/familia: una sesion completa pasa la autorizacion de "anyRequest".
+		mvc.perform(get("/api/otra/ruta").cookie(sesion(Rol.ADMIN))).andExpect(status().isOk());
+		mvc.perform(get("/api/otra/ruta").cookie(sesion(Rol.FAMILIA))).andExpect(status().isOk());
+	}
+
+	private String tokenDeAdmin(String etapa) {
+		var clave = new SecretKeySpec(propiedades.jwt().secretoBytes(), "HmacSHA256");
+		var encoder = new NimbusJwtEncoder(new ImmutableSecret<>(clave));
+		var ahora = Instant.now();
+		var claims = JwtClaimsSet.builder()
+				.issuer(propiedades.jwt().emisor()).subject(UUID.randomUUID().toString()).issuedAt(ahora)
+				.expiresAt(ahora.plusSeconds(600)).claim("rol", "ADMIN").claim("escuela_id", UUID.randomUUID().toString());
+		if (etapa != null) {
+			claims.claim("mfa", etapa);
+		}
+		return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build()))
+				.getTokenValue();
+	}
+
+	@Test
+	void unTokenDeAdminSinEtapaMfaOConEtapaDesconocidaDa401() throws Exception {
+		for (String etapa : new String[] { null, "", "OK", "completada" }) {
+			mvc.perform(get("/api/admin/ping").cookie(new Cookie(COOKIE, tokenDeAdmin(etapa))))
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
+			mvc.perform(get("/api/auth/me").cookie(new Cookie(COOKIE, tokenDeAdmin(etapa))))
+					.andExpect(status().isUnauthorized());
+		}
+	}
+
+	@Test
+	void unTokenPendienteVencidoDa401() throws Exception {
+		Clock pasado = Clock.fixed(Instant.now().minus(Duration.ofMinutes(7)), ZoneOffset.UTC);
+		var clave = new SecretKeySpec(propiedades.jwt().secretoBytes(), "HmacSHA256");
+		String vencido = new ServicioTokens(new NimbusJwtEncoder(new ImmutableSecret<>(clave)), propiedades, pasado)
+				.emitirMfaPendiente(UUID.randomUUID(), UUID.randomUUID());
+		mvc.perform(get("/api/auth/me").cookie(new Cookie(COOKIE, vencido)))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
 	}
 
 	// ---------- Contrasenas ----------

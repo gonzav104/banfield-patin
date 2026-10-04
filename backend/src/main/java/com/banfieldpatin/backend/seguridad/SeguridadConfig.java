@@ -69,12 +69,17 @@ public class SeguridadConfig {
 						.requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/admin/login",
 								"/api/auth/invitaciones/validar", "/api/auth/registro/invitacion").permitAll()
+						// Cualquier sesion, incluso un ADMIN con MFA pendiente, puede ver su identidad y cerrar sesion.
 						.requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 						.requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
+						// Segundo factor: solo con el token de MFA pendiente (un ADMIN con sesion completa no pasa).
+						.requestMatchers(HttpMethod.POST, "/api/auth/admin/mfa/**")
+								.hasAuthority(JwtConfig.AUTORIDAD_MFA_PENDIENTE)
 						.requestMatchers("/api/admin/**").hasRole("ADMIN")
 						.requestMatchers("/api/familia/**").hasRole("FAMILIA")
 						.requestMatchers("/error").permitAll()
-						.anyRequest().authenticated());
+						// Todo lo demas exige una sesion completa: el token con MFA pendiente no tiene ningun rol.
+						.anyRequest().hasAnyRole("ADMIN", "FAMILIA"));
 
 		List<String> origenes = propiedades.cors().origenesPermitidos();
 		if (origenes.isEmpty()) {

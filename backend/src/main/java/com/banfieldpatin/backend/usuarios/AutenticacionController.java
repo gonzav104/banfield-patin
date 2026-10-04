@@ -64,6 +64,7 @@ public class AutenticacionController {
 	@GetMapping("/me")
 	public ResponseEntity<?> me(@AuthenticationPrincipal Jwt jwt) {
 		return servicio.actual(UsuarioAutenticado.desde(jwt))
+				.map(u -> u.conMfaPendiente(ServicioTokens.mfaPendiente(jwt)))
 				.<ResponseEntity<?>>map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.status(401)
 						.header(HttpHeaders.SET_COOKIE, cookieSesion.borrar().toString())
@@ -75,9 +76,16 @@ public class AutenticacionController {
 			HttpServletRequest request, HttpServletResponse response) {
 		UsuarioActualRespuesta usuario = servicio.autenticar(rol, solicitud.email(), solicitud.password(),
 				DatosSolicitud.de(request));
-		String token = tokens.emitir(usuario.id(), usuario.rol(), usuario.escuelaId(), usuario.familiaId());
 		// Se descarta la cookie XSRF previa a la sesion; el SPA vuelve a pedir /api/auth/csrf.
 		csrfRepo.saveToken(null, request, response);
+		if (usuario.rol() == Rol.ADMIN) {
+			// RNF-03: la contrasena sola no abre una sesion de ADMIN; queda con MFA pendiente y token de vida corta.
+			String pendiente = tokens.emitirMfaPendiente(usuario.id(), usuario.escuelaId());
+			return ResponseEntity.ok()
+					.header(HttpHeaders.SET_COOKIE, cookieSesion.crearMfaPendiente(pendiente).toString())
+					.body(usuario.conMfaPendiente(true));
+		}
+		String token = tokens.emitir(usuario.id(), usuario.rol(), usuario.escuelaId(), usuario.familiaId());
 		return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookieSesion.crear(token).toString()).body(usuario);
 	}
 }

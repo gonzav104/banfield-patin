@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -56,6 +57,8 @@ class AutenticacionControllerWebMvcTest {
 	MockMvc mvc;
 	@Autowired
 	ServicioTokens tokens;
+	@Autowired
+	JwtDecoder decoder;
 	@MockitoBean
 	AutenticacionService servicio;
 
@@ -122,6 +125,46 @@ class AutenticacionControllerWebMvcTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.rol").value("ADMIN"))
 				.andExpect(header().exists(HttpHeaders.SET_COOKIE));
+	}
+
+	private static String valorDeCookie(MvcResult r) {
+		return r.getResponse().getHeaders(HttpHeaders.SET_COOKIE).stream().filter(c -> c.startsWith("BP_SESION="))
+				.map(c -> c.split(";")[0].substring("BP_SESION=".length())).findFirst().orElseThrow();
+	}
+
+	@Test
+	void adminLoginNoEmiteSesionCompletaSinoUnTokenConMfaPendienteDeVidaCorta() throws Exception {
+		UsuarioActualRespuesta admin = new UsuarioActualRespuesta(UUID.randomUUID(), "Root", "Admin",
+				"admin@example.com", Rol.ADMIN, escuelaId, null);
+		when(servicio.autenticar(eq(Rol.ADMIN), eq("admin@example.com"), any(), any())).thenReturn(admin);
+
+		MvcResult r = mvc.perform(login("/api/auth/admin/login",
+				"{\"email\":\"admin@example.com\",\"password\":\"clave-correcta-123\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(true))
+				.andExpect(jsonPath("$.token").doesNotExist())
+				.andReturn();
+
+		String setCookie = r.getResponse().getHeaders(HttpHeaders.SET_COOKIE).stream()
+				.filter(c -> c.startsWith("BP_SESION=")).findFirst().orElseThrow();
+		assertThat(setCookie).contains("HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=300")
+				.doesNotContain("Max-Age=28800");
+		var jwt = decoder.decode(valorDeCookie(r));
+		assertThat(jwt.getClaimAsString("mfa")).isEqualTo("PENDIENTE");
+		assertThat(jwt.getClaimAsString("rol")).isEqualTo("ADMIN");
+		assertThat(jwt.getSubject()).isEqualTo(admin.id().toString());
+	}
+
+	@Test
+	void loginDeFamiliaNoSeVeAfectadoPorMfa() throws Exception {
+		when(servicio.autenticar(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any())).thenReturn(familia);
+
+		MvcResult r = mvc.perform(login("/api/auth/login", CUERPO))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(false))
+				.andReturn();
+
+		assertThat(decoder.decode(valorDeCookie(r)).getClaims()).doesNotContainKey("mfa");
 	}
 
 	@Test
@@ -220,6 +263,31 @@ class AutenticacionControllerWebMvcTest {
 	}
 
 	// ---------- me ----------
+
+	@Test
+	void meExponeLaEtapaMfaDeUnAdminConTokenPendienteYLaOcultaConSesionCompleta() throws Exception {
+		UUID adminId = UUID.randomUUID();
+		UsuarioActualRespuesta admin = new UsuarioActualRespuesta(adminId, "Root", "Admin", "admin@example.com",
+				Rol.ADMIN, escuelaId, null, false, true);
+		when(servicio.actual(any())).thenReturn(Optional.of(admin));
+
+		Cookie pendiente = new Cookie("BP_SESION", tokens.emitirMfaPendiente(adminId, escuelaId));
+		mvc.perform(get("/api/auth/me").cookie(pendiente))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(true))
+				.andExpect(jsonPath("$.mfaEnrolado").value(true));
+
+		Cookie completa = new Cookie("BP_SESION", tokens.emitir(adminId, Rol.ADMIN, escuelaId, null));
+		mvc.perform(get("/api/auth/me").cookie(completa))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(false));
+
+		when(servicio.actual(any())).thenReturn(Optional.of(familia));
+		mvc.perform(get("/api/auth/me").cookie(sesion()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.mfaPendiente").value(false))
+				.andExpect(jsonPath("$.mfaEnrolado").value(false));
+	}
 
 	@Test
 	void meDevuelveLaIdentidadSinDatosInternos() throws Exception {

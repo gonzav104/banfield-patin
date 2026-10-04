@@ -2,6 +2,7 @@ package com.banfieldpatin.backend.seguridad;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -25,8 +26,37 @@ class ServicioTokensTest {
 	void adminNoLlevaFamiliaYSoloTieneClaimsMinimos() {
 		Jwt jwt = emitirYDecodificar(Rol.ADMIN, null);
 		assertThat(jwt.getClaims().keySet())
-				.containsExactlyInAnyOrder("iss", "sub", "iat", "exp", "jti", "rol", "escuela_id");
+				.containsExactlyInAnyOrder("iss", "sub", "iat", "exp", "jti", "rol", "escuela_id", "mfa");
+		assertThat(jwt.getClaimAsString("mfa")).isEqualTo("COMPLETADA");
 		assertThat(jwt.getExpiresAt()).isEqualTo(JwtConfigTest.AHORA.plusSeconds(8 * 3600));
+	}
+
+	@Test
+	void laSesionCompletaDeFamiliaNoLlevaClaimMfa() {
+		Jwt jwt = emitirYDecodificar(Rol.FAMILIA, UUID.randomUUID());
+		assertThat(jwt.getClaims()).doesNotContainKey("mfa");
+		assertThat(ServicioTokens.mfaPendiente(jwt)).isFalse();
+	}
+
+	@Test
+	void elTokenConMfaPendienteEsDeVidaCortaYMarcaLaEtapa() {
+		UUID usuario = UUID.randomUUID();
+		UUID escuela = UUID.randomUUID();
+		Jwt jwt = config.jwtDecoder(clave, props, JwtConfigTest.RELOJ).decode(tokens.emitirMfaPendiente(usuario, escuela));
+
+		assertThat(jwt.getClaims().keySet())
+				.containsExactlyInAnyOrder("iss", "sub", "iat", "exp", "jti", "rol", "escuela_id", "mfa");
+		assertThat(jwt.getClaimAsString("mfa")).isEqualTo("PENDIENTE");
+		assertThat(jwt.getClaimAsString("rol")).isEqualTo("ADMIN");
+		assertThat(jwt.getSubject()).isEqualTo(usuario.toString());
+		assertThat(jwt.getExpiresAt()).isEqualTo(JwtConfigTest.AHORA.plus(Duration.ofMinutes(5)));
+		assertThat(ServicioTokens.mfaPendiente(jwt)).isTrue();
+		assertThat(jwt.getClaims()).doesNotContainKeys("familia_id", "email", "password", "password_hash");
+	}
+
+	@Test
+	void mfaPendienteEsFalsoParaUnAdminConSesionCompleta() {
+		assertThat(ServicioTokens.mfaPendiente(emitirYDecodificar(Rol.ADMIN, null))).isFalse();
 	}
 
 	@Test

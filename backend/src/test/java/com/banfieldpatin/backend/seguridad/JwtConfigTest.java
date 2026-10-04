@@ -114,6 +114,52 @@ class JwtConfigTest {
 	}
 
 	@Test
+	void adminConSesionCompletaTieneRoleAdminYSinAutoridadPendiente() {
+		Jwt jwt = decoder.decode(tokens.emitir(UUID.randomUUID(), Rol.ADMIN, UUID.randomUUID(), null));
+		var auth = config.jwtAuthenticationConverter().convert(jwt);
+		assertThat(auth.getAuthorities()).extracting(a -> a.getAuthority()).contains("ROLE_ADMIN")
+				.doesNotContain("MFA_PENDIENTE");
+	}
+
+	@Test
+	void adminConMfaPendienteNoTieneRoleAdminSoloLaAutoridadPendiente() {
+		Jwt jwt = decoder.decode(tokens.emitirMfaPendiente(UUID.randomUUID(), UUID.randomUUID()));
+		var auth = config.jwtAuthenticationConverter().convert(jwt);
+		assertThat(auth.getAuthorities()).extracting(a -> a.getAuthority()).contains("MFA_PENDIENTE")
+				.doesNotContain("ROLE_ADMIN", "ROLE_FAMILIA");
+	}
+
+	private String tokenDeAdminConClaimMfa(String valor) {
+		JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(clave));
+		JwtClaimsSet.Builder claims = JwtClaimsSet.builder().issuer("emisor-test").subject(UUID.randomUUID().toString())
+				.issuedAt(AHORA).expiresAt(AHORA.plusSeconds(3600)).claim("rol", "ADMIN")
+				.claim("escuela_id", UUID.randomUUID().toString());
+		if (valor != null) {
+			claims.claim("mfa", valor);
+		}
+		return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build()))
+				.getTokenValue();
+	}
+
+	@Test
+	void unTokenDeAdminSinEtapaMfaOConEtapaDesconocidaEsRechazado() {
+		for (String etapa : new String[] { null, "", "completada", "OK", "true" }) {
+			String token = tokenDeAdminConClaimMfa(etapa);
+			assertThatThrownBy(() -> decoder.decode(token)).as("mfa=%s", etapa).isInstanceOf(BadJwtException.class);
+		}
+		assertThat(decoder.decode(tokenDeAdminConClaimMfa("COMPLETADA")).getClaimAsString("mfa")).isEqualTo("COMPLETADA");
+		assertThat(decoder.decode(tokenDeAdminConClaimMfa("PENDIENTE")).getClaimAsString("mfa")).isEqualTo("PENDIENTE");
+	}
+
+	@Test
+	void unTokenPendienteVenceALosCincoMinutosMasLaTolerancia() {
+		Clock hace7Minutos = Clock.fixed(AHORA.minus(Duration.ofMinutes(7)), ZoneOffset.UTC);
+		String token = new ServicioTokens(config.jwtEncoder(clave), props, hace7Minutos)
+				.emitirMfaPendiente(UUID.randomUUID(), UUID.randomUUID());
+		assertThatThrownBy(() -> decoder.decode(token)).isInstanceOf(BadJwtException.class);
+	}
+
+	@Test
 	void secretoCortoFallaAlConfigurar() {
 		assertThatThrownBy(() -> props(Base64.getEncoder().encodeToString(new byte[16]), "e"))
 				.isInstanceOf(IllegalStateException.class);
