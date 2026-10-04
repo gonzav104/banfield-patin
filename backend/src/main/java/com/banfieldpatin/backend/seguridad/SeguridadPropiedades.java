@@ -16,7 +16,8 @@ public record SeguridadPropiedades(
 		@DefaultValue Jwt jwt,
 		@DefaultValue Cookie cookie,
 		@DefaultValue Cors cors,
-		@DefaultValue Login login) {
+		@DefaultValue Login login,
+		@DefaultValue Mfa mfa) {
 
 	public static final int SECRETO_MIN_BYTES = 32;
 	private static final Duration DURACION_MIN = Duration.ofMinutes(5);
@@ -51,6 +52,53 @@ public record SeguridadPropiedades(
 
 		public byte[] secretoBytes() {
 			return Base64.getDecoder().decode(secreto.trim());
+		}
+	}
+
+	/**
+	 * Segundo factor de ADMIN. La clave AES-256 de cifrado del secreto TOTP no tiene valor por defecto: si falta o no
+	 * son exactamente 32 bytes en base64 la aplicacion no arranca (igual que JWT_SECRET). Nunca se imprime.
+	 */
+	public record Mfa(
+			String claveCifrado,
+			@DefaultValue("PT5M") Duration duracionPendiente,
+			@DefaultValue("Banfield Patin") String emisor) {
+
+		public static final int CLAVE_BYTES = 32;
+		private static final Duration PENDIENTE_MIN = Duration.ofMinutes(1);
+		private static final Duration PENDIENTE_MAX = Duration.ofMinutes(15);
+		private static final String MENSAJE_CLAVE = "MFA_CLAVE_CIFRADO ausente o invalida (base64 de exactamente 32 bytes)";
+
+		public Mfa {
+			if (claveCifrado == null || claveCifrado.isBlank()) {
+				throw new IllegalStateException(MENSAJE_CLAVE);
+			}
+			byte[] decodificada;
+			try {
+				decodificada = Base64.getDecoder().decode(claveCifrado.trim());
+			} catch (IllegalArgumentException e) {
+				throw new IllegalStateException(MENSAJE_CLAVE);
+			}
+			if (decodificada.length != CLAVE_BYTES) {
+				throw new IllegalStateException(MENSAJE_CLAVE);
+			}
+			if (duracionPendiente == null || duracionPendiente.compareTo(PENDIENTE_MIN) < 0
+					|| duracionPendiente.compareTo(PENDIENTE_MAX) > 0) {
+				throw new IllegalStateException("banfield.seguridad.mfa.duracion-pendiente debe estar entre PT1M y PT15M");
+			}
+			if (emisor == null || emisor.isBlank() || emisor.contains(":")) {
+				throw new IllegalStateException("banfield.seguridad.mfa.emisor no puede estar vacio ni contener ':'");
+			}
+		}
+
+		public byte[] claveCifradoBytes() {
+			return Base64.getDecoder().decode(claveCifrado.trim());
+		}
+
+		/** Evita que la clave aparezca en logs si el record se imprime. */
+		@Override
+		public String toString() {
+			return "Mfa[claveCifrado=***, duracionPendiente=" + duracionPendiente + ", emisor=" + emisor + "]";
 		}
 	}
 

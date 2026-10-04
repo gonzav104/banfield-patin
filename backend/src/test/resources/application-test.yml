@@ -5,6 +5,9 @@ banfield:
       secreto: dGVzdC1vbmx5LWZpY3RpdGlvdXMtand0LXNlY3JldC0wMTIzNDU2Nzg5YWJjZGVm
     cookie:
       secure: false
+    mfa:
+      # Solo para tests: clave AES-256 ficticia (32 bytes en base64), no usar fuera de pruebas.
+      clave-cifrado: dGVzdC1vbmx5LWZpY3RpdGlvdXMtbWZhLWtleS0zMmI=
 spring:
   flyway:
     enabled: false

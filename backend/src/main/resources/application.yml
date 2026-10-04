@@ -45,6 +45,9 @@ banfield:
       ventana: ${LOGIN_VENTANA:PT15M}
       bloqueo: ${LOGIN_BLOQUEO:PT15M}
       max-claves: 10000
+    mfa:
+      clave-cifrado: ${MFA_CLAVE_CIFRADO} # base64 de exactamente 32 bytes (AES-256); sin valor por defecto
+      duracion-pendiente: ${MFA_DURACION_PENDIENTE:PT5M}
   invitaciones:
     vigencia-por-defecto: P7D
     vigencia-maxima: P30D

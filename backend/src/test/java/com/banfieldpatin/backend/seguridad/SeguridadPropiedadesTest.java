@@ -74,17 +74,77 @@ class SeguridadPropiedadesTest {
 	@Test
 	void enlazaDefaultsYCorsVacio() {
 		var p = enlazar(Map.of("banfield.seguridad.jwt.secreto", base64De(32),
+				"banfield.seguridad.mfa.clave-cifrado", base64De(32),
 				"banfield.seguridad.cors.origenes-permitidos", ""));
 		assertThat(p.jwt().duracion()).isEqualTo(Duration.ofHours(8));
 		assertThat(p.cookie().secure()).isTrue();
 		assertThat(p.cookie().sameSite()).isEqualTo("Lax");
 		assertThat(p.cors().origenesPermitidos()).isEmpty();
 		assertThat(p.login().maxIntentos()).isEqualTo(5);
+		assertThat(p.mfa().duracionPendiente()).isEqualTo(Duration.ofMinutes(5));
+		assertThat(p.mfa().emisor()).isEqualTo("Banfield Patin");
 	}
 
 	@Test
 	void enlazarSinSecretoFalla() {
-		assertThatThrownBy(() -> enlazar(Map.of("banfield.seguridad.cookie.nombre", "BP")))
+		assertThatThrownBy(() -> enlazar(Map.of("banfield.seguridad.cookie.nombre", "BP",
+				"banfield.seguridad.mfa.clave-cifrado", base64De(32))))
 				.isInstanceOf(RuntimeException.class);
+	}
+
+	// ---------- MFA ----------
+
+	@Test
+	void enlazarSinClaveMfaFalla() {
+		assertThatThrownBy(() -> enlazar(Map.of("banfield.seguridad.jwt.secreto", base64De(32))))
+				.isInstanceOf(RuntimeException.class)
+				.hasStackTraceContaining("MFA_CLAVE_CIFRADO");
+	}
+
+	@Test
+	void claveMfaAusenteOEnBlancoFallaSinEco() {
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(null, Duration.ofMinutes(5), "Banfield"))
+				.isInstanceOf(IllegalStateException.class).hasMessageContaining("MFA_CLAVE_CIFRADO");
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa("  ", Duration.ofMinutes(5), "Banfield"))
+				.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void claveMfaQueNoEsBase64FallaSinEco() {
+		String invalida = "REEMPLAZAR_con_base64_de_32_bytes_generado_con_openssl_rand_base64_32";
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(invalida, Duration.ofMinutes(5), "Banfield"))
+				.isInstanceOf(IllegalStateException.class).hasMessageNotContaining(invalida);
+	}
+
+	@Test
+	void claveMfaDeLongitudDistintaDe32BytesFalla() {
+		for (int bytes : new int[] { 16, 24, 31, 33, 48 }) {
+			String clave = base64De(bytes);
+			assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(clave, Duration.ofMinutes(5), "Banfield"))
+					.as("%d bytes", bytes)
+					.isInstanceOf(IllegalStateException.class).hasMessageNotContaining(clave);
+		}
+		assertThat(new SeguridadPropiedades.Mfa(base64De(32), Duration.ofMinutes(5), "Banfield").claveCifradoBytes())
+				.hasSize(32);
+	}
+
+	@Test
+	void duracionPendienteYEmisorMfaSeValidan() {
+		String clave = base64De(32);
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(clave, Duration.ofSeconds(30), "Banfield"))
+				.isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(clave, Duration.ofMinutes(16), "Banfield"))
+				.isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(clave, Duration.ofMinutes(5), " "))
+				.isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> new SeguridadPropiedades.Mfa(clave, Duration.ofMinutes(5), "A:B"))
+				.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void toStringDeMfaNoExponeLaClave() {
+		String clave = base64De(32);
+		assertThat(new SeguridadPropiedades.Mfa(clave, Duration.ofMinutes(5), "Banfield").toString())
+				.doesNotContain(clave);
 	}
 }

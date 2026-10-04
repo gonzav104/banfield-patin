@@ -33,6 +33,10 @@ class JwtConfigTest {
 	static final Instant AHORA = Instant.parse("2026-01-10T12:00:00Z");
 	static final Clock RELOJ = Clock.fixed(AHORA, ZoneOffset.UTC);
 	static final String SECRETO = Base64.getEncoder().encodeToString("0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8));
+	/** Clave AES-256 ficticia (32 bytes) para construir propiedades en pruebas unitarias. */
+	static final SeguridadPropiedades.Mfa MFA = new SeguridadPropiedades.Mfa(
+			Base64.getEncoder().encodeToString("test-only-fictitious-mfa-key-32b".getBytes(StandardCharsets.UTF_8)),
+			Duration.ofMinutes(5), "Banfield Patin");
 	static final String OTRO_SECRETO = Base64.getEncoder().encodeToString("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ".getBytes(StandardCharsets.UTF_8));
 
 	static SeguridadPropiedades props(String secreto, String emisor) {
@@ -40,7 +44,8 @@ class JwtConfigTest {
 				new SeguridadPropiedades.Jwt(secreto, emisor, Duration.ofHours(8)),
 				new SeguridadPropiedades.Cookie("BP_SESION", false, "Lax"),
 				new SeguridadPropiedades.Cors(null),
-				new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 10000));
+				new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 10000),
+				MFA);
 	}
 
 	final JwtConfig config = new JwtConfig();

@@ -14,7 +14,8 @@ class CookieSesionTest {
 				new SeguridadPropiedades.Jwt(JwtConfigTest.SECRETO, "e", Duration.ofHours(8)),
 				new SeguridadPropiedades.Cookie("BP_SESION", secure, sameSite),
 				new SeguridadPropiedades.Cors(null),
-				new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 10000)));
+				new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 10000),
+					JwtConfigTest.MFA));
 	}
 
 	@Test

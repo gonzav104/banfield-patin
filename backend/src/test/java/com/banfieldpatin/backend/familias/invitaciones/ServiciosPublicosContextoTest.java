@@ -38,7 +38,9 @@ class ServiciosPublicosContextoTest {
 							"e", Duration.ofHours(8)),
 					new SeguridadPropiedades.Cookie("BP_SESION", false, "Lax"),
 					new SeguridadPropiedades.Cors(null),
-					new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 100)));
+					new SeguridadPropiedades.Login(5, Duration.ofMinutes(15), Duration.ofMinutes(15), 100),
+					new SeguridadPropiedades.Mfa("dGVzdC1vbmx5LWZpY3RpdGlvdXMtbWZhLWtleS0zMmI=", Duration.ofMinutes(5),
+							"Banfield Patin")));
 
 	@Test
 	void seConstruyenConElConstructorDeProduccion() {
