@@ -43,7 +43,12 @@ except Exception:
     print("")' "$1"; }
 
 esperar() { # esperar <estado-esperado> <descripcion>
-  if [ "$ESTADO" = "$1" ]; then ok "$2 (HTTP $ESTADO)"; else fail "$2: esperado $1, recibido $ESTADO"; fi
+  if [ "$ESTADO" = "$1" ]; then
+    ok "$2 (HTTP $ESTADO)"
+  else
+    # El campo "codigo" del error no es sensible y distingue, p. ej., NO_AUTENTICADO (sesion vencida) de CODIGO_MFA_INVALIDO.
+    fail "$2: esperado $1, recibido $ESTADO (codigo: $(echo "$CUERPO" | campo codigo))"
+  fi
 }
 
 read -r -p "Email ADMIN: " EMAIL
