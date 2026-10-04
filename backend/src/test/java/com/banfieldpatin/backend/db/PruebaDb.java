@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Prueba contra una PostgreSQL LOCAL descartable (variables DB_TEST_URL / DB_TEST_USER / DB_TEST_PASSWORD).
+ * Prueba contra una PostgreSQL LOCAL descartable levantada por Testcontainers (requiere Docker).
  * Etiqueta "db": excluida de {@code ./mvnw verify}; se ejecuta con {@code ./mvnw verify -Pdb-tests}.
  * Aplica Flyway (V1 + V2) y valida las entidades con ddl-auto=validate. NUNCA contra Supabase.
  * Sin transaccion de prueba: las pruebas confirman datos reales y los limpian al terminar.

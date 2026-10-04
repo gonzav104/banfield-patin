@@ -4,13 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.Map;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-/** Prueba (sin base de datos) la salvaguarda que impide apuntar las pruebas db a una base compartida. */
+/** Prueba (sin base de datos ni Docker) la salvaguarda que impide apuntar las pruebas db a una base compartida. */
 class DestinoDbPruebaTest {
 
 	@ParameterizedTest
@@ -39,30 +37,11 @@ class DestinoDbPruebaTest {
 	}
 
 	@Test
-	void faltandoVariablesFallaConMensajeClaroSinSaltarseLaValidacion() {
-		assertThatThrownBy(() -> DestinoDbPrueba.desdeEntorno(Map.<String, String>of()::get))
-				.isInstanceOf(IllegalStateException.class)
-				.hasMessageContaining("DB_TEST_URL").hasMessageContaining("LOCAL");
-		assertThatThrownBy(() -> DestinoDbPrueba.desdeEntorno(Map.of("DB_TEST_URL", "jdbc:postgresql://localhost/x_test")::get))
-				.isInstanceOf(IllegalStateException.class);
-	}
-
-	@Test
 	void lasCredencialesNuncaApareceEnElMensajeDeRechazo() {
 		String url = "jdbc:postgresql://db.example.supabase.co/test?user=postgres&password=SECRETO-QUE-NO-DEBE-SALIR";
 
 		assertThatThrownBy(() -> DestinoDbPrueba.validarUrl(url))
 				.isInstanceOf(IllegalStateException.class)
 				.satisfies(e -> assertThat(e.getMessage()).doesNotContain("SECRETO-QUE-NO-DEBE-SALIR"));
-	}
-
-	@Test
-	void leeUrlUsuarioYClaveDelEntorno() {
-		var entorno = Map.of("DB_TEST_URL", "jdbc:postgresql://localhost:5432/banfield_test", "DB_TEST_USER", "tester");
-
-		DestinoDbPrueba.Destino d = DestinoDbPrueba.desdeEntorno(entorno::get);
-
-		assertThat(d.usuario()).isEqualTo("tester");
-		assertThat(d.clave()).isEmpty();
 	}
 }
