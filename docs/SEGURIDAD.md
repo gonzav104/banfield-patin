@@ -272,7 +272,7 @@ contiene únicamente valores ficticios.
   consultas JPQL, consumo atómico concurrente de invitaciones y el bootstrap del primer ADMIN (la auditoría exige que el usuario ya
   exista físicamente: `fk_auditoria_usuario_misma_escuela`, por eso el alta usa `saveAndFlush` antes de auditar),
   el repositorio y el servicio de MFA (upsert, `UPDATE` condicional concurrente, auditoría real) y el flujo completo de ADMIN (login pendiente → enrolar →
-  confirmar con un código calculado por la prueba → sesión completa → `/me` → reinicio por otro ADMIN) con la aplicación entera (`@SpringBootTest` etiquetado `db`).
+  confirmar con un código calculado por la prueba → sesión completa → `/me` → reinicio por otro ADMIN) con la aplicación entera (`@SpringBootTest` etiquetado `db`), y el flujo de FAMILIA por HTTP real (invitación → registro sin sesión → login → `/me`, invitación de un solo uso y sin token en la auditoría).
 - Un test sin base de datos verifica que el pom excluye el grupo `db` por defecto y que toda prueba que abre un contexto con
   base de datos esté etiquetada.
 
