@@ -34,7 +34,12 @@ class InventarioRutasTest {
 			"POST /api/auth/admin/mfa/enrolar",
 			"POST /api/auth/admin/mfa/confirmar",
 			"POST /api/auth/admin/mfa/verificar",
-			"POST /api/admin/usuarios/{id}/mfa/reiniciar");
+			"POST /api/admin/usuarios/{id}/mfa/reiniciar",
+			// Gestion de familias (slice 2): alta, reemplazo completo y cambio de estado sin cascada.
+			"POST /api/admin/familias",
+			"PUT /api/admin/familias/{id}",
+			"POST /api/admin/familias/{id}/activar",
+			"POST /api/admin/familias/{id}/desactivar");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -97,9 +102,28 @@ class InventarioRutasTest {
 				.containsExactly("POST /api/admin/usuarios/{id}/mfa/reiniciar");
 		assertThat(mutantes).noneMatch(r -> r.contains("/administradores") || r.contains("/admins")
 				|| r.contains("/bootstrap"));
-		// Bajo /api/admin solo se emiten y revocan invitaciones y se reinicia el MFA de otro ADMIN.
+		// Bajo /api/admin se emiten y revocan invitaciones, se reinicia el MFA de otro ADMIN y se gestionan familias
+		// (lista ampliada A PROPOSITO en el slice 2; cada slice siguiente la amplia de forma consciente).
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/"))).containsExactlyInAnyOrder(
 				"POST /api/admin/invitaciones", "POST /api/admin/invitaciones/{id}/revocar",
-				"POST /api/admin/usuarios/{id}/mfa/reiniciar");
+				"POST /api/admin/usuarios/{id}/mfa/reiniciar",
+				"POST /api/admin/familias", "PUT /api/admin/familias/{id}",
+				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar");
+	}
+
+	@Test
+	void laGestionDeFamiliasSoloTieneLasRutasMutantesPrevistasYNingunaBorra() throws Exception {
+		Set<String> mutantes = rutas(true);
+
+		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/familias"))).containsExactlyInAnyOrder(
+				"POST /api/admin/familias", "PUT /api/admin/familias/{id}",
+				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar");
+		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
+	}
+
+	@Test
+	void ningunaRutaMutanteExisteBajoElPortalDeFamilia() throws Exception {
+		// FAMILIA es solo lectura (F5, REQ-XC-07): ninguna ruta POST/PUT/PATCH/DELETE bajo /api/familia/.
+		assertThat(rutas(true)).noneMatch(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"));
 	}
 }

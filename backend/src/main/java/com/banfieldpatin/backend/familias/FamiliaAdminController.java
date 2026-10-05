@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.banfieldpatin.backend.compartido.web.Busqueda;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.dto.FamiliaResumen;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -15,8 +16,6 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 @RestController
 @RequestMapping("/api/admin/familias")
 public class FamiliaAdminController {
-
-	private static final int BUSQUEDA_MAX = 100;
 
 	private final FamiliaRepository familias;
 
@@ -37,10 +36,6 @@ public class FamiliaAdminController {
 
 	/** Recorta y escapa los comodines de LIKE para que la busqueda sea siempre "contiene" literal. */
 	static String patron(String busqueda) {
-		String limpio = busqueda.strip();
-		if (limpio.length() > BUSQUEDA_MAX) {
-			limpio = limpio.substring(0, BUSQUEDA_MAX);
-		}
-		return limpio.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+		return Busqueda.patronLike(busqueda);
 	}
 }

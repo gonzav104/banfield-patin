@@ -25,4 +25,27 @@ public interface FamiliaRepository extends JpaRepository<Familia, UUID> {
 			""")
 	Page<Familia> buscarActivas(@Param("escuelaId") UUID escuelaId, @Param("busqueda") String busqueda,
 			Pageable pageable);
+
+	/**
+	 * Listado administrativo de la escuela. {@code estado} es el nombre de un {@code FiltroEstado}
+	 * (TODOS, ACTIVOS o INACTIVOS; centinela en lugar de un parametro nulo) y {@code busqueda} llega con los comodines
+	 * de LIKE escapados con '!' ("" = sin filtro).
+	 */
+	@Query(value = """
+			select f from Familia f
+			where f.escuelaId = :escuelaId
+			  and (:estado = 'TODOS' or (:estado = 'ACTIVOS' and f.activa = true)
+			    or (:estado = 'INACTIVOS' and f.activa = false))
+			  and (:busqueda = '' or lower(f.nombreReferencia) like lower(concat('%', :busqueda, '%')) escape '!')
+			order by lower(f.nombreReferencia), f.id
+			""",
+			countQuery = """
+			select count(f) from Familia f
+			where f.escuelaId = :escuelaId
+			  and (:estado = 'TODOS' or (:estado = 'ACTIVOS' and f.activa = true)
+			    or (:estado = 'INACTIVOS' and f.activa = false))
+			  and (:busqueda = '' or lower(f.nombreReferencia) like lower(concat('%', :busqueda, '%')) escape '!')
+			""")
+	Page<Familia> buscar(@Param("escuelaId") UUID escuelaId, @Param("estado") String estado,
+			@Param("busqueda") String busqueda, Pageable pageable);
 }

@@ -1,5 +1,6 @@
 package com.banfieldpatin.backend.familias;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -12,7 +13,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** Mapeo minimo de gestion_patin.familia (V1): verificar que este activa, listarla y crearla en linea. */
+/** Mapeo de gestion_patin.familia (V1): sin asociaciones; el estado cambia solo por activar()/desactivar(). */
 @Entity
 @Table(name = "familia")
 @Getter
@@ -39,5 +40,32 @@ public class Familia {
 		f.nombreReferencia = nombreReferencia;
 		f.activa = true;
 		return f;
+	}
+
+	/** Cambia el nombre; devuelve true solo si el valor realmente cambio. */
+	public boolean renombrar(String nuevoNombre) {
+		if (Objects.equals(nombreReferencia, nuevoNombre)) {
+			return false;
+		}
+		this.nombreReferencia = nuevoNombre;
+		return true;
+	}
+
+	/** Devuelve true solo si la familia estaba inactiva (cambio real de estado). */
+	public boolean activar() {
+		if (activa) {
+			return false;
+		}
+		activa = true;
+		return true;
+	}
+
+	/** Devuelve true solo si la familia estaba activa (cambio real de estado). */
+	public boolean desactivar() {
+		if (!activa) {
+			return false;
+		}
+		activa = false;
+		return true;
 	}
 }
