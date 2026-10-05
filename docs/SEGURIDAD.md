@@ -13,6 +13,8 @@ Este documento describe lo que el código hace hoy; los puntos abiertos están e
 - Las cuentas ADMIN exigen segundo factor TOTP (RNF-03, sección 9): la contraseña sola no abre una sesión de ADMIN.
 - Las cuentas FAMILIA solo se crean consumiendo una invitación emitida por un ADMIN (sección 7). No hay registro libre.
 - La escuela nunca la envía el cliente: sale de la configuración (login), de la invitación (registro) o del JWT (resto).
+- Cada solicitud autenticada revalida en la base que la sesión sigue vigente (usuario, escuela y familia activos, rol y familia coherentes
+  con el token), sin cache: una desactivación rige desde la siguiente solicitud (sección 2, «Revalidación de la sesión en cada solicitud»).
 
 ## 2. JWT y cookie de sesión
 
@@ -28,6 +30,42 @@ Este documento describe lo que el código hace hoy; los puntos abiertos están e
 
 Un token vencido, manipulado, firmado con otra clave, con `alg=none` o con un claim faltante produce `401`. Un token de ADMIN
 sin claim `mfa` válido (`PENDIENTE` o `COMPLETADA`), por ejemplo uno emitido antes de existir el MFA, también produce `401`.
+
+### Revalidación de la sesión en cada solicitud
+
+Un JWT válido (firma, vencimiento, emisor y claims) no basta: en **cada** solicitud autenticada, sin ningún cache, se consulta la base y la sesión
+solo es vigente si:
+
+- el usuario (`sub`) existe y está activo;
+- su escuela está activa;
+- el `rol` y el `familia_id` del token coinciden con la fila del usuario (un token de ADMIN de quien hoy es FAMILIA, o con la familia de otro, se rechaza);
+- para un token de FAMILIA, la familia existe en esa escuela y está activa (desactivar una familia cierra la sesión de todos sus usuarios).
+
+| Resultado de la revalidación | Respuesta |
+|---|---|
+| Sesión no vigente (cualquier causa anterior) | `401 NO_AUTENTICADO` y la cookie `BP_SESION` se **borra** (`Max-Age=0`, mismos atributos que `/api/auth/me`) |
+| La base no responde (cualquier `DataAccessException`: caída, tiempo de espera del pool) | `503 SERVICIO_NO_DISPONIBLE` y la cookie **no** se toca: el estado de la sesión es desconocido y un `401` cerraría sesiones durante una caída. El error se registra sin token ni ids |
+| Token inválido (firma, vencimiento, claims) | `401 NO_AUTENTICADO` de siempre, sin consulta a la base y sin borrar la cookie |
+
+- **Alcance:** todas las rutas autenticadas (`/api/admin/**`, `/api/familia/**`, `/api/auth/me`, `/api/auth/logout`, las de MFA) y también los tokens con
+  MFA pendiente (un ADMIN desactivado no puede enrolar, confirmar ni verificar). Las rutas públicas (`/api/auth/csrf`, los logins, `invitaciones/validar`,
+  `registro/invitacion`) y los anónimos nunca llegan a la consulta: el resolver devuelve `null` para ellos. Cerrar sesión con una sesión muerta responde
+  `401` y borra la cookie (sin evento `LOGOUT`).
+- **Implementación:** el filtro de bearer sigue armado a mano (no `oauth2ResourceServer()`, que desactiva CSRF para tokens en cookie) y su `ProviderManager`
+  contiene un decorador, `ProveedorJwtSesionVigente`, que envuelve al `JwtAuthenticationProvider`: primero el delegado valida el JWT y solo después se llama al
+  puerto `VerificadorSesionVigente`, implementado por `SesionVigenteJdbc`. Los fallos los resuelve `ManejadorFalloToken` (registrado con
+  `setAuthenticationFailureHandler`). La sesión muerta se rechaza antes de que exista un `SecurityContext`. El orden de la cadena no cambia: CSRF se evalúa
+  antes (un `POST` sin token CSRF recibe `403` aunque la sesión esté muerta).
+- **Falla cerrado:** el verificador es un bean obligatorio de la cadena de seguridad (sin alternativa opcional): si falta, la aplicación no arranca en lugar
+  de dejar pasar a todos. Una excepción que no sea de acceso a datos tampoco autentica (error `500`).
+- **Costo:** una sola sentencia SQL por solicitud autenticada, solo búsquedas por clave primaria sobre tablas de pocas filas, con `JdbcClient` en
+  auto-commit (sin `BEGIN`/`COMMIT` ni Hibernate). El costo es el viaje de ida y vuelta a la base (unos pocos ms en la misma región; hasta ~40 ms entre
+  regiones), contra el objetivo de RNF-06 de p95 ≤ 500 ms. No hay cache ni TTL: la obsolescencia es cero.
+- **Autenticación sin estado, con una salvedad:** el JWT sigue siendo la única credencial, no hay sesión en servidor ni refresh token, y escalar no cambia
+  (la base es compartida). Pero la autenticación ya no es autocontenida: «válida» significa «JWT válido **y** principal activo en la base», por lo que
+  cada solicitud autenticada depende de la disponibilidad de la base (`503` si cae) y el camino de autenticación hace I/O. Es el intercambio buscado:
+  revocación en la siguiente solicitud en lugar de hasta 8 h.
+- No requiere migración. `GET /api/auth/me` conserva su propia recarga del usuario (redundante para decidir el `401`, pero arma el cuerpo).
 
 ## 3. CSRF, SameSite y CORS
 
@@ -46,6 +84,8 @@ sin claim `mfa` válido (`PENDIENTE` o `COMPLETADA`), por ejemplo uno emitido an
 | Situación | Respuesta |
 |---|---|
 | Sin sesión (o sesión inválida) en una ruta privada | `401 NO_AUTENTICADO` |
+| JWT válido pero sesión no vigente en la base (usuario, escuela o familia inactivos o inexistentes; rol o familia que no coinciden) | `401 NO_AUTENTICADO` y la cookie de sesión se borra |
+| La base no responde al revalidar la sesión | `503 SERVICIO_NO_DISPONIBLE`, sin borrar la cookie |
 | Autenticado con el rol equivocado | `403 ACCESO_DENEGADO` |
 | Falta o no coincide el token CSRF | `403 CSRF_INVALIDO` |
 | `/api/admin/**` | solo `ADMIN` con sesión completa (`mfa=COMPLETADA`); un ADMIN con MFA pendiente recibe `403` |
@@ -273,6 +313,10 @@ contiene únicamente valores ficticios.
   exista físicamente: `fk_auditoria_usuario_misma_escuela`, por eso el alta usa `saveAndFlush` antes de auditar),
   el repositorio y el servicio de MFA (upsert, `UPDATE` condicional concurrente, auditoría real) y el flujo completo de ADMIN (login pendiente → enrolar →
   confirmar con un código calculado por la prueba → sesión completa → `/me` → reinicio por otro ADMIN) con la aplicación entera (`@SpringBootTest` etiquetado `db`), y el flujo de FAMILIA por HTTP real (invitación → registro sin sesión → login → `/me`, invitación de un solo uso y sin token en la auditoría).
+  La revalidación central de la sesión (sección 2) tiene su tabla de verdad contra la base (`SesionVigenteJdbcDbTest`) y su prueba por HTTP con la
+  cadena de seguridad completa y cookies emitidas por el `ServicioTokens` real (`SesionVigenteHttpDbTest`: desactivar y reactivar usuario, escuela y
+  familia entre dos solicitudes con el mismo token, MFA pendiente, base caída simulada en el `DataSource` y conteo de exactamente una sentencia por solicitud).
+  Los `@WebMvcTest` que importan `SeguridadConfig` usan el sustituto `SesionVigenteDePrueba` (vigente por defecto, conmutable por prueba).
 - Un test sin base de datos verifica que el pom excluye el grupo `db` por defecto y que toda prueba que abre un contexto con
   base de datos esté etiquetada.
 
@@ -290,10 +334,11 @@ contiene únicamente valores ficticios.
   - **Reinicio y sesiones vigentes:** reiniciar el MFA de un ADMIN no invalida su JWT ya emitido (hasta `JWT_DURACION`). Para cortarlo ya, rotar `JWT_SECRET`.
   - **Límites en memoria:** el limitador de MFA es por instancia (sección 5), y el secreto TOTP es simétrico: quien lea la base **y** `MFA_CLAVE_CIFRADO` puede generar códigos.
   - **Reloj:** el servidor debe tener la hora sincronizada (NTP); el margen es ±30 s.
-- **Usuario desactivado conserva su JWT hasta su vencimiento (hasta 8 h por defecto): riesgo aceptado.** `GET /api/auth/me` vuelve a
-  consultar la base y devuelve `401` si el usuario, su familia o su escuela están inactivos, y el login los rechaza; pero los demás
-  endpoints confían en el JWT hasta que vence. Mitigar acortando `JWT_DURACION` o añadiendo después una revocación por `jti`
-  o una verificación por solicitud.
+- **CERRADO: un usuario desactivado ya no conserva su JWT.** Antes un usuario desactivado seguía autenticado con su JWT hasta su vencimiento (hasta 8 h por
+  defecto) en todo endpoint salvo `/api/auth/me`. Ahora cada solicitud autenticada revalida la sesión en la base (sección 2, «Revalidación de la sesión en
+  cada solicitud»): desactivar al usuario, a su escuela o (FAMILIA) a su familia corta la sesión en la **siguiente** solicitud (`401` y cookie borrada), y
+  reactivarlo la restablece sin nuevo login mientras el token no haya vencido. Si la base no responde, `503` y la cookie queda intacta. Costo aceptado: una
+  consulta por clave primaria por solicitud autenticada y dependencia de la base en cada una, sin cache.
 - **Rotar `JWT_SECRET` cierra todas las sesiones** (todos los JWT emitidos dejan de validar). Es el procedimiento de emergencia.
 - El limitador de intentos es por instancia y en memoria (sección 5).
 - La IP real depende de la configuración del proxy (sección 5).
