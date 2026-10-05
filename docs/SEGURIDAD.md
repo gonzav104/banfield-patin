@@ -1,7 +1,7 @@
 # Seguridad — Banfield Patín Carrera
 
 Estrategia de autenticación y control de acceso implementada en el backend (`backend/`, Spring Boot 4 / Spring Security 7).
-Este documento describe lo que el código hace hoy; los puntos abiertos están en la sección 13.
+Este documento describe lo que el código hace hoy; los puntos abiertos están en la sección 13. El contrato de rutas de familias, deportistas y vínculos está en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md).
 
 ## 1. Resumen de la estrategia
 
@@ -96,6 +96,35 @@ solo es vigente si:
 | Cualquier otra ruta | exige `ADMIN` o `FAMILIA` con sesión completa; denegada por defecto (`401` si es anónimo, `403` con MFA pendiente) |
 
 Todos los errores son JSON `{codigo, mensaje, detalles}`; nunca HTML ni trazas de pila.
+
+### Aislamiento de FAMILIA en el portal de solo lectura
+
+El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md)) aplica estas reglas, cada una fijada por pruebas:
+
+- **Una sola sentencia con el alcance.** La autorización de cada lectura es el `WHERE` de **una** consulta que une vínculo, familia y deportista por id **y** escuela
+  y exige vínculo `ACTIVO` y familia activa (`FamiliaDeportistaRepository.ALCANCE_FAMILIA`, `FamiliaRepository.buscarDelPortal`). Nunca se carga un deportista para
+  comparar después en Java: no hay ventana entre leer y comprobar ni un predicado que pueda olvidarse. La identidad (escuela y familia) sale solo del JWT; un
+  `familiaId` o `escuelaId` en la solicitud se ignora, y una cuenta FAMILIA sin familia no recibe datos.
+- **404 uniforme, sin oráculo de existencia.** Un deportista de otra familia, de otra escuela, con vínculo revocado, pendiente o rechazado, o inexistente produce el
+  mismo `404 DEPORTISTA_NO_ENCONTRADO`, con el mismo mensaje fijo y el mismo cuerpo byte a byte (`FamiliaPortalHttpDbTest`). Los DTO del portal omiten
+  `escuelaId`, `esPrincipal`, datos del vínculo, marcas de tiempo y el DNI y el estado del tutor. Un deportista inactivo con vínculo `ACTIVO` es visible con
+  `activo=false` (la inactividad deportiva no revoca el acceso); con vínculo revocado, no.
+- **Sin escritura y sin auditoría.** No existe ninguna ruta que escriba bajo `/api/familia/` (`InventarioRutasTest`); cualquier otro método da `405` (con CSRF) o `403 CSRF_INVALIDO`.
+  Las lecturas del portal no se auditan.
+- **La revalidación central cubre al usuario y a la familia.** El portal no repite el `exists` de usuario: la revalidación de la sesión (sección 2) corre antes de
+  cualquier controlador, es más estricta (usuario, escuela y familia activos, rol y familia coherentes) y no tiene cache. Una familia inactiva, un usuario
+  desactivado o un vínculo revocado rigen desde la siguiente solicitud con el mismo token (matriz de JWT viejo en `FamiliaPortalHttpDbTest`). `f.activa = true` se
+  conserva en la consulta como defensa en profundidad y se prueba a nivel de repositorio.
+- **Espera de bloqueos acotada solo en vínculos.** Las transacciones de vínculos que toman `FOR UPDATE` (vincular, revocar, cambiar principal) ejecutan
+  `SET LOCAL lock_timeout` (`banfield.vinculos.lock-timeout`, por defecto `PT3S`): el límite vale solo hasta el fin de esa transacción, no se filtra a otras ni al
+  pool y no existe un límite global. Al vencer, o ante un *deadlock*, se responde `409 CONFLICTO_CONCURRENCIA` con mensaje fijo (sin SQL, ids ni trazas), una
+  sola línea `WARN` con la operación y la clase de la excepción, y la transacción se revierte sin escribir ni auditar.
+- **Logs sin DNI ni CUIL aunque el nivel raíz sea DEBUG.** `application.yml` apaga el logger JDBC de Hibernate (`org.hibernate.orm.jdbc.error: OFF`, que de otro modo
+  registra el mensaje de PostgreSQL con los valores de la clave) y fija en `INFO` los resolutores MVC `ExceptionHandlerExceptionResolver` y
+  `ResponseStatusExceptionResolver`, que a `DEBUG` imprimen «Resolved [excepción]» con el mensaje completo. `DefaultHandlerExceptionResolver` emite esa línea a
+  nivel `WARN`, por lo que `INFO` no la silenciaría; no se fija porque es inalcanzable (el `@ExceptionHandler(Exception)` de `ManejadorGlobalErrores` resuelve antes
+  cualquier excepción de un controlador). Las violaciones de restricciones dejan una sola línea saneada (restricción, operación y clase). Pruebas:
+  `ConfiguracionLoggingTest` (lee el `application.yml` real) y `LoggingExcepcionesTratadasTest` (raíz forzada a DEBUG, con controles negativos).
 
 ## 5. Login y protección contra enumeración
 
