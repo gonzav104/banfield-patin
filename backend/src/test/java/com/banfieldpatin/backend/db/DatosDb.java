@@ -137,9 +137,50 @@ final class DatosDb {
 				.param("e", escuelaId).param("r", rol).query(Long.class).single();
 	}
 
+	// ---------- deportistas, tutores y vinculos (REQ-XC-07, V4) ----------
+
+	/** Deportista activo con los datos minimos obligatorios de V1 (nombre, apellido, dni). */
+	UUID deportista(UUID escuelaId, String dni, String nombre, String apellido) {
+		return deportista(escuelaId, dni, nombre, apellido, true);
+	}
+
+	UUID deportista(UUID escuelaId, String dni, String nombre, String apellido, boolean activo) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.deportista (escuela_id, dni, nombre, apellido, activo)
+				VALUES (:e, :dni, :n, :a, :activo) RETURNING id
+				""").param("e", escuelaId).param("dni", dni).param("n", nombre).param("a", apellido)
+				.param("activo", activo).query(UUID.class).single();
+	}
+
+	/** Tutor activo de la familia, sin usuario asociado. */
+	UUID tutor(UUID escuelaId, UUID familiaId, String nombre, String apellido) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.tutor (escuela_id, familia_id, nombre, apellido)
+				VALUES (:e, :f, :n, :a) RETURNING id
+				""").param("e", escuelaId).param("f", familiaId).param("n", nombre).param("a", apellido)
+				.query(UUID.class).single();
+	}
+
+	/**
+	 * Vinculo familia-deportista con SQL directo. {@code autorizado_en = now()} si y solo si hay autorizadoPor, de
+	 * modo que tambien se pueden armar filas invalidas (por ejemplo ACTIVO sin autorizacion) para probar V4.
+	 */
+	UUID vinculo(UUID escuelaId, UUID familiaId, UUID deportistaId, String estado, boolean esPrincipal,
+			UUID autorizadoPor) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.familia_deportista
+				    (escuela_id, familia_id, deportista_id, estado, es_principal, autorizado_por, autorizado_en)
+				VALUES (:e, :f, :d, :estado, :p, CAST(:ap AS uuid),
+				        CASE WHEN CAST(:ap AS uuid) IS NULL THEN NULL ELSE now() END)
+				RETURNING id
+				""").param("e", escuelaId).param("f", familiaId).param("d", deportistaId).param("estado", estado)
+				.param("p", esPrincipal).param("ap", autorizadoPor).query(UUID.class).single();
+	}
+
 	/** Borra todo lo colgado de la escuela (en orden de dependencias); no borra la escuela. */
 	void limpiarContenido(UUID escuelaId) {
-		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "usuario", "familia" }) {
+		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "familia_deportista", "tutor",
+				"deportista", "usuario", "familia" }) {
 			jdbc.sql("DELETE FROM gestion_patin." + tabla + " WHERE escuela_id = :e").param("e", escuelaId).update();
 		}
 	}
