@@ -5,10 +5,13 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,6 +37,10 @@ import tools.jackson.databind.json.JsonMapper;
 @EnableMethodSecurity
 public class SeguridadConfig {
 
+	static final String PERFIL_DEV = "dev";
+	/** Especificacion JSON/YAML de springdoc (ruta por defecto, no se cambia). */
+	static final String[] RUTAS_OPENAPI = { "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml" };
+
 	@Bean
 	PasswordEncoder passwordEncoder() {
 		return PasswordEncoderFactories.createDelegatingPasswordEncoder();
@@ -57,7 +64,8 @@ public class SeguridadConfig {
 			CookieCsrfTokenRepository csrfRepo, CookieBearerTokenResolver resolver,
 			PuntoEntradaJson puntoEntrada, ManejadorAccesoDenegadoJson accesoDenegado,
 			JwtAuthenticationConverter convertidor, JwtDecoder decoder, VerificadorSesionVigente verificador,
-			ManejadorFalloToken manejadorFalloToken) throws Exception {
+			ManejadorFalloToken manejadorFalloToken, Environment entorno) throws Exception {
+		boolean documentacionPublica = entorno.acceptsProfiles(Profiles.of(PERFIL_DEV));
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.httpBasic(AbstractHttpConfigurer::disable)
@@ -68,7 +76,7 @@ public class SeguridadConfig {
 				.exceptionHandling(e -> e.authenticationEntryPoint(puntoEntrada).accessDeniedHandler(accesoDenegado))
 				.addFilterBefore(filtroToken(decoder, convertidor, resolver, puntoEntrada, verificador,
 						manejadorFalloToken), AuthorizationFilter.class)
-				.authorizeHttpRequests(a -> a
+				.authorizeHttpRequests(a -> reglas(a, documentacionPublica)
 						.requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/admin/login",
 								"/api/auth/invitaciones/validar", "/api/auth/registro/invitacion").permitAll()
@@ -119,6 +127,20 @@ public class SeguridadConfig {
 		filtro.setAuthenticationEntryPoint(puntoEntrada);
 		filtro.setAuthenticationFailureHandler(manejadorFalloToken);
 		return filtro;
+	}
+
+	/**
+	 * Especificacion OpenAPI (RNF-14), fuera de /api/**: publica SOLO con el perfil {@code dev} (y solo GET); en cualquier
+	 * otro perfil exige un ADMIN con sesion completa (un token con MFA pendiente no tiene rol: 403, como en toda ruta de
+	 * ADMIN). Pasa por la misma revalidacion central de la sesion que el resto. No toca CSRF ni ninguna otra regla; en
+	 * produccion la ruta ni siquiera existe ({@code springdoc.api-docs.enabled=false} en el perfil prod).
+	 */
+	private static AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry reglas(
+			AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registro,
+			boolean documentacionPublica) {
+		return documentacionPublica
+				? registro.requestMatchers(HttpMethod.GET, RUTAS_OPENAPI).permitAll()
+				: registro.requestMatchers(RUTAS_OPENAPI).hasRole("ADMIN");
 	}
 
 	private static CorsConfigurationSource fuenteCors(List<String> origenes) {

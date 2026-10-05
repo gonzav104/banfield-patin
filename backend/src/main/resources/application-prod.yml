@@ -1,0 +1,5 @@
+# Perfil de produccion (SPRING_PROFILES_ACTIVE=prod). Hoy solo apaga la especificacion OpenAPI: en produccion la ruta
+# /v3/api-docs no existe (RNF-14: el contrato se obtiene en dev o con un ADMIN en otro entorno; ver docs/SEGURIDAD.md).
+springdoc:
+  api-docs:
+    enabled: false

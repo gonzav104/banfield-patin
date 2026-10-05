@@ -20,6 +20,9 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.dto.LoginSolicitud;
 import com.banfieldpatin.backend.usuarios.dto.UsuarioActualRespuesta;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -62,6 +65,8 @@ public class AutenticacionController {
 	}
 
 	@GetMapping("/me")
+	// El tipo de retorno es ResponseEntity<?> (200 con la identidad o 401 con el error): se declara el exito para el contrato.
+	@ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = UsuarioActualRespuesta.class)))
 	public ResponseEntity<?> me(@AuthenticationPrincipal Jwt jwt) {
 		return servicio.actual(UsuarioAutenticado.desde(jwt))
 				.map(u -> u.conMfaPendiente(ServicioTokens.mfaPendiente(jwt)))

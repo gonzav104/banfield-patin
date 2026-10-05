@@ -38,6 +38,19 @@ logging:
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
     org.springframework.web.servlet.mvc.annotation.ResponseStatusExceptionResolver: INFO
 
+# RNF-14: solo la especificacion OpenAPI (modulo "api" de springdoc, sin Swagger UI). Se acota a /api/** para que no
+# aparezca ninguna ruta interna. La UI queda apagada en todos los perfiles; la ruta /v3/api-docs es publica solo con el
+# perfil dev y exige ADMIN en los demas (SeguridadConfig); en el perfil prod se apaga (application-prod.yml).
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: true
+  paths-to-match: /api/**
+  default-produces-media-type: application/json
+  show-actuator: false
+  override-with-generic-response: false
+
 server:
   error:
     include-stacktrace: never

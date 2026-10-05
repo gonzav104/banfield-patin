@@ -65,7 +65,7 @@ class RutasDocumentadasTest {
 	}
 
 	/** Rutas con formato "METODO /ruta" de la seccion "Tabla de rutas" (hasta el siguiente encabezado de nivel 2). */
-	private static Set<String> rutasDeLaTabla() throws IOException {
+	static Set<String> rutasDeLaTabla() throws IOException {
 		String texto = Files.readString(DOCUMENTO);
 		int inicio = texto.indexOf("## 2. Tabla de rutas");
 		assertThat(inicio).as("el documento debe tener la seccion '## 2. Tabla de rutas'").isGreaterThanOrEqualTo(0);
