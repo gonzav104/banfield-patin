@@ -203,6 +203,90 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 		sinDocumentosEnLogs();
 	}
 
+	// ---------- observabilidad saneada de las violaciones de restriccion ----------
+
+	/** Mensaje al estilo del servidor PostgreSQL: lleva el valor de la clave (DNI), que jamas debe llegar al log. */
+	private DataIntegrityViolationException violacionConMensajeDelServidor(String restriccion) {
+		String mensajePg = "ERROR: duplicate key value violates unique constraint \"" + restriccion + "\"\n  Detail: Key"
+				+ " (escuela_id, dni)=(" + escuelaId + ", " + DNI + ") already exists.";
+		return new DataIntegrityViolationException("could not execute statement [" + mensajePg + "]",
+				new ConstraintViolationException("could not execute statement [" + mensajePg + "]",
+						new SQLException(mensajePg), "insert into deportista ...", ConstraintKind.UNIQUE, restriccion));
+	}
+
+	/**
+	 * Nivel por defecto de la aplicacion (INFO). A DEBUG, el propio Spring MVC registra "Resolved [<excepcion>]" con el
+	 * mensaje COMPLETO de la excepcion (en una violacion de PostgreSQL incluye los valores de la clave): comportamiento del
+	 * framework, no activado por la aplicacion; aqui se comprueba el nivel real.
+	 */
+	private void raizEnNivelPorDefecto() {
+		raiz.setLevel(Level.INFO);
+	}
+
+	private java.util.List<ILoggingEvent> eventosDeRestriccion() {
+		return logs.list.stream().filter(e -> e.getLoggerName().endsWith("RestriccionViolada")).toList();
+	}
+
+	@Test
+	void unaCarreraMapeadaA409DejaUnWarnConRestriccionOperacionYClaseSinValoresNiMensajeDelServidor() throws Exception {
+		raizEnNivelPorDefecto();
+		when(deportistas.saveAndFlush(any(Deportista.class))).thenThrow(violacionConMensajeDelServidor("uq_deportista_dni_escuela"));
+
+		MockHttpServletResponse r = mvc.perform(conCuerpo(post("/api/admin/deportistas"), CUERPO)).andReturn().getResponse();
+
+		assertThat(r.getStatus()).isEqualTo(409);
+		assertThat(eventosDeRestriccion()).singleElement().satisfies(e -> {
+			assertThat(e.getLevel()).isEqualTo(Level.WARN);
+			assertThat(e.getFormattedMessage()).isEqualTo("Violacion de restriccion mapeada a conflicto: "
+					+ "restriccion=uq_deportista_dni_escuela operacion=DeportistaAdminService.crear "
+					+ "excepcion=org.springframework.dao.DataIntegrityViolationException");
+			assertThat(e.getThrowableProxy()).isNull();
+		});
+		sinDocumentosEnLogs();
+		for (ILoggingEvent evento : logs.list) {
+			assertThat(evento.getFormattedMessage()).doesNotContain("duplicate key").doesNotContain("Detail:")
+					.doesNotContain("Key (").doesNotContain(escuelaId.toString()).doesNotContain("could not execute");
+		}
+	}
+
+	@Test
+	void unaViolacionSinMapearDa500YUnErrorConRestriccionRutaYClaseSinTrazaNiMensajeDelServidor() throws Exception {
+		raizEnNivelPorDefecto();
+		when(deportistas.saveAndFlush(any(Deportista.class))).thenThrow(violacionConMensajeDelServidor("ck_otra_restriccion"));
+
+		MockHttpServletResponse r = mvc.perform(conCuerpo(post("/api/admin/deportistas"), CUERPO)).andReturn().getResponse();
+
+		assertThat(r.getStatus()).isEqualTo(500);
+		assertThat(r.getContentAsString()).contains("ERROR_INTERNO").doesNotContain(DNI).doesNotContain("ck_otra_restriccion");
+		assertThat(eventosDeRestriccion()).singleElement().satisfies(e -> {
+			assertThat(e.getLevel()).isEqualTo(Level.ERROR);
+			assertThat(e.getFormattedMessage()).isEqualTo("Violacion de restriccion sin mapear (500): "
+					+ "restriccion=ck_otra_restriccion operacion=POST /api/admin/deportistas "
+					+ "excepcion=org.springframework.dao.DataIntegrityViolationException");
+			assertThat(e.getThrowableProxy()).isNull();
+		});
+		// Ningun evento (ni el del manejador general) lleva el mensaje del servidor, el DNI, el id de escuela ni una traza.
+		for (ILoggingEvent evento : logs.list) {
+			assertThat(evento.getFormattedMessage() + evento.getThrowableProxy()).doesNotContain("duplicate key")
+					.doesNotContain("Detail:").doesNotContain("Key (").doesNotContain(escuelaId.toString())
+					.doesNotContain(DNI).doesNotContain("could not execute");
+		}
+		sinDocumentosEnLogs();
+	}
+
+	@Test
+	void unaViolacionSinNombreDeRestriccionSeRegistraComoDesconocida() throws Exception {
+		raizEnNivelPorDefecto();
+		when(deportistas.saveAndFlush(any(Deportista.class)))
+				.thenThrow(new DataIntegrityViolationException("value too long ... " + DNI));
+
+		mvc.perform(conCuerpo(post("/api/admin/deportistas"), CUERPO)).andReturn();
+
+		assertThat(eventosDeRestriccion()).singleElement()
+				.satisfies(e -> assertThat(e.getFormattedMessage()).contains("restriccion=desconocida"));
+		sinDocumentosEnLogs();
+	}
+
 	/**
 	 * Con el nivel por defecto de la aplicacion (INFO). A DEBUG el propio Spring MVC registra "Resolved
 	 * [MethodArgumentNotValidException ... rejected value [...]]" con el valor rechazado de un campo invalido: es

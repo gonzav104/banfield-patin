@@ -10,6 +10,8 @@ import com.banfieldpatin.backend.escuelas.Escuela;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.invitaciones.Invitacion;
 import com.banfieldpatin.backend.familias.tutores.Tutor;
+import com.banfieldpatin.backend.familias.vinculos.EstadoVinculo;
+import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportista;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.usuarios.Usuario;
 
@@ -53,6 +55,16 @@ public final class FixturesDominio {
 		ReflectionTestUtils.setField(d, "id", id);
 		ReflectionTestUtils.setField(d, "activo", activo);
 		return d;
+	}
+
+	/** Vinculo con id, estado y principal fijados (siempre con una autorizacion de ejemplo). */
+	public static FamiliaDeportista vinculo(UUID id, UUID escuelaId, UUID familiaId, UUID deportistaId,
+			EstadoVinculo estado, boolean esPrincipal) {
+		FamiliaDeportista v = FamiliaDeportista.activo(escuelaId, familiaId, deportistaId, UUID.randomUUID(),
+				Instant.parse("2026-01-01T10:00:00Z"), esPrincipal);
+		ReflectionTestUtils.setField(v, "id", id);
+		ReflectionTestUtils.setField(v, "estado", estado);
+		return v;
 	}
 
 	public static Usuario usuario(UUID id, UUID escuelaId, UUID familiaId, Rol rol, String email, String hash,

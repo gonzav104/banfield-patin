@@ -179,7 +179,7 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 	}
 
 	@Test
-	void elListadoUsaTresSentenciasSinImportarCuantasFilasHay() {
+	void elListadoUsaComoMaximoCuatroSentenciasSinImportarCuantasFilasHay() {
 		for (int i = 0; i < 6; i++) {
 			datos.familia(escuelaA, "Familia " + i, i % 2 == 0);
 		}
@@ -189,13 +189,13 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 		}
 		long conQuince = sentencias(() -> servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20)));
 
-		// Pagina + cuenta + tutores agrupados. Cuando existan los vinculos se sumara una agrupada mas (techo 4, REQ-XC-04).
-		assertThat(conSeis).isLessThanOrEqualTo(3);
+		// Pagina + cuenta + tutores agrupados + deportistas activos agrupados (techo 4, REQ-XC-04).
+		assertThat(conSeis).isLessThanOrEqualTo(4);
 		assertThat(conQuince).isEqualTo(conSeis);
 	}
 
 	@Test
-	void elListadoConTutoresSigueEnTresSentenciasYCuentaCadaFamiliaPorSeparado() {
+	void elListadoConTutoresSigueEnElTechoDeSentenciasYCuentaCadaFamiliaPorSeparado() {
 		List<UUID> familiasIds = new java.util.ArrayList<>();
 		for (int i = 0; i < 6; i++) {
 			UUID f = datos.familia(escuelaA, "Familia " + i, i % 2 == 0);
@@ -211,7 +211,7 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 		long conSeis = sentencias(() -> servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20)));
 		Pagina<FamiliaAdminResumen> pagina = servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20));
 
-		assertThat(conSeis).isLessThanOrEqualTo(3);
+		assertThat(conSeis).isLessThanOrEqualTo(4);
 		assertThat(pagina.contenido()).extracting(FamiliaAdminResumen::nombreReferencia, FamiliaAdminResumen::cantidadTutores)
 				.containsExactly(org.assertj.core.groups.Tuple.tuple("Familia 0", 0L),
 						org.assertj.core.groups.Tuple.tuple("Familia 1", 1L),

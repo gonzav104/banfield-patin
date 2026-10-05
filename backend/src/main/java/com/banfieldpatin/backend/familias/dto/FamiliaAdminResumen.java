@@ -8,7 +8,7 @@ import com.banfieldpatin.backend.familias.Familia;
 public record FamiliaAdminResumen(UUID id, String nombreReferencia, boolean activa, long cantidadTutores,
 		long cantidadDeportistasActivos) {
 
-	/** Los conteos son 0 hasta que existan tutores (cantidadTutores) y vinculos (cantidadDeportistasActivos). */
+	/** {@code cantidadDeportistasActivos}: vinculos ACTIVOS cuyo deportista esta activo (los demas no cuentan). */
 	public static FamiliaAdminResumen de(Familia f, long cantidadTutores, long cantidadDeportistasActivos) {
 		return new FamiliaAdminResumen(f.getId(), f.getNombreReferencia(), f.isActiva(), cantidadTutores,
 				cantidadDeportistasActivos);

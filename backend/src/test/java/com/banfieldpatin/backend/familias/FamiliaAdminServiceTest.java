@@ -33,6 +33,8 @@ import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
 import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
+import com.banfieldpatin.backend.familias.vinculos.ConteoVinculos;
+import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -47,6 +49,7 @@ class FamiliaAdminServiceTest {
 
 	private FamiliaRepository familias;
 	private TutorRepository tutores;
+	private FamiliaDeportistaRepository vinculos;
 	private AuditoriaService auditoria;
 	private FamiliaAdminService servicio;
 
@@ -54,8 +57,9 @@ class FamiliaAdminServiceTest {
 	void preparar() {
 		familias = mock(FamiliaRepository.class);
 		tutores = mock(TutorRepository.class);
+		vinculos = mock(FamiliaDeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new FamiliaAdminService(familias, tutores, auditoria);
+		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria);
 		when(familias.saveAndFlush(any(Familia.class))).thenAnswer(inv -> {
 			Familia f = inv.getArgument(0);
 			if (f.getId() == null) {
@@ -159,28 +163,31 @@ class FamiliaAdminServiceTest {
 	}
 
 	@Test
-	void listarCuentaLosTutoresConUnaSolaConsultaAgrupadaParaTodaLaPagina() {
+	void listarCuentaTutoresYDeportistasActivosConUnaConsultaAgrupadaCadaUnaParaTodaLaPagina() {
 		UUID otra = UUID.randomUUID();
 		var pageable = PageRequest.of(0, 20);
 		when(familias.buscar(escuelaId, "TODOS", "", pageable)).thenReturn(new PageImpl<>(
 				List.of(FixturesDominio.familia(familiaId, escuelaId, true), FixturesDominio.familia(otra, escuelaId, true))));
 		when(tutores.contarPorFamilia(eq(escuelaId), any())).thenReturn(List.of(new ConteoTutores(familiaId, 3)));
+		when(vinculos.contarActivosPorFamilia(eq(escuelaId), any())).thenReturn(List.of(new ConteoVinculos(otra, 2)));
 
 		var pagina = servicio.listar(admin, FiltroEstado.TODOS, "", pageable);
 
 		assertThat(pagina.contenido()).extracting(r -> r.cantidadTutores()).containsExactly(3L, 0L);
+		assertThat(pagina.contenido()).extracting(r -> r.cantidadDeportistasActivos()).containsExactly(0L, 2L);
 		verify(tutores).contarPorFamilia(eq(escuelaId), eq(List.of(familiaId, otra)));
-		verifyNoMoreInteractions(tutores);
+		verify(vinculos).contarActivosPorFamilia(eq(escuelaId), eq(List.of(familiaId, otra)));
+		verifyNoMoreInteractions(tutores, vinculos);
 	}
 
 	@Test
-	void listarUnaPaginaVaciaNoConsultaTutores() {
+	void listarUnaPaginaVaciaNoConsultaTutoresNiVinculos() {
 		var pageable = PageRequest.of(5, 20);
 		when(familias.buscar(escuelaId, "TODOS", "", pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
 		assertThat(servicio.listar(admin, FiltroEstado.TODOS, "", pageable).contenido()).isEmpty();
 
-		verifyNoInteractions(tutores);
+		verifyNoInteractions(tutores, vinculos);
 	}
 
 	// ---------- actualizar ----------

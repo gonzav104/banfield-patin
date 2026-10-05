@@ -47,7 +47,11 @@ class InventarioRutasTest {
 			"POST /api/admin/deportistas",
 			"PUT /api/admin/deportistas/{id}",
 			"POST /api/admin/deportistas/{id}/activar",
-			"POST /api/admin/deportistas/{id}/desactivar");
+			"POST /api/admin/deportistas/{id}/desactivar",
+			// Vinculos (slice 5): lote de vinculacion, revocacion y cambio explicito de principal; sin DELETE ni PATCH.
+			"POST /api/admin/familias/{familiaId}/deportistas",
+			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -111,8 +115,8 @@ class InventarioRutasTest {
 		assertThat(mutantes).noneMatch(r -> r.contains("/administradores") || r.contains("/admins")
 				|| r.contains("/bootstrap"));
 		// Bajo /api/admin se emiten y revocan invitaciones, se reinicia el MFA de otro ADMIN y se gestionan familias,
-		// tutores y deportistas (lista ampliada A PROPOSITO en los slices 2, 3 y 4; cada slice siguiente la amplia de forma
-		// consciente).
+		// tutores, deportistas y vinculos (lista ampliada A PROPOSITO en los slices 2 a 5; cada slice siguiente la amplia de
+		// forma consciente).
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/"))).containsExactlyInAnyOrder(
 				"POST /api/admin/invitaciones", "POST /api/admin/invitaciones/{id}/revocar",
 				"POST /api/admin/usuarios/{id}/mfa/reiniciar",
@@ -120,7 +124,10 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar",
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
-				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
+				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
+				"POST /api/admin/familias/{familiaId}/deportistas",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
 	}
 
 	@Test
@@ -130,7 +137,9 @@ class InventarioRutasTest {
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/familias"))).containsExactlyInAnyOrder(
 				"POST /api/admin/familias", "PUT /api/admin/familias/{id}",
 				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar",
-				"POST /api/admin/familias/{familiaId}/tutores");
+				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/familias/{familiaId}/deportistas",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -155,7 +164,22 @@ class InventarioRutasTest {
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas"))).containsExactlyInAnyOrder(
 				"GET /api/admin/deportistas", "POST /api/admin/deportistas", "GET /api/admin/deportistas/{id}",
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
-				"POST /api/admin/deportistas/{id}/desactivar");
+				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias");
+		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
+	}
+
+	@Test
+	void losVinculosSoloSeCreanRevocanYCambianDePrincipalPorLasTresRutasPrevistasSinBorradoNiPatch() throws Exception {
+		Set<String> mutantes = rutas(true);
+
+		assertThat(mutantes.stream().filter(r -> r.contains("/deportistas") && r.contains("/api/admin/familias/")))
+				.containsExactlyInAnyOrder("POST /api/admin/familias/{familiaId}/deportistas",
+						"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+						"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
+		assertThat(rutas(false).stream().filter(r -> r.startsWith("GET ") && r.contains("/deportistas")
+				&& (r.contains("/familias/{familiaId}/") || r.endsWith("/familias"))))
+				.containsExactlyInAnyOrder("GET /api/admin/familias/{familiaId}/deportistas",
+						"GET /api/admin/deportistas/{deportistaId}/familias");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 

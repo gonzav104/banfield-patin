@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Formato uniforme {codigo, mensaje, detalles}. Nunca expone trazas, clases ni valores enviados.
@@ -30,7 +34,20 @@ public class ManejadorGlobalErrores {
 
 	@ExceptionHandler(ExcepcionNegocio.class)
 	ResponseEntity<ErrorRespuesta> negocio(ExcepcionNegocio e) {
-		return responder(e.getEstado(), ErrorRespuesta.de(e.getCodigo(), e.getMessage()));
+		return responder(e.getEstado(), new ErrorRespuesta(e.getCodigo(), e.getMessage(), e.getDetalles()));
+	}
+
+	/**
+	 * Una violacion de restriccion que ningun servicio tradujo a 409: 500 generico y UNA linea ERROR saneada (restriccion,
+	 * operacion = metodo + patron de la ruta, clase de la excepcion). No se usa el manejador general porque este registra
+	 * la traza completa, y el mensaje del servidor PostgreSQL incluye los valores de la clave (DNI, CUIL).
+	 */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	ResponseEntity<ErrorRespuesta> integridad(DataIntegrityViolationException e, HttpServletRequest request) {
+		Object patron = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+		RestriccionViolada.registrarNoMapeada(request.getMethod() + " " + (patron == null ? "desconocida" : patron), e);
+		return responder(HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorRespuesta.de("ERROR_INTERNO", "Ocurrió un error inesperado."));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

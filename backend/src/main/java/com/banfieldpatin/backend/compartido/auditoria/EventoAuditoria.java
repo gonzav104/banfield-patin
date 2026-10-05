@@ -1,5 +1,7 @@
 package com.banfieldpatin.backend.compartido.auditoria;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -16,7 +18,8 @@ public record EventoAuditoria(
 		DatosSolicitud solicitud) {
 
 	public EventoAuditoria {
-		detalle = detalle == null ? Map.of() : Map.copyOf(detalle);
+		// Copia inmutable que tolera valores nulos (p. ej. anteriorVinculoId cuando no habia principal previo).
+		detalle = detalle == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(detalle));
 		solicitud = solicitud == null ? DatosSolicitud.NINGUNA : solicitud;
 	}
 }

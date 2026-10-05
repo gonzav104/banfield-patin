@@ -215,6 +215,19 @@ class DeportistaServiceDbTest extends BaseDbTest {
 		// Una sola alta confirmada: una sola auditoria DEPORTISTA_CREADO y ninguna de la perdedora.
 		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.auditoria WHERE escuela_id = :e AND accion = 'DEPORTISTA_CREADO'")
 				.param("e", escuelaA).query(Long.class).single()).isEqualTo(1);
+		// Observabilidad saneada de la carrera perdida: UN WARN con la restriccion, la operacion y la clase; sin valores.
+		assertThat(logs.list.stream().filter(l -> l.getLoggerName().endsWith("RestriccionViolada")))
+				.singleElement().satisfies(l -> {
+					assertThat(l.getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+					assertThat(l.getFormattedMessage()).isEqualTo("Violacion de restriccion mapeada a conflicto: "
+							+ "restriccion=uq_deportista_dni_escuela operacion=DeportistaAdminService.crear "
+							+ "excepcion=org.springframework.dao.DataIntegrityViolationException");
+					assertThat(l.getThrowableProxy()).isNull();
+				});
+		for (ILoggingEvent evento : logs.list) {
+			assertThat(evento.getFormattedMessage()).doesNotContain("duplicate key").doesNotContain("Detail:")
+					.doesNotContain("Key (").doesNotContain(escuelaA.toString());
+		}
 		sinDocumentosEnLogs(logs);
 	}
 

@@ -24,6 +24,8 @@ import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
 import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
+import com.banfieldpatin.backend.familias.vinculos.ConteoVinculos;
+import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 /**
@@ -39,11 +41,14 @@ public class FamiliaAdminService {
 
 	private final FamiliaRepository familias;
 	private final TutorRepository tutores;
+	private final FamiliaDeportistaRepository vinculos;
 	private final AuditoriaService auditoria;
 
-	public FamiliaAdminService(FamiliaRepository familias, TutorRepository tutores, AuditoriaService auditoria) {
+	public FamiliaAdminService(FamiliaRepository familias, TutorRepository tutores,
+			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria) {
 		this.familias = familias;
 		this.tutores = tutores;
+		this.vinculos = vinculos;
 		this.auditoria = auditoria;
 	}
 
@@ -58,24 +63,23 @@ public class FamiliaAdminService {
 	}
 
 	/**
-	 * {@code cantidadTutores} sale de UNA consulta agrupada para toda la pagina (sin N+1; ninguna si la pagina esta
-	 * vacia). {@code cantidadDeportistasActivos} vale 0 hasta que existan los vinculos (se cablea en su slice).
+	 * Las cantidades salen de UNA consulta agrupada cada una para toda la pagina (sin N+1; ninguna si la pagina esta
+	 * vacia): tutores de la familia y deportistas ACTIVOS con vinculo ACTIVO (los vinculos no activos y los deportistas
+	 * inactivos no cuentan). En total, pagina + total + 2 agrupadas = 4 sentencias como maximo.
 	 */
 	@Transactional(readOnly = true)
 	public Pagina<FamiliaAdminResumen> listar(UsuarioAutenticado admin, FiltroEstado estado, String busquedaEscapada,
 			Pageable pageable) {
 		Page<Familia> pagina = familias.buscar(admin.escuelaId(), estado.name(), busquedaEscapada, pageable);
-		Map<UUID, Long> tutoresPorFamilia = contarTutores(admin.escuelaId(), pagina.getContent());
-		return Pagina.de(pagina, f -> FamiliaAdminResumen.de(f, tutoresPorFamilia.getOrDefault(f.getId(), 0L), 0));
-	}
-
-	private Map<UUID, Long> contarTutores(UUID escuelaId, List<Familia> pagina) {
-		if (pagina.isEmpty()) {
-			return Map.of();
-		}
-		List<UUID> ids = pagina.stream().map(Familia::getId).toList();
-		return tutores.contarPorFamilia(escuelaId, ids).stream()
-				.collect(Collectors.toMap(ConteoTutores::familiaId, ConteoTutores::cantidad));
+		List<UUID> ids = pagina.getContent().stream().map(Familia::getId).toList();
+		Map<UUID, Long> tutoresPorFamilia = ids.isEmpty() ? Map.of()
+				: tutores.contarPorFamilia(admin.escuelaId(), ids).stream()
+						.collect(Collectors.toMap(ConteoTutores::familiaId, ConteoTutores::cantidad));
+		Map<UUID, Long> deportistasPorFamilia = ids.isEmpty() ? Map.of()
+				: vinculos.contarActivosPorFamilia(admin.escuelaId(), ids).stream()
+						.collect(Collectors.toMap(ConteoVinculos::familiaId, ConteoVinculos::cantidad));
+		return Pagina.de(pagina, f -> FamiliaAdminResumen.de(f, tutoresPorFamilia.getOrDefault(f.getId(), 0L),
+				deportistasPorFamilia.getOrDefault(f.getId(), 0L)));
 	}
 
 	/** Los tutores se devuelven tambien para una familia inactiva (las lecturas no dependen del estado). */

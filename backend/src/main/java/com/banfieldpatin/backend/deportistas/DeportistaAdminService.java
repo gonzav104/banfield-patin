@@ -89,7 +89,7 @@ public class DeportistaAdminService {
 		if (cuil != null && deportistas.existsByEscuelaIdAndCuil(admin.escuelaId(), cuil)) {
 			throw cuilDuplicado();
 		}
-		Deportista deportista = guardar(Deportista.crear(admin.escuelaId(), s.nombre(), s.apellido(), dni, cuil,
+		Deportista deportista = guardar("crear", Deportista.crear(admin.escuelaId(), s.nombre(), s.apellido(), dni, cuil,
 				s.fechaNacimiento(), s.nacionalidad(), s.domicilio(), s.otrosDatosDomicilio(), s.localidad(),
 				s.partido(), s.codigoPostal(), s.telefonoContacto(), s.emailFederativo()));
 		registrar(admin, AccionAuditoria.DEPORTISTA_CREADO, deportista, Map.of("conCuil", cuil != null), datos);
@@ -116,7 +116,7 @@ public class DeportistaAdminService {
 				s.nacionalidad(), s.domicilio(), s.otrosDatosDomicilio(), s.localidad(), s.partido(), s.codigoPostal(),
 				s.telefonoContacto(), s.emailFederativo());
 		if (!cambios.isEmpty()) {
-			guardar(deportista);
+			guardar("actualizar", deportista);
 			registrar(admin, AccionAuditoria.DEPORTISTA_ACTUALIZADO, deportista, Map.of("camposModificados", cambios),
 					datos);
 		}
@@ -157,17 +157,20 @@ public class DeportistaAdminService {
 
 	/**
 	 * {@code saveAndFlush} dentro del try: una violacion de unicidad que gane la carrera a la comprobacion previa se
-	 * traduce a 409 segun el NOMBRE de la restriccion (el cliente nunca lo ve); cualquier otra se relanza (500).
+	 * traduce a 409 segun el NOMBRE de la restriccion (el cliente nunca lo ve) y deja un WARN saneado (restriccion,
+	 * operacion y clase, sin valores); cualquier otra se relanza (el manejador global la registra como ERROR saneado).
 	 */
-	private Deportista guardar(Deportista deportista) {
+	private Deportista guardar(String operacion, Deportista deportista) {
 		try {
 			return deportistas.saveAndFlush(deportista);
 		} catch (DataIntegrityViolationException e) {
 			String restriccion = RestriccionViolada.nombre(e).orElse("");
 			if (RESTRICCION_DNI.equals(restriccion)) {
+				RestriccionViolada.registrarMapeada("DeportistaAdminService." + operacion, e);
 				throw dniDuplicado();
 			}
 			if (RESTRICCION_CUIL.equals(restriccion)) {
+				RestriccionViolada.registrarMapeada("DeportistaAdminService." + operacion, e);
 				throw cuilDuplicado();
 			}
 			throw e;
