@@ -93,9 +93,28 @@ solo es vigente si:
 | `/api/auth/me`, `/api/auth/logout` | autenticado (también un ADMIN con MFA pendiente) |
 | `/api/auth/admin/mfa/**` | solo un ADMIN con MFA pendiente (autoridad `MFA_PENDIENTE`); un ADMIN con sesión completa o FAMILIA reciben `403` |
 | `/api/auth/csrf`, `login`, `admin/login`, `invitaciones/validar`, `registro/invitacion` | públicas (las de `POST` siguen exigiendo CSRF) |
+| `/v3/api-docs` (y `/v3/api-docs.yaml`) | especificación OpenAPI (RNF-14): **pública solo con el perfil `dev`** (y solo `GET`); en cualquier otro perfil exige `ADMIN` con sesión completa (anónimo `401`, FAMILIA o ADMIN con MFA pendiente `403`) y pasa por la misma revalidación central de sesión. Con el perfil `prod` la ruta no existe (sección 4.1) |
 | Cualquier otra ruta | exige `ADMIN` o `FAMILIA` con sesión completa; denegada por defecto (`401` si es anónimo, `403` con MFA pendiente) |
 
 Todos los errores son JSON `{codigo, mensaje, detalles}`; nunca HTML ni trazas de pila.
+
+### 4.1 Especificación OpenAPI (`/v3/api-docs`, RNF-14)
+
+Se genera con `springdoc-openapi-starter-webmvc-api` 3.1.1 (solo el módulo de la especificación; **no** se incluye Swagger UI, y `springdoc.swagger-ui.enabled=false`
+en todos los perfiles). OpenAPI **no cambia** ninguna regla de autorización, CSRF ni sesión de la API: solo agrega la ruta de la especificación fuera de `/api/**`.
+
+| Perfil | `GET /v3/api-docs` | Cómo se logra |
+|---|---|---|
+| `dev` | `200` aun sin sesión (solo `GET`; cualquier otro método sigue las reglas generales) | `SeguridadConfig`: `permitAll` solo si el perfil `dev` está activo |
+| sin `dev` ni `prod` (por ejemplo, un entorno de pruebas o staging) | `401` anónimo; `403` FAMILIA o ADMIN con MFA pendiente; `200` ADMIN con sesión completa; sesión no vigente `401` + cookie borrada; base caída `503` | `hasRole("ADMIN")`, igual que `/api/admin/**`, tras la revalidación central |
+| `prod` | la ruta no existe (`404` con un ADMIN, `401` anónimo, `403` FAMILIA) | `application-prod.yml`: `springdoc.api-docs.enabled=false` |
+
+- El perfil `prod` se activa con `SPRING_PROFILES_ACTIVE=prod` en el despliegue de producción. Si no se activara, la ruta sigue siendo solo para `ADMIN` con sesión
+  completa (nunca pública fuera de `dev`).
+- El documento se acota a `/api/**` (`springdoc.paths-to-match`): no muestra actuator, `/error` ni rutas de prueba. No contiene ejemplos ni valores con apariencia real. Los
+  únicos campos de secretos son los previstos: el token de la invitación recién creada y el secreto TOTP del enrolamiento (una sola vez), el token CSRF y las contraseñas
+  de las solicitudes de login y registro. Una prueba (`OpenApiSinDatosSensiblesTest`) fija esa lista.
+- Se obtiene con `curl --cookie "BP_SESION=<sesión de ADMIN>" http://host/v3/api-docs` o, en `dev`, sin cookie.
 
 ### Aislamiento de FAMILIA en el portal de solo lectura
 

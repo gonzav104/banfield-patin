@@ -21,8 +21,9 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Sin contexto Spring ni base de datos: mientras RNF-14 (OpenAPI) no este cumplido, la tabla de rutas de
- * docs/FAMILIAS-DEPORTISTAS.md es el contrato, y esta prueba impide que se desactualice (REQ-OAS-02). Cada mapeo de los
+ * Sin contexto Spring ni base de datos: la tabla de rutas de docs/FAMILIAS-DEPORTISTAS.md es el resumen legible del
+ * contrato (la fuente de verdad es la especificacion OpenAPI desde RNF-14), y esta prueba impide que se desactualice
+ * (REQ-OAS-02). Cada mapeo de los
  * controladores de {@code familias} (salvo las invitaciones, documentadas en SEGURIDAD.md) y {@code deportistas}, incluido
  * el portal, debe figurar en la tabla, y la tabla no puede nombrar rutas que no existen. El descubrimiento de rutas usa el
  * mismo mecanismo que InventarioRutasTest (escaneo de {@code @RestController} y sus {@code @RequestMapping}).
@@ -107,10 +108,14 @@ class RutasDocumentadasTest {
 	}
 
 	@Test
-	void laDocumentacionDeclaraRnf14PendienteYNuncaCumplido() throws Exception {
+	void laDocumentacionDeclaraRnf14CumplidoConLaPoliticaDeExposicion() throws Exception {
+		// Slice 7: RNF-14 pasa a CUMPLIDO porque OpenApiRutasTest, OpenApiValidezTest y las pruebas de exposicion pasan en el
+		// build; si alguna dejara de existir o se deshabilitara, esta declaracion no debe quedar sin respaldo (revisar docs).
 		String texto = Files.readString(DOCUMENTO);
 
-		assertThat(texto).contains("RNF-14 está PENDIENTE").contains("no se declara cumplido");
-		assertThat(texto).doesNotContain("RNF-14 está CUMPLIDO");
+		assertThat(texto).contains("RNF-14 está CUMPLIDO").contains("no exige Swagger UI").contains("/v3/api-docs");
+		assertThat(texto).doesNotContain("RNF-14 está PENDIENTE");
+		assertThat(Files.readString(Path.of("..", "docs", "SEGURIDAD.md"))).contains("`/v3/api-docs`").contains("perfil `dev`")
+				.contains("springdoc.api-docs.enabled=false");
 	}
 }

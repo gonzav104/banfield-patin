@@ -26,8 +26,8 @@ datos de otras personas. La estrategia de autenticación está en [SEGURIDAD.md]
 ## 2. Tabla de rutas
 
 La prueba `RutasDocumentadasTest` exige que cada ruta de los controladores de `familias` (salvo `familias.invitaciones`, documentada en
-SEGURIDAD.md, sección 7) y `deportistas` figure en esta tabla, y que la tabla no contenga rutas inexistentes. Esa prueba es lo que mantiene la tabla al día
-mientras RNF-14 (OpenAPI) no esté cumplido (sección 8).
+SEGURIDAD.md, sección 7) y `deportistas` figure en esta tabla, y que la tabla no contenga rutas inexistentes. Desde RNF-14 (sección 8) la fuente de verdad del contrato
+es la especificación OpenAPI generada; esta tabla es su resumen legible y `OpenApiRutasTest` comprueba que sus 24 rutas estén en la especificación.
 
 | Ruta | Rol | Solicitud | Respuesta | Errores |
 |---|---|---|---|---|
@@ -167,9 +167,29 @@ PostgreSQL 17 en Testcontainers, incluido sobre datos existentes. **No se aplic�
 
 ## 8. Estado de RNF-14 (OpenAPI)
 
-**RNF-14 está PENDIENTE: no se declara cumplido.** `springdoc-openapi-starter-webmvc-api:3.1.1` (sin interfaz) está aprobado y se incorpora en el slice 7, sujeto a
-validar su compatibilidad real con Spring Boot 4.1.1. Mientras tanto, esta tabla de rutas hecha a mano y `RutasDocumentadasTest` son el contrato. Si la validación
-fallara, RNF-14 quedaría DIFERIDO y este documento lo diría.
+**RNF-14 está CUMPLIDO** para todas las rutas `/api/**` actuales (autenticación, MFA, invitaciones, familias, tutores, deportistas, vínculos y portal de FAMILIA: 39 operaciones
+en 32 rutas). RNF-14 pide documentación OpenAPI coherente con los endpoints y una especificación que valide sin errores; **no exige Swagger UI**, y no se incluyó.
+
+- **Cómo obtenerla:** `GET /v3/api-docs` (JSON, OpenAPI 3.1) o `/v3/api-docs.yaml`. En `dev` es pública; en cualquier otro perfil exige `ADMIN` con sesión completa; con el perfil `prod`
+  no existe (política y pruebas en [SEGURIDAD.md](SEGURIDAD.md), sección 4.1). No hay interfaz gráfica: la especificación se abre con cualquier cliente OpenAPI.
+- **Librería:** `springdoc-openapi-starter-webmvc-api:3.1.1` (sin UI), validada contra Spring Boot 4.1.1: compila, arranca la aplicación completa y sirve el documento
+  (`OpenApiArranqueDbTest`, con PostgreSQL real, y el contexto sin base de datos de `BaseOpenApiWebMvc`). No requirió forzar versiones ni exclusiones.
+- **Qué documenta:** cada operación con su código de éxito real (`201` con `Location` en las altas, `204` sin cuerpo en `logout` y reinicio de MFA), los errores propios de la ruta
+  con sus `codigo`, los transversales (`400`, `401`, `403`, `503`) y el modelo de error compartido `ErrorRespuesta {codigo, mensaje, detalles}` en toda respuesta de error. Los
+  DTO salen de los `record` con sus restricciones de Bean Validation (largos, obligatorios, formato). La cookie `BP_SESION` (`apiKey` en cookie) y el header `X-XSRF-TOKEN` (en
+  toda ruta que escribe) son esquemas de seguridad. Los códigos de éxito y de error por ruta están en una tabla única (`OpenApiConfig.RUTAS`).
+- **Cómo se mantiene coherente:** `OpenApiRutasTest` enumera las rutas `/api/**` desde `RequestMappingHandlerMapping` y exige que la especificación tenga exactamente esas
+  operaciones (método y ruta), que la tabla de `OpenApiConfig` tenga una entrada por ruta, que los `201`/`204` coincidan con los controladores (`OpenApiEstadosRealesTest` los invoca)
+  y que `ErrorRespuesta` esté referenciado. Una ruta nueva sin entrada hace fallar el build.
+- **Validación sin errores y sus límites:** `ValidadorOpenApi` (solo Jackson, sin dependencias nuevas) verifica versión `3.0.x`/`3.1.x`, `info`, `paths`, que cada operación tenga
+  `responses` con clave y `description` válidas, parámetros de ruta declarados, `operationId` sin repetir, **todos los `$ref` resueltos**, requisitos de seguridad declarados y
+  `required` coherente con `properties`; se prueba con documentos rotos para que no sea un validador que nunca falla. **No** valida contra el meta-esquema oficial completo (tipos de cada
+  campo, palabras de JSON Schema 2020-12, propiedades desconocidas): no se aprobó un validador completo (por ejemplo `swagger-parser`).
+- **Qué no documenta bien (límites conocidos):** (1) un método HTTP no mapeado responde `405 METODO_NO_PERMITIDO`, pero OpenAPI no lo lista por operación (se menciona en `info.description`);
+  (2) el parámetro `estado` de los listados es un `string` sin `enum` (el valor `TODOS|ACTIVOS|INACTIVOS` está solo en esta documentación; un valor desconocido da `400`); (3) los DTO que rechazan
+  propiedades desconocidas (`@JsonAnySetter`) no declaran `additionalProperties: false`; (4) la tabla de errores por ruta es manual (la completitud de rutas se prueba; la exactitud de cada
+  código de error depende de la revisión, como la tabla de la sección 2); (5) sin ejemplos, a propósito (ningún DNI, email ni token con apariencia real); (6) `springdoc` usa Jackson 2 internamente
+  (`swagger-core`) junto al Jackson 3 de la aplicación: sin consecuencias hoy, pero conviene tenerlo presente al actualizar.
 
 ## 9. Límites abiertos conocidos
 
