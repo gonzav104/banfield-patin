@@ -5,6 +5,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public class ManejadorGlobalErrores {
 
 	private static final Logger log = LoggerFactory.getLogger(ManejadorGlobalErrores.class);
+	static final String MENSAJE_CONCURRENCIA = "Otro cambio sobre el mismo deportista esta en curso. Reintentá en unos segundos.";
 
 	@ExceptionHandler(ExcepcionNegocio.class)
 	ResponseEntity<ErrorRespuesta> negocio(ExcepcionNegocio e) {
@@ -44,10 +46,29 @@ public class ManejadorGlobalErrores {
 	 */
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	ResponseEntity<ErrorRespuesta> integridad(DataIntegrityViolationException e, HttpServletRequest request) {
-		Object patron = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-		RestriccionViolada.registrarNoMapeada(request.getMethod() + " " + (patron == null ? "desconocida" : patron), e);
+		RestriccionViolada.registrarNoMapeada(operacion(request), e);
 		return responder(HttpStatus.INTERNAL_SERVER_ERROR,
 				ErrorRespuesta.de("ERROR_INTERNO", "Ocurrió un error inesperado."));
+	}
+
+	/**
+	 * Una transaccion no obtuvo un bloqueo de la base: el {@code lock_timeout} de las transacciones de vinculos vencio
+	 * (55P03, {@code CannotAcquireLockException}) o PostgreSQL eligio esta transaccion como victima de un deadlock (40P01,
+	 * {@code DeadlockLoserDataAccessException}). La transaccion ya se revirtio: no quedo nada escrito ni auditado. 409 con
+	 * un codigo y mensaje FIJOS (sin mensaje de PostgreSQL, ids, SQL ni traza) y UNA linea WARN con la operacion y la clase
+	 * de la excepcion; el mensaje de la excepcion nombra tablas y filas y jamas se imprime.
+	 */
+	@ExceptionHandler(PessimisticLockingFailureException.class)
+	ResponseEntity<ErrorRespuesta> concurrencia(PessimisticLockingFailureException e, HttpServletRequest request) {
+		log.warn("Conflicto de concurrencia por bloqueo de base de datos (409): operacion={} excepcion={}", operacion(request),
+				e.getClass().getName());
+		return responder(HttpStatus.CONFLICT, ErrorRespuesta.de("CONFLICTO_CONCURRENCIA", MENSAJE_CONCURRENCIA));
+	}
+
+	/** Metodo HTTP + patron de la ruta (nunca la URL real, que puede llevar ids). */
+	private static String operacion(HttpServletRequest request) {
+		Object patron = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+		return request.getMethod() + " " + (patron == null ? "desconocida" : patron);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

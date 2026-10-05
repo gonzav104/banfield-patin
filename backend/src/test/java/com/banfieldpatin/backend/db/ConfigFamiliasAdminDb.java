@@ -9,6 +9,7 @@ import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
+import com.banfieldpatin.backend.familias.vinculos.LockTimeoutVinculos;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminService;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -18,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
  * por varias clases para que el contexto se cachee una sola vez (el contenedor tiene max_connections acotado).
  */
 @TestConfiguration
-@Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class,
+@Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class, LockTimeoutVinculos.class,
 		AuditoriaService.class, RelojConfig.class })
 class ConfigFamiliasAdminDb {
 

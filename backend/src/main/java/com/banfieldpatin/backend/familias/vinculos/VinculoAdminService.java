@@ -49,6 +49,11 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
  * bloquea: una desactivacion concurrente de la familia es benigna (una familia inactiva no concede nada y el vinculo
  * resultante es visible y revocable por el ADMIN).
  *
+ * <p>Espera acotada: las tres transacciones que bloquean ejecutan {@code SET LOCAL lock_timeout} (ver
+ * {@link LockTimeoutVinculos}) antes de su primera sentencia. Si otra transaccion retiene el deportista mas de ese plazo,
+ * la base responde 55P03, Spring lo traduce a {@code CannotAcquireLockException} y el manejador global responde 409
+ * CONFLICTO_CONCURRENCIA; la transaccion se revierte (nada escrito, nada auditado).
+ *
  * <p>La auditoria (solo ids, banderas y nombres de campos) se escribe en la transaccion del cambio y solo ante cambios
  * reales. Ningun log contiene DNI, CUIL ni nombres.
  */
@@ -64,14 +69,17 @@ public class VinculoAdminService {
 	private final FamiliaDeportistaRepository vinculos;
 	private final AuditoriaService auditoria;
 	private final Clock reloj;
+	private final LockTimeoutVinculos lockTimeout;
 
 	public VinculoAdminService(FamiliaRepository familias, DeportistaRepository deportistas,
-			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, Clock reloj) {
+			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, Clock reloj,
+			LockTimeoutVinculos lockTimeout) {
 		this.familias = familias;
 		this.deportistas = deportistas;
 		this.vinculos = vinculos;
 		this.auditoria = auditoria;
 		this.reloj = reloj;
+		this.lockTimeout = lockTimeout;
 	}
 
 	public static ExcepcionNegocio vinculoNoEncontrado() {
@@ -113,6 +121,7 @@ public class VinculoAdminService {
 	@Transactional
 	public VinculacionRespuesta vincular(UsuarioAutenticado admin, UUID familiaId, List<UUID> solicitados,
 			DatosSolicitud datos) {
+		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		Familia familia = cargarFamilia(admin, familiaId);
 		if (!familia.isActiva()) {
@@ -203,6 +212,7 @@ public class VinculoAdminService {
 	 */
 	@Transactional
 	public VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, DatosSolicitud datos) {
+		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		deportistas.bloquearParaVincular(escuelaId, List.of(deportistaId));
 		FamiliaDeportista vinculo = vinculos.buscarVinculo(escuelaId, familiaId, deportistaId)
@@ -233,6 +243,7 @@ public class VinculoAdminService {
 	@Transactional
 	public VinculoRespuesta cambiarPrincipal(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId,
 			DatosSolicitud datos) {
+		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		Familia familia = cargarFamilia(admin, familiaId);
 		if (!familia.isActiva()) {

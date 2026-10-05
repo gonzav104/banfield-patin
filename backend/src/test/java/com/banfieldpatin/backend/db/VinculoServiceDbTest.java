@@ -28,6 +28,7 @@ import com.banfieldpatin.backend.compartido.error.RestriccionViolada;
 import com.banfieldpatin.backend.deportistas.DeportistaRepository;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
 import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
+import com.banfieldpatin.backend.familias.vinculos.LockTimeoutVinculos;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminService;
 
 import ch.qos.logback.classic.Level;
@@ -50,6 +51,8 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 	private static final String DNI = "36789012";
 	private static final String CUIL = "20367890127";
 
+	@Autowired
+	LockTimeoutVinculos lockTimeout;
 	@Autowired
 	FamiliaRepository familias;
 	@Autowired
@@ -163,7 +166,7 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 				ignorarExistentes
 						? Map.of("principalesActivos", args -> List.of(), "deFamiliaYDeportistas", args -> List.of())
 						: Map.of("principalesActivos", args -> List.of()));
-		return new VinculoAdminService(familias, sinBloqueo, sinComprobaciones, auditoria, reloj);
+		return new VinculoAdminService(familias, sinBloqueo, sinComprobaciones, auditoria, reloj, lockTimeout);
 	}
 
 	@Test
@@ -236,7 +239,7 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		FamiliaRepository inventa = decorar(FamiliaRepository.class, familias, Map.of("findByIdAndEscuelaId",
 				args -> Optional.of(FixturesDominio.familia((UUID) args[0], (UUID) args[1], true))));
 		VinculoAdminService servicioConFamiliaFalsa = new VinculoAdminService(inventa, deportistas, repositorio, auditoria,
-				reloj);
+				reloj, lockTimeout);
 
 		Throwable e = catchThrowable(() -> transaccion.execute(s -> servicioConFamiliaFalsa.vincular(admin, inexistente, List.of(d), DATOS)));
 

@@ -16,8 +16,14 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 final class PostgresDescartable {
 
 	static final String IMAGEN = "postgres:17-alpine";
+	/**
+	 * Cada contexto Spring cacheado conserva su pool abierto hasta el final de la JVM; con el valor por defecto de
+	 * PostgreSQL (100) la suite completa de pruebas "db" se queda sin conexiones al sumar contextos ("too many clients").
+	 * El contenedor es descartable y de uso exclusivo de las pruebas: se amplia el limite en lugar de limitar los contextos.
+	 */
 	private static final PostgreSQLContainer CONTENEDOR = new PostgreSQLContainer(IMAGEN)
-			.withDatabaseName("banfield_test").withUsername("banfield_test").withPassword("banfield_test");
+			.withDatabaseName("banfield_test").withUsername("banfield_test").withPassword("banfield_test")
+			.withCommand("postgres", "-c", "max_connections=300");
 
 	static {
 		CONTENEDOR.start();

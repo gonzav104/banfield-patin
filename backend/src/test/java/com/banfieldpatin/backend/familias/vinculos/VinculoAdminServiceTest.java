@@ -62,6 +62,7 @@ class VinculoAdminServiceTest {
 	private DeportistaRepository deportistas;
 	private FamiliaDeportistaRepository vinculos;
 	private AuditoriaService auditoria;
+	private LockTimeoutVinculos lockTimeout;
 	private VinculoAdminService servicio;
 	/** Estado (id, esPrincipal) de cada entidad en el momento exacto de cada saveAndFlush. */
 	private final List<String> escrituras = new ArrayList<>();
@@ -72,8 +73,9 @@ class VinculoAdminServiceTest {
 		deportistas = mock(DeportistaRepository.class);
 		vinculos = mock(FamiliaDeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
+		lockTimeout = mock(LockTimeoutVinculos.class);
 		servicio = new VinculoAdminService(familias, deportistas, vinculos, auditoria,
-				Clock.fixed(AHORA, ZoneOffset.UTC));
+				Clock.fixed(AHORA, ZoneOffset.UTC), lockTimeout);
 		when(vinculos.saveAndFlush(any(FamiliaDeportista.class))).thenAnswer(inv -> {
 			FamiliaDeportista fd = inv.getArgument(0);
 			if (fd.getId() == null) {
@@ -607,5 +609,72 @@ class VinculoAdminServiceTest {
 
 		assertThat(servicio.listarDeFamilia(admin, familiaId)).hasSize(1);
 		assertThat(servicio.listarDeDeportista(admin, d1)).isEmpty();
+	}
+
+	// ---------- lock_timeout acotado a las transacciones que bloquean ----------
+
+	@Test
+	void vincularAplicaElLockTimeoutAntesDeLaPrimeraLecturaYDelBloqueo() {
+		familia(true);
+		bloqueables(deportista(d1, true));
+		existentes();
+		principales();
+
+		servicio.vincular(admin, familiaId, List.of(d1), DATOS);
+
+		InOrder orden = inOrder(lockTimeout, familias, deportistas);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
+		orden.verify(deportistas).bloquearParaVincular(eq(escuelaId), any());
+	}
+
+	@Test
+	void revocarAplicaElLockTimeoutAntesDelBloqueo() {
+		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+
+		InOrder orden = inOrder(lockTimeout, deportistas);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(deportistas).bloquearParaVincular(eq(escuelaId), any());
+	}
+
+	@Test
+	void cambiarPrincipalAplicaElLockTimeoutAntesDeLaPrimeraLecturaYDelBloqueo() {
+		familia(true);
+		when(deportistas.bloquearParaVincular(eq(escuelaId), any())).thenReturn(List.of());
+
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+
+		InOrder orden = inOrder(lockTimeout, familias, deportistas);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
+		orden.verify(deportistas).bloquearParaVincular(eq(escuelaId), any());
+	}
+
+	@Test
+	void unaFamiliaInexistenteTambienPasaPorElLockTimeoutPeroLasLecturasNo() {
+		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> servicio.vincular(admin, familiaId, List.of(d1), DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		verify(lockTimeout).aplicar();
+
+		org.mockito.Mockito.clearInvocations(lockTimeout);
+		familia(true);
+		servicio.listarDeFamilia(admin, familiaId);
+		assertThatThrownBy(() -> servicio.listarDeDeportista(admin, d1)).isInstanceOf(ExcepcionNegocio.class);
+		verifyNoInteractions(lockTimeout);
+	}
+
+	@Test
+	void unaEsperaVencidaDelBloqueoNoEscribeNiAuditaYSePropagaTalCual() {
+		familia(true);
+		var vencida = new org.springframework.dao.CannotAcquireLockException("no se imprime");
+		when(deportistas.bloquearParaVincular(eq(escuelaId), any())).thenThrow(vencida);
+
+		assertThatThrownBy(() -> servicio.vincular(admin, familiaId, List.of(d1), DATOS)).isSameAs(vencida);
+
+		verify(vinculos, never()).saveAndFlush(any(FamiliaDeportista.class));
+		verifyNoInteractions(auditoria);
 	}
 }
