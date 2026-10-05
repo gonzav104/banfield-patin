@@ -18,6 +18,13 @@ spring:
     schemas: gestion_patin
     default-schema: gestion_patin
 
+# Hibernate registra (a nivel ERROR) el mensaje del servidor PostgreSQL de cada violacion de restriccion, y ese mensaje
+# incluye los VALORES de la clave ("Key (escuela_id, dni)=(..., 12345678) already exists"). Las violaciones de unicidad de
+# DNI/CUIL son parte del flujo normal (409), asi que ese logger se apaga: ningun log contiene DNI ni CUIL (REQ-DEP-10).
+logging:
+  level:
+    org.hibernate.orm.jdbc.error: "OFF"
+
 server:
   error:
     include-stacktrace: never
