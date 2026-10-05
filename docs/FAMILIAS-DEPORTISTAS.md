@@ -228,3 +228,7 @@ conectada a Supabase, **escribe datos reales** en esa base. Lo ejecuta una perso
   clave foránea compuesta hacia `usuario`); tras habilitarla solo quedan las filas de auditoría del ADMIN, que apuntan a lo ya borrado.
 - **Qué no imprime ni guarda:** DNI y CUIL, passwords (la del ADMIN no se guarda; la de FAMILIA se genera al azar en memoria), códigos TOTP, secretos MFA (salvo el del primer
   enrolamiento), cookies, token CSRF ni token de invitación. Las cookies viven en archivos temporales con permiso 600 que se borran al terminar.
+- **Resultado de la ejecución real (2026-10-05):** el smoke contra Supabase terminó en `SMOKE OK` (run id `SMOKE_20261005163410_pb3y`) y la limpieza suave se aplicó y se
+  verificó: una segunda vista previa mostró 0 filas a modificar en todas las tablas. Estado comprobado después en la base (solo lectura): Flyway 1 a 4 con éxito; 2 familias, 3
+  deportistas y 1 usuario FAMILIA del smoke, todos inactivos; 4 vínculos en `REVOCADO` y ninguno `ACTIVO`; el tutor del smoke sigue activo (la limpieza suave no lo toca); el ADMIN
+  real sigue activo con MFA.
