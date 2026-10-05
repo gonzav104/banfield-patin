@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.banfieldpatin.backend.escuelas.Escuela;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.invitaciones.Invitacion;
+import com.banfieldpatin.backend.familias.tutores.Tutor;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.usuarios.Usuario;
 
@@ -34,6 +35,13 @@ public final class FixturesDominio {
 		ReflectionTestUtils.setField(f, "nombreReferencia", "Familia Prueba");
 		ReflectionTestUtils.setField(f, "activa", activa);
 		return f;
+	}
+
+	/** Tutor activo sin DNI ni otros datos opcionales, con id asignado. */
+	public static Tutor tutor(UUID id, UUID escuelaId, UUID familiaId, String nombre, String apellido) {
+		Tutor t = Tutor.crear(escuelaId, familiaId, nombre, apellido, null, null, null, null);
+		ReflectionTestUtils.setField(t, "id", id);
+		return t;
 	}
 
 	public static Usuario usuario(UUID id, UUID escuelaId, UUID familiaId, Rol rol, String email, String hash,

@@ -31,6 +31,8 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
+import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
+import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -44,14 +46,16 @@ class FamiliaAdminServiceTest {
 	private final UUID familiaId = UUID.randomUUID();
 
 	private FamiliaRepository familias;
+	private TutorRepository tutores;
 	private AuditoriaService auditoria;
 	private FamiliaAdminService servicio;
 
 	@BeforeEach
 	void preparar() {
 		familias = mock(FamiliaRepository.class);
+		tutores = mock(TutorRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new FamiliaAdminService(familias, auditoria);
+		servicio = new FamiliaAdminService(familias, tutores, auditoria);
 		when(familias.saveAndFlush(any(Familia.class))).thenAnswer(inv -> {
 			Familia f = inv.getArgument(0);
 			if (f.getId() == null) {
@@ -125,6 +129,20 @@ class FamiliaAdminServiceTest {
 	}
 
 	@Test
+	void obtenerDevuelveLosTutoresDeLaFamiliaTambienSiEstaInactiva() {
+		existente(false);
+		when(tutores.deFamilia(escuelaId, familiaId)).thenReturn(List.of(
+				FixturesDominio.tutor(UUID.randomUUID(), escuelaId, familiaId, "Ana", "Perez"),
+				FixturesDominio.tutor(UUID.randomUUID(), escuelaId, familiaId, "Luis", "Perez")));
+
+		FamiliaDetalle detalle = servicio.obtener(admin, familiaId);
+
+		assertThat(detalle.activa()).isFalse();
+		assertThat(detalle.tutores()).extracting(t -> t.nombre()).containsExactly("Ana", "Luis");
+		assertThat(detalle.tutores()).allSatisfy(t -> assertThat(t.familiaId()).isEqualTo(familiaId));
+	}
+
+	@Test
 	void listarUsaLaEscuelaDelTokenYElNombreDelEstado() {
 		Familia f = FixturesDominio.familia(familiaId, escuelaId, true);
 		var pageable = PageRequest.of(0, 20);
@@ -138,6 +156,31 @@ class FamiliaAdminServiceTest {
 			assertThat(r.cantidadDeportistasActivos()).isZero();
 		});
 		assertThat(pagina.totalElementos()).isEqualTo(1);
+	}
+
+	@Test
+	void listarCuentaLosTutoresConUnaSolaConsultaAgrupadaParaTodaLaPagina() {
+		UUID otra = UUID.randomUUID();
+		var pageable = PageRequest.of(0, 20);
+		when(familias.buscar(escuelaId, "TODOS", "", pageable)).thenReturn(new PageImpl<>(
+				List.of(FixturesDominio.familia(familiaId, escuelaId, true), FixturesDominio.familia(otra, escuelaId, true))));
+		when(tutores.contarPorFamilia(eq(escuelaId), any())).thenReturn(List.of(new ConteoTutores(familiaId, 3)));
+
+		var pagina = servicio.listar(admin, FiltroEstado.TODOS, "", pageable);
+
+		assertThat(pagina.contenido()).extracting(r -> r.cantidadTutores()).containsExactly(3L, 0L);
+		verify(tutores).contarPorFamilia(eq(escuelaId), eq(List.of(familiaId, otra)));
+		verifyNoMoreInteractions(tutores);
+	}
+
+	@Test
+	void listarUnaPaginaVaciaNoConsultaTutores() {
+		var pageable = PageRequest.of(5, 20);
+		when(familias.buscar(escuelaId, "TODOS", "", pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+		assertThat(servicio.listar(admin, FiltroEstado.TODOS, "", pageable).contenido()).isEmpty();
+
+		verifyNoInteractions(tutores);
 	}
 
 	// ---------- actualizar ----------
@@ -235,6 +278,9 @@ class FamiliaAdminServiceTest {
 		verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
 		verify(familias).saveAndFlush(any(Familia.class));
 		verifyNoMoreInteractions(familias);
+		// Solo se LEEN los tutores para armar el detalle: ninguna escritura ni cascada sobre ellos.
+		verify(tutores).deFamilia(escuelaId, familiaId);
+		verifyNoMoreInteractions(tutores);
 	}
 
 	@Test
