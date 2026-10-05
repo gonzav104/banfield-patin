@@ -18,12 +18,25 @@ spring:
     schemas: gestion_patin
     default-schema: gestion_patin
 
-# Hibernate registra (a nivel ERROR) el mensaje del servidor PostgreSQL de cada violacion de restriccion, y ese mensaje
-# incluye los VALORES de la clave ("Key (escuela_id, dni)=(..., 12345678) already exists"). Las violaciones de unicidad de
-# DNI/CUIL son parte del flujo normal (409), asi que ese logger se apaga: ningun log contiene DNI ni CUIL (REQ-DEP-10).
+# Ningun log contiene DNI ni CUIL (REQ-DEP-10), tampoco con un nivel raiz DEBUG/TRACE:
+#  - Hibernate registra (a nivel ERROR) el mensaje del servidor PostgreSQL de cada violacion de restriccion, y ese mensaje
+#    incluye los VALORES de la clave ("Key (escuela_id, dni)=(..., 12345678) already exists"). Las violaciones de unicidad
+#    de DNI/CUIL son parte del flujo normal (409), asi que ese logger se apaga.
+#  - Spring MVC, a nivel DEBUG, registra "Resolved [<excepcion>]" con el mensaje COMPLETO de cada excepcion tratada (en una
+#    violacion de PostgreSQL incluye los valores de la clave). Esa linea la emite AbstractHandlerExceptionResolver con el
+#    logger de la clase concreta del resolutor (verificado en spring-webmvc 7.0.9): ExceptionHandlerExceptionResolver (la
+#    que trata los @ExceptionHandler de ManejadorGlobalErrores) y ResponseStatusExceptionResolver. Se fijan en INFO de forma
+#    EXPLICITA para que un nivel raiz DEBUG no los active. HandlerExceptionResolverComposite no registra nada.
+#    DefaultHandlerExceptionResolver NO se fija: su linea "Resolved [...]" sale a nivel WARN (usa setWarnLogCategory), asi que
+#    INFO no la silenciaria; ademas es inalcanzable aqui porque ManejadorGlobalErrores (con un @ExceptionHandler(Exception))
+#    resuelve antes cualquier excepcion de un controlador (demostrado en LoggingExcepcionesTratadasTest).
+#    Solo queda la linea saneada de la aplicacion (RestriccionViolada / ManejadorGlobalErrores).
+#    Pruebas: ConfiguracionLoggingTest y LoggingExcepcionesTratadasTest.
 logging:
   level:
     org.hibernate.orm.jdbc.error: "OFF"
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
+    org.springframework.web.servlet.mvc.annotation.ResponseStatusExceptionResolver: INFO
 
 server:
   error:
