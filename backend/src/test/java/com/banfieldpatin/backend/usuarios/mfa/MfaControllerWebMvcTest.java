@@ -49,6 +49,7 @@ import com.banfieldpatin.backend.seguridad.PuntoEntradaJson;
 import com.banfieldpatin.backend.seguridad.SeguridadConfig;
 import com.banfieldpatin.backend.seguridad.SeguridadPropiedades;
 import com.banfieldpatin.backend.seguridad.ServicioTokens;
+import com.banfieldpatin.backend.seguridad.SesionVigenteDePrueba;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.usuarios.dto.UsuarioActualRespuesta;
@@ -61,7 +62,7 @@ import jakarta.servlet.http.Cookie;
 @WebMvcTest(controllers = MfaController.class)
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class,
-		ServicioTokens.class, RelojConfig.class })
+		ServicioTokens.class, RelojConfig.class, SesionVigenteDePrueba.class })
 @ActiveProfiles("test")
 class MfaControllerWebMvcTest {
 

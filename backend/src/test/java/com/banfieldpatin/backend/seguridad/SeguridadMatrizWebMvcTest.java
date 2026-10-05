@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,6 +17,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -47,7 +50,7 @@ import jakarta.servlet.http.Cookie;
 @WebMvcTest(controllers = { ControladorSondaSeguridad.class, CsrfController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class,
-		ServicioTokens.class, RelojConfig.class })
+		ServicioTokens.class, RelojConfig.class, SesionVigenteDePrueba.class })
 @ActiveProfiles("test")
 class SeguridadMatrizWebMvcTest {
 
@@ -61,10 +64,13 @@ class SeguridadMatrizWebMvcTest {
 	PasswordEncoder passwordEncoder;
 	@Autowired
 	SeguridadPropiedades propiedades;
+	@Autowired
+	SesionVigenteDePrueba.Verificador verificador;
 
 	@BeforeEach
 	void reiniciar() {
 		ControladorSondaSeguridad.INVOCACIONES.set(0);
+		verificador.reiniciar();
 	}
 
 	private Cookie sesion(Rol rol) {
@@ -311,6 +317,139 @@ class SeguridadMatrizWebMvcTest {
 		mvc.perform(get("/api/auth/me").cookie(new Cookie(COOKIE, vencido)))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
+	}
+
+	// ---------- Revalidacion central de la sesion (REQ-XC-09) ----------
+
+	/** Una solicitud autenticada por cada tipo de ruta: ADMIN, FAMILIA, /me, MFA pendiente y logout. */
+	private interface Solicitud {
+		ResultActions ejecutar() throws Exception;
+	}
+
+	private Map<String, Solicitud> rutasAutenticadas() {
+		Map<String, Solicitud> rutas = new LinkedHashMap<>();
+		rutas.put("GET /api/admin/ping (ADMIN)", () -> mvc.perform(get("/api/admin/ping").cookie(sesion(Rol.ADMIN))));
+		rutas.put("GET /api/familia/ping (FAMILIA)",
+				() -> mvc.perform(get("/api/familia/ping").cookie(sesion(Rol.FAMILIA))));
+		rutas.put("GET /api/auth/me (ADMIN)", () -> mvc.perform(get("/api/auth/me").cookie(sesion(Rol.ADMIN))));
+		rutas.put("GET /api/auth/me (MFA pendiente)", () -> mvc.perform(get("/api/auth/me").cookie(pendiente())));
+		rutas.put("POST /api/auth/admin/mfa/ping (MFA pendiente)",
+				() -> postConCsrf("/api/auth/admin/mfa/ping", pendiente()));
+		rutas.put("POST /api/auth/logout (FAMILIA)", () -> postConCsrf("/api/auth/logout", sesion(Rol.FAMILIA)));
+		return rutas;
+	}
+
+	private static void cookieDeSesionBorrada(ResultActions r) throws Exception {
+		r.andExpect(cookie().exists(COOKIE)).andExpect(cookie().value(COOKIE, ""))
+				.andExpect(cookie().maxAge(COOKIE, 0)).andExpect(cookie().httpOnly(COOKIE, true))
+				.andExpect(cookie().path(COOKIE, "/"));
+	}
+
+	@Test
+	void sesionNoVigenteDa401NoAutenticadoYBorraLaCookieEnTodasLasRutasAutenticadas() throws Exception {
+		verificador.rechazar();
+
+		for (var ruta : rutasAutenticadas().entrySet()) {
+			ResultActions r = ruta.getValue().ejecutar();
+
+			r.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"))
+					.andExpect(jsonPath("$.detalles").isArray());
+			cookieDeSesionBorrada(r);
+		}
+		assertThat(ControladorSondaSeguridad.INVOCACIONES.get()).as("ningun handler corrio").isZero();
+		assertThat(verificador.llamadas()).isEqualTo(rutasAutenticadas().size());
+	}
+
+	@Test
+	void fallaDeLaBaseDa503ServicioNoDisponibleYNoTocaLaCookie() throws Exception {
+		verificador.fallarConBaseNoDisponible();
+
+		for (var ruta : rutasAutenticadas().entrySet()) {
+			ResultActions r = ruta.getValue().ejecutar();
+
+			r.andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.codigo").value("SERVICIO_NO_DISPONIBLE"))
+					.andExpect(jsonPath("$.detalles").isArray())
+					.andExpect(content().string(not(containsString("Exception"))))
+					.andExpect(cookie().doesNotExist(COOKIE));
+			assertThat(r.andReturn().getResponse().getHeaders(HttpHeaders.SET_COOKIE)).as(ruta.getKey())
+					.noneMatch(h -> h.startsWith(COOKIE + "="));
+		}
+		assertThat(ControladorSondaSeguridad.INVOCACIONES.get()).as("ningun handler corrio").isZero();
+	}
+
+	@Test
+	void unaSesionVigenteConsultaUnaVezPorSolicitudYSinCache() throws Exception {
+		mvc.perform(get("/api/admin/ping").cookie(sesion(Rol.ADMIN))).andExpect(status().isOk());
+		assertThat(verificador.llamadas()).isEqualTo(1);
+
+		Cookie misma = sesion(Rol.ADMIN);
+		mvc.perform(get("/api/admin/ping").cookie(misma)).andExpect(status().isOk());
+		mvc.perform(get("/api/admin/ping").cookie(misma)).andExpect(status().isOk());
+		assertThat(verificador.llamadas()).isEqualTo(3);
+
+		// Cero obsolescencia: el mismo token deja de servir en la siguiente solicitud y vuelve a servir al revertirse.
+		verificador.rechazar();
+		mvc.perform(get("/api/admin/ping").cookie(misma)).andExpect(status().isUnauthorized());
+		verificador.permitir();
+		mvc.perform(get("/api/admin/ping").cookie(misma)).andExpect(status().isOk());
+		assertThat(verificador.llamadas()).isEqualTo(5);
+	}
+
+	@Test
+	void rutasPublicasYAnonimosNuncaConsultanLaVigencia() throws Exception {
+		verificador.rechazar();
+		Cookie valida = sesion(Rol.ADMIN);
+		Cookie basura = new Cookie(COOKIE, "no-es-un-jwt");
+
+		// Anonimos: sin cookie, o con cookie en rutas publicas (el resolver la ignora).
+		mvc.perform(get("/api/admin/ping")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk());
+		mvc.perform(get("/api/auth/csrf").cookie(valida)).andExpect(status().isOk());
+		postConCsrf("/api/auth/login", valida).andExpect(status().isOk());
+		postConCsrf("/api/auth/login", basura).andExpect(status().isOk());
+		for (String publica : CookieBearerTokenResolver.RUTAS_PUBLICAS) {
+			if (!publica.equals("/api/auth/csrf")) {
+				// Las rutas publicas sin handler en la sonda responden 404/405: lo que importa es que no hubo consulta.
+				postConCsrf(publica, valida);
+			}
+		}
+
+		assertThat(verificador.llamadas()).isZero();
+	}
+
+	@Test
+	void unTokenInvalidoNuncaLlegaALaConsultaDeVigencia() throws Exception {
+		String valido = sesion(Rol.ADMIN).getValue();
+		String manipulado = valido.substring(0, valido.length() - 3) + (valido.endsWith("AAA") ? "BBB" : "AAA");
+		Clock pasado = Clock.fixed(Instant.now().minus(Duration.ofHours(30)), ZoneOffset.UTC);
+		var clave = new SecretKeySpec(propiedades.jwt().secretoBytes(), "HmacSHA256");
+		String vencido = new ServicioTokens(new NimbusJwtEncoder(new ImmutableSecret<>(clave)), propiedades, pasado)
+				.emitir(UUID.randomUUID(), Rol.ADMIN, UUID.randomUUID(), null);
+
+		for (String malo : new String[] { manipulado, vencido, "basura" }) {
+			ResultActions r = mvc.perform(get("/api/admin/ping").cookie(new Cookie(COOKIE, malo)))
+					.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
+			// Un token invalido por firma o vencimiento conserva el 401 de siempre: no borra la cookie de sesion
+			// (la cookie XSRF-TOKEN la emite el mecanismo CSRF y es ajena a este cambio).
+			assertThat(r.andReturn().getResponse().getHeaders(HttpHeaders.SET_COOKIE)).as(malo)
+					.noneMatch(h -> h.startsWith(COOKIE + "="));
+		}
+
+		assertThat(verificador.llamadas()).isZero();
+	}
+
+	@Test
+	void csrfSigueTeniendoPrecedenciaSobreLaVigencia() throws Exception {
+		verificador.rechazar();
+
+		mvc.perform(post("/api/auth/logout").cookie(sesion(Rol.FAMILIA)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
+		assertThat(verificador.llamadas()).as("el 403 de CSRF llega antes de la consulta").isZero();
+
+		postConCsrf("/api/auth/logout", sesion(Rol.FAMILIA)).andExpect(status().isUnauthorized());
+		assertThat(verificador.llamadas()).isEqualTo(1);
 	}
 
 	// ---------- Contrasenas ----------

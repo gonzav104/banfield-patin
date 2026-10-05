@@ -24,6 +24,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import tools.jackson.databind.json.JsonMapper;
+
 /**
  * Cadena unica y stateless. JWT en cookie HttpOnly + CSRF (cookie XSRF-TOKEN legible, header X-XSRF-TOKEN).
  * AC1 verificado: CsrfConfigurer.spa() existe en Spring Security 7.1.1.
@@ -54,7 +56,8 @@ public class SeguridadConfig {
 	SecurityFilterChain filtroSeguridad(HttpSecurity http, SeguridadPropiedades propiedades,
 			CookieCsrfTokenRepository csrfRepo, CookieBearerTokenResolver resolver,
 			PuntoEntradaJson puntoEntrada, ManejadorAccesoDenegadoJson accesoDenegado,
-			JwtAuthenticationConverter convertidor, JwtDecoder decoder) throws Exception {
+			JwtAuthenticationConverter convertidor, JwtDecoder decoder, VerificadorSesionVigente verificador,
+			ManejadorFalloToken manejadorFalloToken) throws Exception {
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.httpBasic(AbstractHttpConfigurer::disable)
@@ -63,8 +66,8 @@ public class SeguridadConfig {
 				.requestCache(AbstractHttpConfigurer::disable)
 				.csrf(c -> c.spa().csrfTokenRepository(csrfRepo))
 				.exceptionHandling(e -> e.authenticationEntryPoint(puntoEntrada).accessDeniedHandler(accesoDenegado))
-				.addFilterBefore(filtroToken(decoder, convertidor, resolver, puntoEntrada),
-						AuthorizationFilter.class)
+				.addFilterBefore(filtroToken(decoder, convertidor, resolver, puntoEntrada, verificador,
+						manejadorFalloToken), AuthorizationFilter.class)
 				.authorizeHttpRequests(a -> a
 						.requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/admin/login",
@@ -90,18 +93,31 @@ public class SeguridadConfig {
 		return http.build();
 	}
 
+	/** Falla de autenticacion del filtro de bearer: 401 + cookie borrada, 503 sin tocar la cookie (REQ-XC-09). */
+	@Bean
+	ManejadorFalloToken manejadorFalloToken(PuntoEntradaJson puntoEntrada, CookieSesion cookieSesion,
+			JsonMapper jsonMapper) {
+		return new ManejadorFalloToken(puntoEntrada, cookieSesion, jsonMapper);
+	}
+
 	/**
 	 * Filtro de bearer registrado a mano en lugar de oauth2ResourceServer(): ese DSL desactiva CSRF para toda
 	 * peticion con token resuelto, y aca el token viaja en cookie, por lo que CSRF debe seguir activo.
+	 * <p>
+	 * El proveedor de JWT va decorado con la revalidacion central de la sesion (REQ-XC-09): el verificador es
+	 * OBLIGATORIO (parametro sin alternativa), asi que si falta el bean la aplicacion no arranca en lugar de abrirse.
 	 */
 	private static BearerTokenAuthenticationFilter filtroToken(JwtDecoder decoder,
 			JwtAuthenticationConverter convertidor, CookieBearerTokenResolver resolver,
-			PuntoEntradaJson puntoEntrada) {
-		JwtAuthenticationProvider proveedor = new JwtAuthenticationProvider(decoder);
-		proveedor.setJwtAuthenticationConverter(convertidor);
-		BearerTokenAuthenticationFilter filtro = new BearerTokenAuthenticationFilter(new ProviderManager(proveedor));
+			PuntoEntradaJson puntoEntrada, VerificadorSesionVigente verificador,
+			ManejadorFalloToken manejadorFalloToken) {
+		JwtAuthenticationProvider proveedorJwt = new JwtAuthenticationProvider(decoder);
+		proveedorJwt.setJwtAuthenticationConverter(convertidor);
+		BearerTokenAuthenticationFilter filtro = new BearerTokenAuthenticationFilter(
+				new ProviderManager(new ProveedorJwtSesionVigente(proveedorJwt, verificador)));
 		filtro.setBearerTokenResolver(resolver);
 		filtro.setAuthenticationEntryPoint(puntoEntrada);
+		filtro.setAuthenticationFailureHandler(manejadorFalloToken);
 		return filtro;
 	}
 
