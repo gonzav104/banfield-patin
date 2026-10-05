@@ -66,6 +66,10 @@ class InventarioRutasTest {
 			if (tipo.getSimpleName().startsWith("ControladorSonda")) {
 				continue;
 			}
+			// Ni los controladores sonda anidados en una clase de prueba (p. ej. SesionVigenteHttpDbTest.Sonda).
+			if (tipo.getEnclosingClass() != null && tipo.getEnclosingClass().getSimpleName().endsWith("Test")) {
+				continue;
+			}
 			RequestMapping base = AnnotatedElementUtils.findMergedAnnotation(tipo, RequestMapping.class);
 			String prefijo = base == null || base.path().length == 0 ? "" : base.path()[0];
 			for (Method metodo : tipo.getDeclaredMethods()) {
@@ -187,5 +191,13 @@ class InventarioRutasTest {
 	void ningunaRutaMutanteExisteBajoElPortalDeFamilia() throws Exception {
 		// FAMILIA es solo lectura (F5, REQ-XC-07): ninguna ruta POST/PUT/PATCH/DELETE bajo /api/familia/.
 		assertThat(rutas(true)).noneMatch(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"));
+	}
+
+	@Test
+	void elPortalDeFamiliaTieneExactamenteTresRutasYTodasSonGet() throws Exception {
+		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
+		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
+		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
+				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}");
 	}
 }

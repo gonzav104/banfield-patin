@@ -48,4 +48,15 @@ public interface FamiliaRepository extends JpaRepository<Familia, UUID> {
 			""")
 	Page<Familia> buscar(@Param("escuelaId") UUID escuelaId, @Param("estado") String estado,
 			@Param("busqueda") String busqueda, Pageable pageable);
+
+	/**
+	 * Portal de FAMILIA: la familia del propio usuario en UNA sentencia con el predicado de escuela y {@code activa = true}.
+	 * Una familia inactiva ya no llega aqui (la revalidacion central de la sesion corta antes con 401); el predicado se
+	 * conserva como defensa en profundidad. No hay predicado sobre usuarios: lo cubre esa revalidacion (R2).
+	 */
+	@Query("""
+			select f from Familia f
+			where f.id = :familiaId and f.escuelaId = :escuelaId and f.activa = true
+			""")
+	Optional<Familia> buscarDelPortal(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId);
 }

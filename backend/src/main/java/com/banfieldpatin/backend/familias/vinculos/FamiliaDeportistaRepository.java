@@ -10,6 +10,11 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia;
+import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
 
 /**
@@ -113,4 +118,42 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			""")
 	int revocarSiActivo(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId,
 			@Param("deportistaId") UUID deportistaId);
+
+	// ---------- portal de FAMILIA (solo lectura) ----------
+
+	/**
+	 * Alcance de la FAMILIA: UNA sentencia que une vinculo, familia y deportista por id Y escuela y exige vinculo ACTIVO y
+	 * familia activa. NO hay predicado sobre {@code d.activo}: un deportista inactivo con vinculo ACTIVO sigue visible (la
+	 * inactividad deportiva no es una revocacion de acceso) y NO hay predicado sobre usuarios (lo cubre la revalidacion
+	 * central de la sesion). La autorizacion es el propio WHERE: nunca se carga un deportista para comparar despues, asi que
+	 * un id de otra familia, de otra escuela o inexistente produce exactamente el mismo resultado vacio.
+	 */
+	String ALCANCE_FAMILIA = """
+			 from FamiliaDeportista fd
+			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
+			join Deportista d on d.id = fd.deportistaId and d.escuelaId = fd.escuelaId
+			where fd.familiaId = :familiaId and fd.escuelaId = :escuelaId
+			  and fd.estado = com.banfieldpatin.backend.familias.vinculos.EstadoVinculo.ACTIVO
+			  and f.activa = true
+			""";
+
+	@Query(value = """
+			select new com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia(
+			    d.id, d.nombre, d.apellido, d.fechaNacimiento, d.activo)
+			""" + ALCANCE_FAMILIA + """
+			order by lower(d.apellido), lower(d.nombre), d.id
+			""", countQuery = "select count(fd)" + ALCANCE_FAMILIA)
+	Page<DeportistaDeFamilia> deportistasDelPortal(@Param("familiaId") UUID familiaId,
+			@Param("escuelaId") UUID escuelaId, Pageable pageable);
+
+	@Query("""
+			select new com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle(
+			    d.id, d.nombre, d.apellido, d.dni, d.cuil, d.fechaNacimiento, d.nacionalidad, d.domicilio,
+			    d.otrosDatosDomicilio, d.localidad, d.partido, d.codigoPostal, d.telefonoContacto, d.emailFederativo,
+			    d.activo)
+			""" + ALCANCE_FAMILIA + """
+			  and d.id = :deportistaId
+			""")
+	Optional<DeportistaDeFamiliaDetalle> deportistaDelPortal(@Param("familiaId") UUID familiaId,
+			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
 }
