@@ -152,6 +152,15 @@ final class DatosDb {
 				.param("activo", activo).query(UUID.class).single();
 	}
 
+	/** Deportista activo con CUIL (el CUIL es unico por escuela cuando existe). */
+	UUID deportistaConCuil(UUID escuelaId, String dni, String cuil, String nombre, String apellido) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.deportista (escuela_id, dni, cuil, nombre, apellido)
+				VALUES (:e, :dni, :cuil, :n, :a) RETURNING id
+				""").param("e", escuelaId).param("dni", dni).param("cuil", cuil).param("n", nombre).param("a", apellido)
+				.query(UUID.class).single();
+	}
+
 	/** Tutor activo de la familia, sin usuario asociado. */
 	UUID tutor(UUID escuelaId, UUID familiaId, String nombre, String apellido) {
 		return jdbc.sql("""
