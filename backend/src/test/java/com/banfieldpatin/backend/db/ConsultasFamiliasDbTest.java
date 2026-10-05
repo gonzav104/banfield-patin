@@ -22,6 +22,9 @@ import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.dto.FamiliaAdminResumen;
+import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
+import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -44,6 +47,8 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 	FamiliaRepository familias;
 	@Autowired
 	FamiliaAdminService servicio;
+	@Autowired
+	TutorRepository tutores;
 	@Autowired
 	EntityManagerFactory emf;
 
@@ -174,7 +179,7 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 	}
 
 	@Test
-	void elListadoUsaDosSentenciasSinImportarCuantasFilasHay() {
+	void elListadoUsaTresSentenciasSinImportarCuantasFilasHay() {
 		for (int i = 0; i < 6; i++) {
 			datos.familia(escuelaA, "Familia " + i, i % 2 == 0);
 		}
@@ -184,19 +189,106 @@ class ConsultasFamiliasDbTest extends BaseDbTest {
 		}
 		long conQuince = sentencias(() -> servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20)));
 
-		// Pagina + cuenta. Cuando existan tutores y vinculos se sumaran dos agrupadas (techo 4, REQ-XC-04).
-		assertThat(conSeis).isLessThanOrEqualTo(2);
+		// Pagina + cuenta + tutores agrupados. Cuando existan los vinculos se sumara una agrupada mas (techo 4, REQ-XC-04).
+		assertThat(conSeis).isLessThanOrEqualTo(3);
 		assertThat(conQuince).isEqualTo(conSeis);
 	}
 
 	@Test
-	void elDetalleUsaUnaSolaSentencia() {
+	void elListadoConTutoresSigueEnTresSentenciasYCuentaCadaFamiliaPorSeparado() {
+		List<UUID> familiasIds = new java.util.ArrayList<>();
+		for (int i = 0; i < 6; i++) {
+			UUID f = datos.familia(escuelaA, "Familia " + i, i % 2 == 0);
+			familiasIds.add(f);
+			// La familia i tiene i tutores (0 a 5): un conteo distinto por fila delata un N+1 o un mezclado.
+			for (int t = 0; t < i; t++) {
+				datos.tutor(escuelaA, f, "Tutor" + t, "De" + i);
+			}
+		}
+		UUID ajena = datos.familia(escuelaB, "Ajena", true);
+		datos.tutor(escuelaB, ajena, "Ajeno", "Ajeno");
+
+		long conSeis = sentencias(() -> servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20)));
+		Pagina<FamiliaAdminResumen> pagina = servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20));
+
+		assertThat(conSeis).isLessThanOrEqualTo(3);
+		assertThat(pagina.contenido()).extracting(FamiliaAdminResumen::nombreReferencia, FamiliaAdminResumen::cantidadTutores)
+				.containsExactly(org.assertj.core.groups.Tuple.tuple("Familia 0", 0L),
+						org.assertj.core.groups.Tuple.tuple("Familia 1", 1L),
+						org.assertj.core.groups.Tuple.tuple("Familia 2", 2L),
+						org.assertj.core.groups.Tuple.tuple("Familia 3", 3L),
+						org.assertj.core.groups.Tuple.tuple("Familia 4", 4L),
+						org.assertj.core.groups.Tuple.tuple("Familia 5", 5L));
+		assertThat(pagina.contenido()).allSatisfy(r -> assertThat(r.cantidadDeportistasActivos()).isZero());
+
+		// Mas filas y mas tutores no suman sentencias.
+		for (int i = 6; i < 12; i++) {
+			UUID f = datos.familia(escuelaA, "Familia " + i, true);
+			datos.tutor(escuelaA, f, "Tutor", "De" + i);
+		}
+		assertThat(sentencias(() -> servicio.listar(adminA, FiltroEstado.TODOS, "", Pagina.pedir(0, 20))))
+				.isEqualTo(conSeis);
+	}
+
+	@Test
+	void laConsultaAgrupadaNoCuentaTutoresDeOtraEscuelaNiDeFamiliasNoPedidas() {
+		UUID propia = datos.familia(escuelaA, "Propia", true);
+		UUID otraPropia = datos.familia(escuelaA, "OtraPropia", true);
+		UUID ajena = datos.familia(escuelaB, "Ajena", true);
+		datos.tutor(escuelaA, propia, "Ana", "Uno");
+		datos.tutor(escuelaA, propia, "Luis", "Uno");
+		datos.tutor(escuelaA, otraPropia, "Eva", "Dos");
+		datos.tutor(escuelaB, ajena, "Ajeno", "Ajeno");
+
+		var conteos = tutores.contarPorFamilia(escuelaA, List.of(propia, ajena));
+
+		assertThat(conteos).singleElement().satisfies(c -> {
+			assertThat(c.familiaId()).isEqualTo(propia);
+			assertThat(c.cantidad()).isEqualTo(2);
+		});
+		assertThat(tutores.contarPorFamilia(escuelaA, List.of(ajena))).isEmpty();
+	}
+
+	@Test
+	void elDetalleUsaComoMaximoDosSentenciasConCincoOMasTutores() {
 		UUID id = null;
 		for (int i = 0; i < 6; i++) {
 			id = datos.familia(escuelaA, "Familia " + i, true);
 		}
 		UUID elegida = id;
+		for (int t = 0; t < 6; t++) {
+			datos.tutor(escuelaA, elegida, "Tutor" + t, "Apellido");
+		}
 
-		assertThat(sentencias(() -> servicio.obtener(adminA, elegida))).isEqualTo(1);
+		assertThat(sentencias(() -> servicio.obtener(adminA, elegida))).isLessThanOrEqualTo(2);
+		assertThat(servicio.obtener(adminA, elegida).tutores()).hasSize(6);
+	}
+
+	@Test
+	void elDetalleDeUnaFamiliaInactivaDevuelveSusTutoresOrdenadosSinLosDeOtrasFamilias() {
+		UUID inactiva = datos.familia(escuelaA, "Inactiva", false);
+		UUID otra = datos.familia(escuelaA, "Otra", true);
+		datos.tutor(escuelaA, inactiva, "Zoe", "Gomez");
+		datos.tutor(escuelaA, inactiva, "Beto", "Alvarez");
+		datos.tutor(escuelaA, otra, "Otro", "Otro");
+
+		FamiliaDetalle detalle = servicio.obtener(adminA, inactiva);
+
+		assertThat(detalle.activa()).isFalse();
+		assertThat(detalle.tutores()).extracting(t -> t.nombre()).containsExactly("Beto", "Zoe");
+		assertThat(detalle.tutores()).allSatisfy(t -> {
+			assertThat(t.familiaId()).isEqualTo(inactiva);
+			assertThat(t.activo()).isTrue();
+		});
+	}
+
+	@Test
+	void elDetalleDeUnaFamiliaAjenaNoDevuelveNadaNiSusTutores() {
+		UUID ajena = datos.familia(escuelaB, "Ajena", true);
+		datos.tutor(escuelaB, ajena, "Ajeno", "Ajeno");
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> servicio.obtener(adminA, ajena))
+				.isInstanceOfSatisfying(com.banfieldpatin.backend.compartido.error.ExcepcionNegocio.class,
+						e -> assertThat(e.getCodigo()).isEqualTo("FAMILIA_NO_ENCONTRADA"));
 	}
 }
