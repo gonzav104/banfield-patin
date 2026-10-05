@@ -19,9 +19,8 @@ import org.junit.jupiter.api.Test;
  * tras la revision humana de la compuerta G1, y este test impide que V1-V3 (ya aplicadas) cambien y que V4 deje de
  * ser aditiva.
  *
- * <p>Deliberadamente NO fija el SHA-256 de V4: V4 sigue siendo editable hasta que se aplique en Supabase. El pin
- * propio de V4 se agrega recien en el primer commit posterior a esa aplicacion (compuerta G2); desde entonces V4 es
- * inmutable y cualquier correccion va en una V5.
+ * <p>Compuerta G2 cerrada: V4 se aplico en Supabase el 2026-10-05 (Flyway: version 4 con exito, checksum de Flyway
+ * 2126611739) y desde ese momento es inmutable; su SHA-256 queda fijado abajo y cualquier correccion va en una V5.
  */
 class V4MigracionEstaticaTest {
 
@@ -34,6 +33,7 @@ class V4MigracionEstaticaTest {
 	private static final String SHA256_V1 = "fa041142c2e983d929c912a55a8136c000180677d14eab4fe685efed9fb9bd26";
 	private static final String SHA256_V2 = "77afca70b0244d936fd998074ab74c8517b231e393caed3dcfcc014323b9ba01";
 	private static final String SHA256_V3 = "19933dcd6529b95e19a5ca525386d5d0915a783b39fc786031583720e639e1fe";
+	private static final String SHA256_V4 = "8e449b9f812c2d354d08f1f73eb026bada353e1b173a69368c50d5460d43ba48";
 
 	private static String leer(String nombre) throws IOException {
 		return Files.readString(MIGRACIONES.resolve(nombre), StandardCharsets.UTF_8);
@@ -54,6 +54,11 @@ class V4MigracionEstaticaTest {
 		assertThat(sha256(V1)).isEqualTo(SHA256_V1);
 		assertThat(sha256(V2)).isEqualTo(SHA256_V2);
 		assertThat(sha256(V3)).isEqualTo(SHA256_V3);
+	}
+
+	@Test
+	void v4PermaneceIdenticaALaAplicadaEnSupabase() throws Exception {
+		assertThat(sha256(V4)).isEqualTo(SHA256_V4);
 	}
 
 	@Test

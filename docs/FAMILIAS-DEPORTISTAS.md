@@ -156,14 +156,15 @@ superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotad
 ## 7. Migración V4 (compuerta con la base compartida)
 
 `V4__restricciones_familia_deportista.sql` es aditiva (índice `ix_tutor_familia`, `ck_fd_activo_autorizado` y `uq_fd_principal_activo`) y está probada contra
-PostgreSQL 17 en Testcontainers, incluido sobre datos existentes. **No se aplicó a Supabase.**
+PostgreSQL 17 en Testcontainers, incluido sobre datos existentes. **Se aplicó a Supabase el 2026-10-05** (ver G1 y G2).
 
 - **G1 (revisión humana y prechecks):** los *prechecks* de solo lectura se ejecutaron el **2026-10-05 contra Supabase y PASARON** (historial Flyway 1–3 correcto; 0 familias, 0
   tutores, 0 deportistas y 0 vínculos; ningún vínculo ACTIVO sin `autorizado_*`; ningún deportista con dos principales ACTIVOS; ninguno de los tres objetos de V4 existe).
-  Antes del primer arranque con Flyway desde una rama que contenga V4 se repiten con `backend/scripts/precheck-v4-supabase.sql`.
-- **V4 todavía no se aplicó en Supabase.** Flyway la aplicará sola en el primer arranque; hasta entonces puede editarse.
-- **G2 (pendiente):** tras aplicarla, el primer commit siguiente agrega el SHA-256 propio de V4 a `V4MigracionEstaticaTest`; desde ahí V4 es inmutable y cualquier
-  reversión va en `V5` (nunca editando V4). V1, V2 y V3 ya están fijadas por SHA-256.
+  Se repitieron con `backend/scripts/precheck-v4-supabase.sql` justo antes del primer arranque y volvieron a salir limpios.
+- **V4 aplicada en Supabase (2026-10-05):** Flyway la aplicó en el arranque normal de la aplicación (versión 4 con éxito, checksum de Flyway 2126611739, PostgreSQL 17.11).
+  Se verificó en la base que existen `ix_tutor_familia`, `uq_fd_principal_activo` (índice único parcial) y `ck_fd_activo_autorizado`.
+- **G2 (cerrada):** el SHA-256 de V4 (`8e449b9f812c2d354d08f1f73eb026bada353e1b173a69368c50d5460d43ba48`) quedó fijado en `V4MigracionEstaticaTest`; desde ahora V4 es
+  inmutable y cualquier reversión va en `V5` (nunca editando V4). V1, V2 y V3 ya estaban fijadas por SHA-256.
 
 ## 8. Estado de RNF-14 (OpenAPI)
 
