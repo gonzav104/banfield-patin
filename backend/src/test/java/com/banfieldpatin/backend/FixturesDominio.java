@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.banfieldpatin.backend.deportistas.Deportista;
 import com.banfieldpatin.backend.escuelas.Escuela;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.invitaciones.Invitacion;
@@ -42,6 +43,16 @@ public final class FixturesDominio {
 		Tutor t = Tutor.crear(escuelaId, familiaId, nombre, apellido, null, null, null, null);
 		ReflectionTestUtils.setField(t, "id", id);
 		return t;
+	}
+
+	/** Deportista con id asignado y solo los datos obligatorios (sin CUIL ni opcionales); {@code activo} se fuerza. */
+	public static Deportista deportista(UUID id, UUID escuelaId, String dni, String nombre, String apellido,
+			boolean activo) {
+		Deportista d = Deportista.crear(escuelaId, nombre, apellido, dni, null, null, null, null, null, null, null, null,
+				null, null);
+		ReflectionTestUtils.setField(d, "id", id);
+		ReflectionTestUtils.setField(d, "activo", activo);
+		return d;
 	}
 
 	public static Usuario usuario(UUID id, UUID escuelaId, UUID familiaId, Rol rol, String email, String hash,

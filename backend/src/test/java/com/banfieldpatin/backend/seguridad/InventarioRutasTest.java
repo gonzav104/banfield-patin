@@ -42,7 +42,12 @@ class InventarioRutasTest {
 			"POST /api/admin/familias/{id}/desactivar",
 			// Tutores (slice 3): alta bajo la familia y reemplazo completo; sin DELETE ni PATCH.
 			"POST /api/admin/familias/{familiaId}/tutores",
-			"PUT /api/admin/tutores/{id}");
+			"PUT /api/admin/tutores/{id}",
+			// Deportistas (slice 4): alta, reemplazo completo y cambio de estado; sin DELETE ni PATCH.
+			"POST /api/admin/deportistas",
+			"PUT /api/admin/deportistas/{id}",
+			"POST /api/admin/deportistas/{id}/activar",
+			"POST /api/admin/deportistas/{id}/desactivar");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -105,14 +110,17 @@ class InventarioRutasTest {
 				.containsExactly("POST /api/admin/usuarios/{id}/mfa/reiniciar");
 		assertThat(mutantes).noneMatch(r -> r.contains("/administradores") || r.contains("/admins")
 				|| r.contains("/bootstrap"));
-		// Bajo /api/admin se emiten y revocan invitaciones, se reinicia el MFA de otro ADMIN y se gestionan familias
-		// y tutores (lista ampliada A PROPOSITO en los slices 2 y 3; cada slice siguiente la amplia de forma consciente).
+		// Bajo /api/admin se emiten y revocan invitaciones, se reinicia el MFA de otro ADMIN y se gestionan familias,
+		// tutores y deportistas (lista ampliada A PROPOSITO en los slices 2, 3 y 4; cada slice siguiente la amplia de forma
+		// consciente).
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/"))).containsExactlyInAnyOrder(
 				"POST /api/admin/invitaciones", "POST /api/admin/invitaciones/{id}/revocar",
 				"POST /api/admin/usuarios/{id}/mfa/reiniciar",
 				"POST /api/admin/familias", "PUT /api/admin/familias/{id}",
 				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar",
-				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}");
+				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
+				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
+				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
 	}
 
 	@Test
@@ -134,6 +142,20 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
 				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}");
+		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
+	}
+
+	@Test
+	void losDeportistasSoloSeCreanReemplazanYCambianDeEstadoSinBorradoNiPatch() throws Exception {
+		Set<String> mutantes = rutas(true);
+
+		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/deportistas"))).containsExactlyInAnyOrder(
+				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
+				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
+		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas"))).containsExactlyInAnyOrder(
+				"GET /api/admin/deportistas", "POST /api/admin/deportistas", "GET /api/admin/deportistas/{id}",
+				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
+				"POST /api/admin/deportistas/{id}/desactivar");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
