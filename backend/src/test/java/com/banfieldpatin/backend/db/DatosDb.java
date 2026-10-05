@@ -161,6 +161,35 @@ final class DatosDb {
 				.query(UUID.class).single();
 	}
 
+	void desactivarDeportista(UUID deportistaId) {
+		cambiarEstado("deportista", "activo", deportistaId, false);
+	}
+
+	void reactivarDeportista(UUID deportistaId) {
+		cambiarEstado("deportista", "activo", deportistaId, true);
+	}
+
+	void desactivarTutor(UUID tutorId) {
+		cambiarEstado("tutor", "activo", tutorId, false);
+	}
+
+	/**
+	 * Cambia el estado de un vinculo con SQL directo; {@code autorizadoPor} solo se usa al pasar a ACTIVO (V4 lo exige) y
+	 * deja es_principal en false para no chocar con uq_fd_principal_activo.
+	 */
+	void estadoVinculo(UUID vinculoId, String estado, UUID autorizadoPor) {
+		int filas = jdbc.sql("""
+				UPDATE gestion_patin.familia_deportista
+				SET estado = :estado, es_principal = false,
+				    autorizado_por = CASE WHEN :estado = 'ACTIVO' THEN CAST(:ap AS uuid) ELSE autorizado_por END,
+				    autorizado_en = CASE WHEN :estado = 'ACTIVO' THEN now() ELSE autorizado_en END
+				WHERE id = :id
+				""").param("estado", estado).param("ap", autorizadoPor).param("id", vinculoId).update();
+		if (filas != 1) {
+			throw new IllegalStateException("Se esperaba cambiar 1 vinculo y cambio " + filas);
+		}
+	}
+
 	/** Tutor activo de la familia, sin usuario asociado. */
 	UUID tutor(UUID escuelaId, UUID familiaId, String nombre, String apellido) {
 		return jdbc.sql("""
