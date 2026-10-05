@@ -199,3 +199,32 @@ en 32 rutas). RNF-14 pide documentación OpenAPI coherente con los endpoints y u
 - **`deportista_temporada` fuera de alcance:** el cambio mapea solo los datos permanentes del deportista; licencias, temporadas y datos de temporada llegan después.
 - **RF-06 (completitud de los datos del deportista) diferido:** el alta exige solo DNI, nombre y apellido; la validación de completitud para federar queda para el módulo de exportación.
 - **Sin documentos, aptos físicos, competencias ni frontend** en este cambio.
+
+## 10. Smoke manual contra Supabase
+
+`backend/scripts/smoke-familias.sh` recorre este módulo contra una aplicación **ya levantada** usando la API real (curl + python3). Si `BASE_URL` apunta a una app
+conectada a Supabase, **escribe datos reales** en esa base. Lo ejecuta una persona; no forma parte del build.
+
+- **Requisitos:** la aplicación corriendo (por ejemplo `./mvnw spring-boot:run` desde `backend/` con el `.env` cargado), `curl`, `python3` y un ADMIN activo con su app
+  autenticadora (TOTP). Usar **una sola instancia** de la aplicación contra el *session pooler* de Supabase (límite de 15 clientes, `EMAXCONNSESSION`): una segunda instancia
+  o un IDE con la app abierta pueden agotarlo, y `psql` para la limpieza también ocupa un cupo.
+- **Cómo correrlo:** desde la raíz del repo, `BASE_URL=http://localhost:8080 backend/scripts/smoke-familias.sh`. Pide por teclado el email y la password del ADMIN (la
+  password y el código no se ven al escribir) y **un solo código TOTP**, justo después del login (paso 1). Si la cuenta todavía no tiene MFA, el script avisa, pide Enter y
+  la **enrola**: es un cambio real de la cuenta, y en ese único caso imprime el secreto TOTP una vez para cargarlo en la app autenticadora; el código pedido confirma el
+  enrolamiento. Si ya está enrolada usa la verificación normal. No hay que esperar otro paso TOTP (solo se usa un código por corrida); si se repite el smoke de inmediato, esperar
+  a que el código de la app cambie (el servidor rechaza reutilizar uno ya usado).
+- **Pasos:** 1 login ADMIN + MFA; 2 familia; 3 tutor; 4 deportistas (más un control de DNI repetido); 5 vínculo en lote; 6 un único principal ACTIVO; 7 cambio explícito
+  del principal; 8 invitación; 9 registro de FAMILIA; 10 login de FAMILIA; 11 `mi-familia`; 12 listado y detalle del portal; 13 aislamiento (mismo `404` para un UUID inexistente y
+  uno ajeno, `403` en rutas de ADMIN, `405` al escribir); 14 deportista inactivo (la FAMILIA lo sigue viendo con `activo=false`) y vínculo revocado (deja de verlo); 14b familia
+  inactiva (`401` y, al reactivarla, la misma sesión vuelve a funcionar); 15 logout. Cada verificación muestra `[OK]` o `[FALLA]` con el estado HTTP y el `codigo`; en la primera falla
+  termina con `SMOKE FALLO EN EL PASO N: ...` (exit 1) y, si todo sale bien, con `SMOKE OK` (exit 0).
+- **Qué crea:** 2 familias, 1 tutor, 3 deportistas, vínculos, 1 invitación (usada) y 1 usuario FAMILIA, todos con el prefijo `SMOKE_<run id>` (el usuario, `smoke_<run id>@example.test`;
+  los DNI son numéricos y no admiten prefijo). No existe ninguna ruta para borrar. Al terminar (también si falla, cuando ya escribió) imprime el run id y los comandos de limpieza.
+- **Limpieza:** `psql "$URL_POSTGRES" -X -v run_id=<run id> -f backend/scripts/limpiar-smoke-familias.sql` es solo vista previa (no escribe nada); con `-v aplicar=si` aplica la
+  limpieza suave en una transacción: revoca los vínculos, desactiva deportistas, familias y el usuario FAMILIA del smoke y revoca invitaciones pendientes. Es idempotente y aborta si
+  alguna fila tocada no cumple el prefijo o si coinciden demasiadas filas. `$URL_POSTGRES` es la URL de `psql`, no la JDBC.
+- **Qué queda tras la limpieza suave:** todas las filas, inactivas o revocadas (nunca se borra un deportista), el tutor, las invitaciones y **todas las filas de `auditoria`** como
+  evidencia. El script contiene, comentada, una sección de **borrado físico** (destructiva: borra también las filas de auditoría del usuario FAMILIA del smoke, porque `auditoria` tiene una
+  clave foránea compuesta hacia `usuario`); tras habilitarla solo quedan las filas de auditoría del ADMIN, que apuntan a lo ya borrado.
+- **Qué no imprime ni guarda:** DNI y CUIL, passwords (la del ADMIN no se guarda; la de FAMILIA se genera al azar en memoria), códigos TOTP, secretos MFA (salvo el del primer
+  enrolamiento), cookies, token CSRF ni token de invitación. Las cookies viven en archivos temporales con permiso 600 que se borran al terminar.
