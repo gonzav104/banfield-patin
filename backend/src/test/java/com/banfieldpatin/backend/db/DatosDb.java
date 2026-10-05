@@ -45,7 +45,51 @@ final class DatosDb {
 	}
 
 	UUID usuarioFamilia(UUID escuelaId, UUID familiaId, String email) {
-		return usuario(escuelaId, familiaId, email, "FAMILIA", true);
+		return usuarioFamilia(escuelaId, familiaId, email, true);
+	}
+
+	UUID usuarioFamilia(UUID escuelaId, UUID familiaId, String email, boolean activo) {
+		return usuario(escuelaId, familiaId, email, "FAMILIA", activo);
+	}
+
+	// ---------- activacion / desactivacion con SQL directo (escenarios de sesion vigente, REQ-XC-09) ----------
+
+	void desactivarUsuario(UUID usuarioId) {
+		cambiarEstado("usuario", "activo", usuarioId, false);
+	}
+
+	void reactivarUsuario(UUID usuarioId) {
+		cambiarEstado("usuario", "activo", usuarioId, true);
+	}
+
+	void desactivarEscuela(UUID escuelaId) {
+		cambiarEstado("escuela", "activa", escuelaId, false);
+	}
+
+	void reactivarEscuela(UUID escuelaId) {
+		cambiarEstado("escuela", "activa", escuelaId, true);
+	}
+
+	void desactivarFamilia(UUID familiaId) {
+		cambiarEstado("familia", "activa", familiaId, false);
+	}
+
+	void reactivarFamilia(UUID familiaId) {
+		cambiarEstado("familia", "activa", familiaId, true);
+	}
+
+	/** Borra la fila del usuario (solo sirve si nada la referencia, por ejemplo sin filas de auditoria). */
+	void borrarUsuario(UUID usuarioId) {
+		jdbc.sql("DELETE FROM gestion_patin.usuario WHERE id = :id").param("id", usuarioId).update();
+	}
+
+	/** Tabla y columna son literales de esta clase, nunca entrada externa. */
+	private void cambiarEstado(String tabla, String columna, UUID id, boolean valor) {
+		int filas = jdbc.sql("UPDATE gestion_patin." + tabla + " SET " + columna + " = :v WHERE id = :id")
+				.param("v", valor).param("id", id).update();
+		if (filas != 1) {
+			throw new IllegalStateException("Se esperaba cambiar 1 fila de " + tabla + " y cambio " + filas);
+		}
 	}
 
 	private UUID usuario(UUID escuelaId, UUID familiaId, String email, String rol, boolean activo) {
