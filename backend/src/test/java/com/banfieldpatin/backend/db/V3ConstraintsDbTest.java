@@ -153,6 +153,7 @@ class V3ConstraintsDbTest extends BaseDbTest {
 				SELECT version FROM gestion_patin.flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank
 				""").query(String.class).list();
 
-		assertThat(versiones).containsExactly("1", "2", "3");
+		// Prefijo (no igualdad): las migraciones posteriores (V4 en adelante) tienen su propia prueba de conjunto.
+		assertThat(versiones).startsWith("1", "2", "3");
 	}
 }
