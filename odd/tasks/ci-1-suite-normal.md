@@ -30,6 +30,13 @@ Rama: `feat/ci-1-suite-normal`, creada desde `main` con los cambios de Fase 0 pr
 - **S10** — "Corrección adicional: verificá el código de error de concurrencia documentado en `docs/TEMPORADAS.md`. Aparece `CONCURSO_CONCURRENCIA`, que podría ser un error tipográfico frente al código existente `CONFLICTO_CONCURRENCIA`. Corregilo únicamente si confirmás la inconsistencia."
   - Check: búsqueda en repo de ambos literales; si `CONCURSO_CONCURRENCIA` no existe, no se toca nada.
 - **S11** — "Al terminar, informá los archivos modificados, las pruebas ejecutadas, el estado de ODD/Engram, los commits realizados y qué falta para verificar GitHub Actions en remoto."
+- **S12** — "Autorizo publicar la rama `feat/ci-1-suite-normal` en GitHub y abrir un Pull Request hacia `main`."
+  - **S12.1** — "No hacer merge todavía."
+  - **S12.2** — "No modificar código ni migraciones."
+  - **S12.3** — "Verificar la ejecución real del workflow en GitHub Actions."
+  - **S12.4** — "Confirmar que la suite normal termina satisfactoriamente."
+  - **S12.5** — "Si falla, diagnosticar la causa antes de corregir y mantener los cambios dentro del alcance de CI-1."
+  - **S12.6** — "Registrar la evidencia de ejecución en el artefacto ODD y Engram."
 
 ## Tasks
 
@@ -46,6 +53,10 @@ Rama: `feat/ci-1-suite-normal`, creada desde `main` con los cambios de Fase 0 pr
 | T9 | S2 | Commit de Fase 0 | inline | hecho | `docs(fase-0): consolidar decisiones, roadmap y reglas de temporadas` |
 | T10 | S3 | Commit de CI-1 | inline | hecho | `ci(backend): agregar workflow de integración continua` |
 | T11 | S11 | Informe final con pruebas, ODD/Engram y pendiente remoto | inline | hecho | respuesta al usuario |
+| T12 | S12 | Publicar la rama y abrir el PR hacia `main` | inline | hecho | PR [#1](https://github.com/gonzav104/banfield-patin/pull/1), sin merge |
+| T13 | S12.3, S12.4 | Verificar la ejecución real en GitHub Actions | inline | hecho | run `41177567411`: 766 tests, 0 fallos, BUILD SUCCESS, 49 s |
+| T14 | S12.5 | Corregir las deprecaciones que el run expuso | inline | hecho | `actions/checkout@v4`→`v5` y `actions/setup-java@v4`→`v5`; run de verificación verde |
+| T15 | S12.6 | Registrar la evidencia en el artefacto ODD y en Engram | inline | hecho | este `L8` + upsert del topic `odd/ci-1-suite-normal/tasks` |
 
 ## Log
 
@@ -95,7 +106,7 @@ Unidad chica y con resultado observable (un workflow de 20 líneas + commits). S
 ### L4 — Decisión de diseño del workflow
 
 - Un solo job `suite-normal` en `ubuntu-latest`.
-- `actions/checkout@v4` + `actions/setup-java@v4` (temurin 21, `cache: maven`), que usa el `pom.xml` de `backend/` como clave de caché.
+- `actions/checkout@v4` + `actions/setup-java@v4` (temurin 21, `cache: maven`), que usa el `pom.xml` de `backend/` como clave de caché. *(Actualizadas a `@v5` en L8 por deprecación.)*
 - `defaults.run.working-directory: backend` para que `./mvnw` resuelva el wrapper.
 - `permissions: contents: read` explícito.
 - `timeout-minutes` acotado para no colgar runners.
@@ -113,3 +124,44 @@ Unidad chica y con resultado observable (un workflow de 20 líneas + commits). S
 ### L6 — Pendiente remoto
 
 Verificar el workflow en verde requiere `push` de `feat/ci-1-suite-normal` y un PR: no autorizado en esta unidad. `ci-2-suite-db` (Testcontainers PostgreSQL 17) queda para la unidad siguiente.
+
+### L7 — Autorización de publicación (verbatim)
+
+> La implementación local de `ci-1-suite-normal` está aprobada.
+>
+> Autorizo publicar la rama `feat/ci-1-suite-normal` en GitHub y abrir un Pull Request hacia `main`.
+>
+> Condiciones:
+> - No hacer merge todavía.
+> - No modificar código ni migraciones.
+> - Verificar la ejecución real del workflow en GitHub Actions.
+> - Confirmar que la suite normal termina satisfactoriamente.
+> - Si falla, diagnosticar la causa antes de corregir y mantener los cambios dentro del alcance de CI-1.
+> - Registrar la evidencia de ejecución en el artefacto ODD y Engram.
+>
+> Al finalizar, informar URL del PR, resultado del workflow y si la unidad puede considerarse validada remotamente.
+
+### L8 — Evidencia remota
+
+Rama publicada con `git push -u origin feat/ci-1-suite-normal` y PR abierto contra `main`: **https://github.com/gonzav104/banfield-patin/pull/1** (sin merge).
+
+| Run | Evento | Workflow | Resultado | Duración |
+| --- | --- | --- | --- | --- |
+| `41177417313` | `pull_request` | `@v4` | ✅ success | 57 s |
+| `41177567411` | `pull_request` | `@v5` | ✅ success | 49 s |
+
+Salida del run `41177567411` (última versión del workflow):
+
+```
+[INFO] Tests run: 766, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  37.302 s
+```
+
+El conteo remoto coincide exactamente con el local (766). Sin secretos configurados en el repositorio; el job no usó credenciales ni Supabase.
+
+**Diagnóstico del primer run (no fue un fallo, fue deuda):** GitHub emitió dos anotaciones de deprecación sobre `actions/checkout@v4` (Node.js 20 forzado a 24) y `actions/setup-java@v4` ("deprecated and will no longer receive updates. Please migrate to actions/setup-java@v5"). Se verificaron los inputs de v5 (`distribution`, `java-version`, `cache`, `cache-dependency-path` se mantienen), se actualizaron ambas acciones y se re-ejecutó: verde y sin las dos anotaciones. Queda solo el aviso informativo de migración de `ubuntu-latest` a Ubuntu 26.
+
+**Alcance respetado:** los commits remotos solo tocan `.github/workflows/backend.yml`, `odd/tasks/ci-1-suite-normal.md` y el modo de `backend/mvnw`. Sin cambios en `backend/src`, `backend/pom.xml` ni migraciones.
+
+**Coincidencia a vigilar:** `concurrency` agrupa por `workflow-ref`, pero los eventos `push` y `pull_request` del mismo commit corrieron en paralelo en vez de cancelarse. No afecta el resultado; si molesta, `ci-2` puede agrupar por `github.event_name` o quitar `pull_request` para ramas del mismo repo.
