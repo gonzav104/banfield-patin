@@ -26,7 +26,7 @@ Rama: `feat/ci-2-suite-db`, creada desde `main` (`dacbdbe`, PR #1 fusionado). En
 | T3 | S4.3 | Ajustar `concurrency` por `github.event_name` | inline | hecho | grupo `backend-<workflow>-<event_name>-<ref>` |
 | T4 | S5 | Validar YAML | inline | hecho | `yaml.safe_load` OK: jobs `suite-normal`, `suite-db`; `on: push, pull_request` |
 | T5 | S4 | Commit convencional local | inline | hecho | commit local en `feat/ci-2-suite-db` |
-| T6 | S5 | Publicar, abrir PR y verificar el job en Actions | — | bloqueado | requiere autorización de push/PR |
+| T6 | S5 | Publicar, abrir PR y verificar el job en Actions | inline | hecho | PR [#2](https://github.com/gonzav104/banfield-patin/pull/2); runs `41235342551` (push) y `41235346678` (pull_request): ambos jobs verdes (ver L4) |
 
 ## Log
 
@@ -53,3 +53,21 @@ Rama: `feat/ci-2-suite-db`, creada desde `main` (`dacbdbe`, PR #1 fusionado). En
 - Riesgo del ROADMAP: la imagen se descarga en cada corrida; se acepta el costo inicial.
 
 Risk: none previsto (solo workflow nuevo; no altera `suite-normal` ni contratos).
+
+### L4 — Evidencia remota
+
+Rama publicada con `git push -u origin feat/ci-2-suite-db` y PR abierto contra `main`: **https://github.com/gonzav104/banfield-patin/pull/2** (sin merge). Commit verificado: `aaa7de3`, basado en `main` = `dacbdbe` (PR #1 fusionado).
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build | Tiempo Maven |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `41235342551` | `push` | Suite normal | 766 | 0 | 0 | 0 | SUCCESS | 33.9 s |
+| `41235342551` | `push` | Suite db (PostgreSQL 17) | 324 | 0 | 0 | 0 | SUCCESS | 51.1 s |
+| `41235346678` | `pull_request` | Suite normal | 766 | 0 | 0 | 0 | SUCCESS | 39.2 s |
+| `41235346678` | `pull_request` | Suite db (PostgreSQL 17) | 324 | 0 | 0 | 0 | SUCCESS | 65 s |
+
+Los 766 tests de la suite normal coinciden con CI-1. Testcontainers descargó `testcontainers/ryuk:0.14.0` y `postgres:17-alpine` en cada job; el costo de la descarga quedó dentro de ~1 min. Sin secretos ni Supabase.
+
+Riesgos pendientes (no bloquean; sugerencias de la revisión RDD aprobada):
+- `push` y `pull_request` corren ambos en una rama con PR (duplica la carga de Docker).
+- `suite-db` no sube los reportes surefire si falla.
+- Aún sin `ci-3-proteccion`: los jobs no son obligatorios en `main`.
