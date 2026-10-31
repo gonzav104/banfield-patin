@@ -147,15 +147,18 @@ Rama publicada con `git push -u origin feat/ci-1-suite-normal` y PR abierto cont
 
 | Run | Evento | Workflow | Resultado | Duración |
 | --- | --- | --- | --- | --- |
-| `41177417313` | `pull_request` | `@v4` | ✅ success | 57 s |
-| `41177567411` | `pull_request` | `@v5` | ✅ success | 49 s |
+| `41177417313` | `pull_request` (commit `54090a8`) | `@v4` | ✅ success | 57 s |
+| `41177567411` | `pull_request` (commit `5e045c1`) | `@v5` | ✅ success | 49 s |
+| `41177681336` | `pull_request` (commit `831e4cb`) | `@v5` | ✅ success | 42 s |
 
-Salida del run `41177567411` (última versión del workflow):
+Los tres runs son de `pull_request`; GitHub también ejecutó el evento `push` de cada uno con el mismo resultado. Los commits posteriores a `831e4cb` solo actualizan este documento: su ejecución cubre la misma suite sin cambios de código.
+
+Salida del run `41177681336` (última versión del workflow):
 
 ```
 [INFO] Tests run: 766, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
-[INFO] Total time:  37.302 s
+[INFO] Total time:  30.698 s
 ```
 
 El conteo remoto coincide exactamente con el local (766). Sin secretos configurados en el repositorio; el job no usó credenciales ni Supabase.
@@ -164,4 +167,4 @@ El conteo remoto coincide exactamente con el local (766). Sin secretos configura
 
 **Alcance respetado:** los commits remotos solo tocan `.github/workflows/backend.yml`, `odd/tasks/ci-1-suite-normal.md` y el modo de `backend/mvnw`. Sin cambios en `backend/src`, `backend/pom.xml` ni migraciones.
 
-**Coincidencia a vigilar:** `concurrency` agrupa por `workflow-ref`, pero los eventos `push` y `pull_request` del mismo commit corrieron en paralelo en vez de cancelarse. No afecta el resultado; si molesta, `ci-2` puede agrupar por `github.event_name` o quitar `pull_request` para ramas del mismo repo.
+**Observación:** el primer run tardó 57 s con caché Maven fría; los siguientes, 49 s y 42 s con caché caliente. `concurrency` agrupa por `workflow-ref` y los eventos `push` y `pull_request` del mismo commit corrieron en paralelo en vez de cancelarse; no afecta el resultado, pero `ci-2` puede agrupar por `github.event_name`.
