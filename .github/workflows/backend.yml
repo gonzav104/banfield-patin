@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: backend-${{ github.workflow }}-${{ github.ref }}
+  group: backend-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,3 +33,26 @@ jobs:
 
       - name: Ejecutar suite
         run: ./mvnw -B clean verify
+
+  suite-db:
+    name: Suite db (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      # Testcontainers levanta postgres:17-alpine con el Docker del runner; sin Supabase ni secretos.
+      - name: Ejecutar suite db
+        run: ./mvnw -B verify -Pdb-tests
