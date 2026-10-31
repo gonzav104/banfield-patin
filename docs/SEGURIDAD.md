@@ -201,8 +201,9 @@ responsable la consume en `POST /api/auth/registro/invitacion`.
   en el MVP.
 - Punto de extensión `VinculacionPorInvitacion` (sin efecto por defecto) para el vínculo con deportistas de RF-04; este cambio no
   escribe `familia_deportista` ni acepta `deportistaId`.
-- Las migraciones `V1` y `V2` están aplicadas y son inmutables (cualquier cambio posterior va en una migración nueva); un test compara el SHA-256
-  de ambas. `V3__crear_usuario_mfa.sql` (secreto TOTP cifrado, sección 9) es aditiva.
+- Las migraciones `V1`–`V4` forman la secuencia vigente y no se editan una vez aplicadas; cualquier cambio posterior va en una migración nueva.
+  Un test compara el SHA-256 de `V1` y `V2`. `V3__crear_usuario_mfa.sql` (secreto TOTP cifrado, sección 9) y
+  `V4__restricciones_familia_deportista.sql` (restricciones de vínculo familia-deportista) son aditivas; `V4` quedó aplicada en Supabase el 2026-10-05.
 
 ## 8. Bootstrap del primer ADMIN
 
@@ -349,14 +350,14 @@ contiene únicamente valores ficticios.
   (`excludedGroups=db`) y solo corren con el perfil Maven `db-tests`:
 
   ```bash
-  ./mvnw verify -Pdb-tests      # levanta el contenedor, aplica Flyway V1+V2+V3 y lo elimina al terminar
+  ./mvnw verify -Pdb-tests      # levanta el contenedor, aplica Flyway V1–V4 y lo elimina al terminar
   ```
 
   No se necesita configurar variables de entorno ni crear ninguna base: el contenedor es único por ejecución y lo comparten todas
   las pruebas `db`.
 - Salvaguardas: aunque la base es un contenedor, las pruebas `db` rechazan cualquier host que no sea `localhost`, `127.0.0.1` o
   `::1` (por ejemplo, un `DOCKER_HOST` remoto) y cualquier base cuyo nombre no contenga `test`. **Nunca** se ejecutan contra
-  Supabase ni contra una base compartida. Cubren: Flyway V1+V2+V3, `ddl-auto=validate` de las entidades, restricciones de V2 y V3,
+  Supabase ni contra una base compartida. Cubren: Flyway V1–V4, `ddl-auto=validate` de las entidades, restricciones de V2, V3 y V4,
   consultas JPQL, consumo atómico concurrente de invitaciones y el bootstrap del primer ADMIN (la auditoría exige que el usuario ya
   exista físicamente: `fk_auditoria_usuario_misma_escuela`, por eso el alta usa `saveAndFlush` antes de auditar),
   el repositorio y el servicio de MFA (upsert, `UPDATE` condicional concurrente, auditoría real) y el flujo completo de ADMIN (login pendiente → enrolar →

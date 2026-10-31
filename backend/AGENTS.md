@@ -16,7 +16,7 @@
 - JUnit 5.
 - Testcontainers para integración cuando corresponda.
 
-Agregar OpenAPI/Swagger cuando se implemente la API pública del backend.
+La especificación OpenAPI se publica con springdoc en `/v3/api-docs` (solo lectura, RNF-14): toda ruta nueva debe actualizarla en la misma entrega.
 
 ## Arquitectura
 
@@ -169,6 +169,7 @@ Tipos iniciales esperados:
 - DNI tutor dorso;
 - apto físico;
 - solicitud de licencia;
+- certificado WADA;
 - otros documentos federativos.
 
 Validar:
@@ -180,9 +181,10 @@ Validar:
 - vínculo familiar;
 - estado.
 
-Estados posibles:
+Estados posibles (alineados con `V1` y RF-10):
 
 ```text
+PENDIENTE
 CARGADO
 APROBADO
 OBSERVADO
@@ -204,13 +206,14 @@ Debe almacenar:
 - estado;
 - fecha de presentación si corresponde.
 
-Estados:
+Estados (alineados con `V1` y RF-11):
 
 ```text
 PENDIENTE
 CARGADO
 APROBADO
 OBSERVADO
+LISTO_PARA_PRESENTAR
 PRESENTADO
 ```
 
@@ -230,6 +233,22 @@ OBSERVADO
 
 La aplicación no debe marcar automáticamente a un atleta como empadronado sin una confirmación administrativa.
 
+## Licencia
+
+Estados (alineados con `V1`):
+
+```text
+PENDIENTE
+SOLICITADA
+APROBADA
+OBSERVADA
+VENCIDA
+```
+
+Tipos admitidos: `REGIONAL`, `FEDERATIVA`, `PROMOCIONAL`, `NACIONAL`.
+
+Una licencia por deportista y temporada. El historial de cambios es de dominio, no solo de auditoría: usuario, fecha, estado y observación.
+
 ## Competencias
 
 Tipos iniciales:
@@ -239,17 +258,29 @@ APM
 NACIONAL
 ```
 
-Inscripción:
+Estados de la competencia (alineados con `V1`):
+
+```text
+BORRADOR
+ABIERTA
+CERRADA
+FINALIZADA
+CANCELADA
+```
+
+Inscripción (alineada con `V1` y RF-16):
 
 ```text
 SIN_RESPONDER
-CONFIRMADO
+PARTICIPA
 NO_PARTICIPA
 ```
 
+El ADMIN convoca explícitamente: la convocatoria crea la fila de inscripción en `SIN_RESPONDER`. La acción "convocar todos los activos" también materializa las filas.
+
 La fecha límite debe validarse en backend.
 
-Una familia sólo responde por sus deportistas.
+Una familia sólo responde por sus deportistas convocados.
 
 ## LBF
 
