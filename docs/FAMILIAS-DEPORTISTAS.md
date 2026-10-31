@@ -10,7 +10,7 @@ datos de otras personas. La estrategia de autenticación está en [SEGURIDAD.md]
   `usuarioId`, `activo`, `estado`, `esPrincipal` y `autorizadoPor` enviados en un cuerpo se rechazan con `400 SOLICITUD_INVALIDA`, y en la query string se ignoran.
   Un id de otra escuela es indistinguible de uno inexistente (`404`).
 - **Rutas `/api/admin/**`:** solo `ADMIN` con sesión completa (MFA). Toda ruta que escribe exige CSRF (`403 CSRF_INVALIDO` si falta).
-- **Rutas `/api/familia/**`:** solo `FAMILIA`, **solo lectura**. No existe ninguna ruta que escriba; cualquier otro método responde `405 METODO_NO_PERMITIDO`
+- **Rutas `/api/familia/**`:** solo `FAMILIA`. Hoy **solo lectura**: no existe ninguna ruta que escriba y cualquier otro método responde `405 METODO_NO_PERMITIDO`. La decisión D1 (`docs/DECISIONES.md`) habilita escrituras acotadas por workflow (documentos/aptos propios, respuesta a competencias, números de rifa) en las fases 3, 6 y 8; hasta que esas rutas existan, este invariante sigue vigente.
   (con CSRF) o `403 CSRF_INVALIDO` (sin CSRF).
 - **Errores transversales de toda ruta autenticada:** `401 NO_AUTENTICADO` (sin sesión, o sesión no vigente: la cookie se borra), `403 ACCESO_DENEGADO`
   (rol equivocado), `503 SERVICIO_NO_DISPONIBLE` (la base no responde al revalidar; la cookie no se toca), `400 SOLICITUD_INVALIDA` (JSON ilegible,
@@ -27,7 +27,7 @@ datos de otras personas. La estrategia de autenticación está en [SEGURIDAD.md]
 
 La prueba `RutasDocumentadasTest` exige que cada ruta de los controladores de `familias` (salvo `familias.invitaciones`, documentada en
 SEGURIDAD.md, sección 7) y `deportistas` figure en esta tabla, y que la tabla no contenga rutas inexistentes. Desde RNF-14 (sección 8) la fuente de verdad del contrato
-es la especificación OpenAPI generada; esta tabla es su resumen legible y `OpenApiRutasTest` comprueba que sus 24 rutas estén en la especificación.
+es la especificación OpenAPI generada; esta tabla es su resumen legible y `OpenApiRutasTest` comprueba que las rutas de esta tabla estén en la especificación generada.
 
 | Ruta | Rol | Solicitud | Respuesta | Errores |
 |---|---|---|---|---|
