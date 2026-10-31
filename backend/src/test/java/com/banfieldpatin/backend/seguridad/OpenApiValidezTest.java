@@ -32,7 +32,7 @@ class OpenApiValidezTest extends BaseOpenApiWebMvc {
 		JsonNode documento = arbol();
 
 		assertThat(documento.path("openapi").asString()).startsWith("3.1");
-		assertThat(documento.path("paths").size()).isEqualTo(32);
+		assertThat(documento.path("paths").size()).isEqualTo(35);
 		assertThat(documento.path("components").path("schemas").size()).isGreaterThan(30);
 		assertThat(ValidadorOpenApi.problemas(documento)).isEmpty();
 	}
@@ -49,7 +49,7 @@ class OpenApiValidezTest extends BaseOpenApiWebMvc {
 		arbol().path("paths").properties().forEach(ruta -> ruta.getValue().properties()
 				.forEach(op -> ids.add(op.getValue().path("operationId").asString())));
 
-		assertThat(ids).hasSize(39).doesNotHaveDuplicates().allMatch(id -> id.matches("[A-Za-z]+_[A-Za-z]+"));
+		assertThat(ids).hasSize(43).doesNotHaveDuplicates().allMatch(id -> id.matches("[A-Za-z]+_[A-Za-z]+"));
 	}
 
 	// ---------- el validador detecta cada tipo de defecto (controles negativos) ----------

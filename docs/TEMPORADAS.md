@@ -58,16 +58,19 @@ Estrategia recomendada:
 
 ```text
 BEGIN
-  SELECT id FROM escuela WHERE id = :escuelaId FOR UPDATE;
+  SELECT id FROM escuela WHERE id = :escuelaId FOR NO KEY UPDATE;
   UPDATE temporada SET activa = false
     WHERE escuela_id = :escuelaId AND activa = true AND id <> :temporadaId;
   UPDATE temporada SET activa = true WHERE id = :temporadaId AND escuela_id = :escuelaId;
 COMMIT
 ```
 
-- El `FOR UPDATE` sobre la fila de escuela serializa las activaciones de esa escuela.
+- El `FOR NO KEY UPDATE` sobre la fila de escuela serializa las activaciones de esa escuela y de ninguna otra. Se eligió sobre `FOR UPDATE` porque PostgreSQL toma `FOR KEY SHARE` sobre esa fila al comprobar cualquier clave foránea hacia `escuela` (familias, auditoría, temporadas, ...): `FOR UPDATE` choca con eso y frenaría altas de la misma escuela; `FOR NO KEY UPDATE` no. Está probado contra PostgreSQL real, con un control que demuestra que `FOR UPDATE` sí las frenaría.
+- El estado se vuelve a leer **después** de tomar el bloqueo: otra activación pudo confirmarse mientras se esperaba. Si ya está activa, es el caso idempotente (`200`, sin escrituras ni auditoría).
+- La espera del bloqueo está acotada (`banfield.temporadas.lock-timeout`, 3 s por defecto, entre 100 ms y 30 s); si vence, `409 CONFLICTO_CONCURRENCIA` sin escribir ni auditar.
+- Se desactiva la anterior y se hace `flush` **antes** de activar la nueva: el índice parcial único no es diferible.
 - El índice parcial es la **red de seguridad**: si algo se escapa, la segunda escritura falla con violación de unicidad.
-- Esa violación se traduce a `409 CONFLICTO_CONCURRENCIA`, código ya usado por el módulo de familias.
+- Esa violación se traduce a `409 CONFLICTO_CONCURRENCIA`, código ya usado por el módulo de vínculos.
 - No usar `SERIALIZABLE` global: innecesario para este caso y encarece el resto.
 
 Alternativa más simple: confiar solo en el índice parcial y reintentar. Se descarta porque el reintento no es determinista y deja al usuario sin saber cuál quedó activa.
@@ -110,3 +113,19 @@ No incluye:
 - Importación masiva.
 - Frontend.
 - Migración nueva (no hace falta).
+
+## 7. Contrato HTTP del módulo (`temp-1-temporada`)
+
+Solo ADMIN (`/api/admin/**`); la escuela y el actor salen del JWT, nunca del cliente. Sin `PUT`, `DELETE` ni desactivar. La respuesta de una temporada es `{id, anio, activa}` (sin `escuelaId` ni marcas de tiempo, que asigna la base).
+
+| Ruta | Éxito | Errores propios |
+| --- | --- | --- |
+| `GET /api/admin/temporadas?page&size` | `200` página de temporadas, del año más nuevo al más viejo | — |
+| `POST /api/admin/temporadas` con `{"anio": 2027}` | `201` con `Location`; nace inactiva | `400 VALIDACION` (año nulo o fuera de 2020–2100), `400 SOLICITUD_INVALIDA` (cuerpo ilegible o con otros campos), `409 TEMPORADA_ANIO_DUPLICADO` |
+| `GET /api/admin/temporadas/{id}` | `200` | `404 TEMPORADA_NO_ENCONTRADA` (también si es de otra escuela) |
+| `POST /api/admin/temporadas/{id}/activar` | `200` con la temporada activa; idempotente | `404 TEMPORADA_NO_ENCONTRADA`, `409 CONFLICTO_CONCURRENCIA` |
+
+Transversales: `401` sin sesión, `403` para FAMILIA y `403 CSRF_INVALIDO` sin token en las escrituras. La lectura de FAMILIA llega en `temp-3`.
+
+**Auditoría** (misma transacción, solo con cambio real): `TEMPORADA_CREADA` con `{anio}` y `TEMPORADA_ACTIVADA` con `{anio, anteriorTemporadaId}` (nulo si no había activa). Activar la ya activa no audita.
+

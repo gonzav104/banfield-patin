@@ -120,6 +120,12 @@ public class OpenApiConfig {
 			entry("POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
 					ruta(200, "404 FAMILIA_NO_ENCONTRADA", "404 VINCULO_NO_ENCONTRADO", "409 FAMILIA_INACTIVA",
 							"409 VINCULO_NO_ACTIVO", "409 VINCULO_PRINCIPAL_EN_CONFLICTO", "409 CONFLICTO_CONCURRENCIA")),
+			// --- Temporadas
+			entry("GET /api/admin/temporadas", ruta(200)),
+			entry("POST /api/admin/temporadas", creada("409 TEMPORADA_ANIO_DUPLICADO")),
+			entry("GET /api/admin/temporadas/{id}", ruta(200, "404 TEMPORADA_NO_ENCONTRADA")),
+			entry("POST /api/admin/temporadas/{id}/activar",
+					ruta(200, "404 TEMPORADA_NO_ENCONTRADA", "409 CONFLICTO_CONCURRENCIA")),
 			// --- Portal de FAMILIA (solo lectura)
 			entry("GET /api/familia/mi-familia", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
 			entry("GET /api/familia/deportistas", ruta(200)),
