@@ -75,3 +75,24 @@ Rama de trabajo local: `feat/ci-3-proteccion` (desde `main` = `4c98d48`). Entreg
 - `enforce_admins` impide empujar directo a `main` incluso al propietario; si hiciera falta una excepción hay que relajar la regla desde Settings.
 - Los checks se identifican por nombre: renombrar un job en `backend.yml` dejaría el PR esperando un check inexistente hasta actualizar la regla.
 - La protección es configuración remota, no versionada en el repo.
+
+### L4 — Validación con PR real
+
+PR [#3](https://github.com/gonzav104/banfield-patin/pull/3), commit `c595260`, rama `feat/ci-3-proteccion` basada en `main` = `4c98d48`. Sin fallos artificiales.
+
+| Momento | Estado del PR |
+| --- | --- |
+| Checks `IN_PROGRESS` | `mergeable=MERGEABLE`, `mergeStateStatus=BLOCKED` |
+| Checks terminados | `mergeable=MERGEABLE`, `mergeStateStatus=CLEAN` |
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `41236265224` | `push` | Suite normal | 766 | 0 | 0 | 0 | SUCCESS |
+| `41236265224` | `push` | Suite db (PostgreSQL 17) | 324 | 0 | 0 | 0 | SUCCESS |
+| `41236270183` | `pull_request` | Suite normal | 766 | 0 | 0 | 0 | SUCCESS |
+| `41236270183` | `pull_request` | Suite db (PostgreSQL 17) | 324 | 0 | 0 | 0 | SUCCESS |
+
+El bloqueo mientras los checks estaban pendientes y la liberación al terminar confirman que ambos son obligatorios y que el PR queda habilitado para fusionar con merge commit (aún no fusionado). RDD: `assess` del commit = `passive`, `review_due=false`; no se inició revisión.
+
+No se probó el rechazo con un check fallido (no se introducen fallos artificiales).
+
