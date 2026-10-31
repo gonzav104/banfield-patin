@@ -150,8 +150,9 @@ Rama publicada con `git push -u origin feat/ci-1-suite-normal` y PR abierto cont
 | `41177417313` | `pull_request` (commit `54090a8`) | `@v4` | ✅ success | 57 s |
 | `41177567411` | `pull_request` (commit `5e045c1`) | `@v5` | ✅ success | 49 s |
 | `41177681336` | `pull_request` (commit `831e4cb`) | `@v5` | ✅ success | 42 s |
+| `41177840324` | `pull_request` (commit `92b48a1`) | `@v5` | ✅ success | 45 s |
 
-Los tres runs son de `pull_request`; GitHub también ejecutó el evento `push` de cada uno con el mismo resultado. Los commits posteriores a `831e4cb` solo actualizan este documento: su ejecución cubre la misma suite sin cambios de código.
+Todos los runs son de `pull_request`; GitHub también ejecutó el evento `push` de cada commit con el mismo resultado. Los commits posteriores solo actualizan este documento: disparan el mismo job, sin cambios de código.
 
 Salida del run `41177681336` (última versión del workflow):
 
