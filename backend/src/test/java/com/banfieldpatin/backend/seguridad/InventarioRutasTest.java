@@ -51,7 +51,9 @@ class InventarioRutasTest {
 			// Vinculos (slice 5): lote de vinculacion, revocacion y cambio explicito de principal; sin DELETE ni PATCH.
 			"POST /api/admin/familias/{familiaId}/deportistas",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
-			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
+			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
+			// Temporadas (temp-1): alta y activacion; sin PUT, DELETE ni PATCH.
+			"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -131,7 +133,8 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
-				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
+				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
 	}
 
 	@Test
@@ -185,6 +188,15 @@ class InventarioRutasTest {
 				.containsExactlyInAnyOrder("GET /api/admin/familias/{familiaId}/deportistas",
 						"GET /api/admin/deportistas/{deportistaId}/familias");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
+	}
+
+	@Test
+	void lasTemporadasSoloSeCreanYSeActivanSinReemplazoBorradoNiPatch() throws Exception {
+		assertThat(rutas(true).stream().filter(r -> r.contains("/api/admin/temporadas"))).containsExactlyInAnyOrder(
+				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
+		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/temporadas"))).containsExactlyInAnyOrder(
+				"GET /api/admin/temporadas", "POST /api/admin/temporadas", "GET /api/admin/temporadas/{id}",
+				"POST /api/admin/temporadas/{id}/activar");
 	}
 
 	@Test

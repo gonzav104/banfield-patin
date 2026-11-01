@@ -23,6 +23,7 @@ import com.banfieldpatin.backend.familias.dto.FamiliaResumen;
 import com.banfieldpatin.backend.familias.invitaciones.EstadoInvitacion;
 import com.banfieldpatin.backend.familias.invitaciones.dto.InvitacionCreadaRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
+import com.banfieldpatin.backend.temporadas.dto.TemporadaRespuesta;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.usuarios.dto.UsuarioActualRespuesta;
 
@@ -80,6 +81,14 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	}
 
 	@Test
+	void postTemporadasResponde201ConLocation() throws Exception {
+		when(temporadaAdminService.crear(any(), any(), any())).thenReturn(new TemporadaRespuesta(ID, 2027, false));
+
+		mvc.perform(conCsrf(json(post("/api/admin/temporadas"), "{\"anio\":2027}"), sesion(Rol.ADMIN)))
+				.andExpect(status().isCreated()).andExpect(header().string("Location", "/api/admin/temporadas/" + ID));
+	}
+
+	@Test
 	void postInvitacionesResponde201ConLocationYSinCache() throws Exception {
 		when(invitacionAdminService.crear(any(), any(), any())).thenReturn(new InvitacionCreadaRespuesta(ID,
 				EstadoInvitacion.PENDIENTE, "t", "e", Instant.parse("2030-01-01T00:00:00Z"), new FamiliaResumen(ID, "F"), null));
@@ -117,7 +126,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 		// Si se agrega una ruta 201/204 a la especificacion, este test obliga a probarla aqui tambien.
 		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/admin/familias",
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas", "POST /api/admin/invitaciones",
-				"POST /api/auth/registro/invitacion");
+				"POST /api/auth/registro/invitacion", "POST /api/admin/temporadas");
 		assertThat(OpenApiRutasTest.SIN_CONTENIDO).containsExactlyInAnyOrder("POST /api/auth/logout",
 				"POST /api/admin/usuarios/{id}/mfa/reiniciar");
 		assertThat(OpenApiConfig.RUTAS.entrySet().stream().filter(e -> e.getValue().exito() == 201).map(java.util.Map.Entry::getKey))

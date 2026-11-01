@@ -26,7 +26,8 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 
 	/** Rutas que responden 201 (se verifican contra los controladores en OpenApiEstadosRealesTest). */
 	static final Set<String> CREAN = Set.of("POST /api/admin/invitaciones", "POST /api/auth/registro/invitacion",
-			"POST /api/admin/familias", "POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas");
+			"POST /api/admin/familias", "POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas",
+			"POST /api/admin/temporadas");
 	/** Rutas que responden 204 sin cuerpo. */
 	static final Set<String> SIN_CONTENIDO = Set.of("POST /api/auth/logout", "POST /api/admin/usuarios/{id}/mfa/reiniciar");
 
@@ -37,7 +38,7 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 	void cadaRutaApiMapeadaApareceEnLaEspecificacionConSuMetodoYNoSobraNinguna() throws Exception {
 		Set<String> mapeadas = rutasDelMapeo();
 
-		assertThat(mapeadas).as("el contexto debe mapear las rutas de todos los controladores").hasSize(39);
+		assertThat(mapeadas).as("el contexto debe mapear las rutas de todos los controladores").hasSize(43);
 		assertThat(rutasDeLaEspecificacion(arbol())).containsExactlyInAnyOrderElementsOf(mapeadas);
 	}
 

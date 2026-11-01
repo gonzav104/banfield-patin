@@ -215,10 +215,16 @@ final class DatosDb {
 				.param("p", esPrincipal).param("ap", autorizadoPor).query(UUID.class).single();
 	}
 
+	UUID temporada(UUID escuelaId, int anio, boolean activa) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.temporada (escuela_id, anio, activa) VALUES (:e, :a, :act) RETURNING id
+				""").param("e", escuelaId).param("a", anio).param("act", activa).query(UUID.class).single();
+	}
+
 	/** Borra todo lo colgado de la escuela (en orden de dependencias); no borra la escuela. */
 	void limpiarContenido(UUID escuelaId) {
 		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "familia_deportista", "tutor",
-				"deportista", "usuario", "familia" }) {
+				"deportista", "temporada", "usuario", "familia" }) {
 			jdbc.sql("DELETE FROM gestion_patin." + tabla + " WHERE escuela_id = :e").param("e", escuelaId).update();
 		}
 	}
