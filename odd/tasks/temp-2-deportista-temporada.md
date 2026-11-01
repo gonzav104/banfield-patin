@@ -1,6 +1,6 @@
 # TEMP-2 — DeportistaTemporada: alta, edición y consulta
 
-Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
+Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **CERRADA: validada remotamente y fusionada en `main` (PR #5, merge commit `549fa65271432334594b42fe1e530744eb1da866`)**.
 Rama: `feat/temp-2-deportista-temporada` (desde `main` = `660eb28`). Entrega: `ask-on-risk`; solo commits locales de documentación autorizados hasta la aprobación; sin push, merge ni Supabase. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -210,4 +210,21 @@ Un error de compilación previo (import faltante en mi propia prueba) se corrigi
 **Engram:** sigue sin escribirse (sesiones duplicadas, ver L3); los espejos de `temp-1` y `temp-2` quedan pendientes de sincronizar y este documento es la fuente durable.
 
 Risk: none (sin migración ni cambio de contratos existentes; la concurrencia nueva se limita a un bloqueo de fila propio del módulo, cubierto por pruebas de BD y mutaciones).
+
+### L13 — Validación remota y merge
+
+**PR [#5](https://github.com/gonzav104/banfield-patin/pull/5)** (`feat/temp-2-deportista-temporada` → `main`), HEAD `aede3ef`, base `main` = `660eb28`, siete commits. Estado de merge: `BLOCKED` mientras los checks corrían; `OPEN` / `MERGEABLE` / `CLEAN` al terminar.
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `41358488760` | `push` | Suite normal | 847 | 0 | 0 | 0 | SUCCESS |
+| `41358488760` | `push` | Suite db (PostgreSQL 17) | 367 | 0 | 0 | 0 | SUCCESS |
+| `41358493254` | `pull_request` | Suite normal | 847 | 0 | 0 | 0 | SUCCESS |
+| `41358493254` | `pull_request` | Suite db (PostgreSQL 17) | 367 | 0 | 0 | 0 | SUCCESS |
+
+Los conteos remotos coinciden con los locales (847 y 367) y con lo esperado por el usuario. Sin secretos ni Supabase.
+
+**Merge:** autorizado por el usuario ("Sí, merge commit para el PR #5"); se verificó que el HEAD del PR seguía siendo `aede3ef` y se fusionó con merge commit `549fa65271432334594b42fe1e530744eb1da866` el 2026-11-01 22:47Z. La evaluación nativa RDD del rango dio riesgo medio y `review_due: false` (`under_budget`); no se inició revisión y no se escaló ningún ítem de alto riesgo (`Risk: none`).
+
+**Engram:** el guardado con `project` explícito funcionó para el PR #5 (observación 585) y el merge (586), ambos con una revisión de conflictos pendiente contra memorias históricas que no se resolvió. Siguen sin sincronizarse los espejos `odd/temp-1-temporada/tasks` y `odd/temp-2-deportista-temporada/tasks`; este documento es la fuente durable.
 
