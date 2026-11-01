@@ -122,20 +122,34 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	// ---------- portal de FAMILIA (solo lectura) ----------
 
 	/**
-	 * Alcance de la FAMILIA: UNA sentencia que une vinculo, familia y deportista por id Y escuela y exige vinculo ACTIVO y
+	 * Primer tramo del alcance de la FAMILIA: FROM y JOIN de vinculo, familia y deportista por id Y escuela. Una consulta del
+	 * portal puede agregar mas JOIN entre este tramo y {@link #ALCANCE_FAMILIA_FILTRO}.
+	 */
+	String ALCANCE_FAMILIA_JOINS = """
+			 from FamiliaDeportista fd
+			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
+			join Deportista d on d.id = fd.deportistaId and d.escuelaId = fd.escuelaId
+			""";
+
+	/**
+	 * Segundo tramo: los predicados de seguridad (vinculo ACTIVO y familia activa, de esta familia y esta escuela). NO hay
+	 * predicado sobre {@code d.activo}: un deportista inactivo con vinculo ACTIVO sigue visible, y NO hay predicado sobre
+	 * usuarios (lo cubre la revalidacion central de la sesion).
+	 */
+	String ALCANCE_FAMILIA_FILTRO = """
+			where fd.familiaId = :familiaId and fd.escuelaId = :escuelaId
+			  and fd.estado = com.banfieldpatin.backend.familias.vinculos.EstadoVinculo.ACTIVO
+			  and f.activa = true
+			""";
+
+	/**
+	 * Alcance de la FAMILIA (los dos tramos juntos): UNA sentencia que une vinculo, familia y deportista por id Y escuela y exige vinculo ACTIVO y
 	 * familia activa. NO hay predicado sobre {@code d.activo}: un deportista inactivo con vinculo ACTIVO sigue visible (la
 	 * inactividad deportiva no es una revocacion de acceso) y NO hay predicado sobre usuarios (lo cubre la revalidacion
 	 * central de la sesion). La autorizacion es el propio WHERE: nunca se carga un deportista para comparar despues, asi que
 	 * un id de otra familia, de otra escuela o inexistente produce exactamente el mismo resultado vacio.
 	 */
-	String ALCANCE_FAMILIA = """
-			 from FamiliaDeportista fd
-			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
-			join Deportista d on d.id = fd.deportistaId and d.escuelaId = fd.escuelaId
-			where fd.familiaId = :familiaId and fd.escuelaId = :escuelaId
-			  and fd.estado = com.banfieldpatin.backend.familias.vinculos.EstadoVinculo.ACTIVO
-			  and f.activa = true
-			""";
+	String ALCANCE_FAMILIA = ALCANCE_FAMILIA_JOINS + ALCANCE_FAMILIA_FILTRO;
 
 	@Query(value = """
 			select new com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia(

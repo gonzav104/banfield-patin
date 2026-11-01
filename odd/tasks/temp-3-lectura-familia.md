@@ -21,7 +21,7 @@ Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on
 | ID | S# | Tarea | Ruta | Estado | Evidencia |
 | --- | --- | --- | --- | --- | --- |
 | T0 | — | Preparación y descubrimiento | inline | hecho | `3ebd304` (evidencia de temp-2); este documento |
-| T1 | S2, S5 | Separar `ALCANCE_FAMILIA` en tramos (mismo texto) con prueba de equivalencia | inline | pendiente | RED: prueba de equivalencia + portal existente verde |
+| T1 | S2, S5 | Separar `ALCANCE_FAMILIA` en tramos (mismo texto) con prueba de equivalencia | inline | hecho | commit del refactor; RED/GREEN en L14 |
 | T2 | S1, S8 | DTO de solo lectura y consultas con alcance de FAMILIA | inline | pendiente | RED: BD |
 | T3 | S1–S6 | Servicio del portal: historial y detalle por temporada | inline | pendiente | RED: unitarias |
 | T4 | S7 | Controlador, `OpenApiConfig.RUTAS`, inventario, docs | inline | pendiente | RED: WebMvc + inventario/OpenAPI |
@@ -179,4 +179,16 @@ La condición 5 pide un `404` **uniforme dentro de cada endpoint**. El plan (D4)
 - `GET …/temporadas/{temporadaId}` (detalle): un único `404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` para **todas** las causas (deportista ajeno o inexistente, otra escuela, vínculo revocado, temporada inexistente, de otra escuela, sin fila o no visible). El detalle necesita una sola consulta y no diagnostica nada.
 
 La visibilidad (condición 1) se resuelve con `join Temporada ta on ta.escuelaId = fd.escuelaId and ta.activa = true and ta.anio >= t.anio`; no hay filtro por `estado_deportivo`.
+
+### L14 — T1: refactor de `ALCANCE_FAMILIA` (guarda de seguridad), RED y GREEN
+
+Esqueleto: `ALCANCE_FAMILIA_JOINS = ""` y `ALCANCE_FAMILIA_FILTRO = ""` agregados sin tocar `ALCANCE_FAMILIA`.
+
+| Paso | Comando | Resultado |
+| --- | --- | --- |
+| RED | `./mvnw test -Dtest='AlcanceFamiliaTest'` | 3 tests: **2 fallos** (los tramos no suman el alcance; el tramo de filtro no tiene el `where`); el tercero —el texto original fijado como literal del commit base— **pasa**, lo que demuestra que el literal es exacto |
+| GREEN | `./mvnw test -Dtest='AlcanceFamiliaTest,FamiliaPortal*Test,InventarioRutasTest'` | 40 tests, 0 fallos |
+| Equivalencia de comportamiento | `./mvnw verify -Pdb-tests -Dtest='FamiliaPortal*DbTest,ConsultasVinculosDbTest,SesionVigente*DbTest'` | **69 tests, 0 fallos, sin modificar ninguna de esas pruebas** (matriz de aislamiento, HTTP real, JWT viejo, sesión vigente, consultas del portal) |
+
+`ALCANCE_FAMILIA` queda definida como `ALCANCE_FAMILIA_JOINS + ALCANCE_FAMILIA_FILTRO` y su texto es idéntico carácter por carácter al anterior; las tres consultas que la usan (`deportistasDelPortal`, `deportistaDelPortal` y su conteo) no cambiaron.
 
