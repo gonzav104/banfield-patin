@@ -38,6 +38,8 @@ import com.banfieldpatin.backend.familias.tutores.TutorAdminController;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminController;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminService;
+import com.banfieldpatin.backend.temporadas.DeportistaTemporadaAdminController;
+import com.banfieldpatin.backend.temporadas.DeportistaTemporadaAdminService;
 import com.banfieldpatin.backend.temporadas.TemporadaAdminController;
 import com.banfieldpatin.backend.temporadas.TemporadaAdminService;
 import com.banfieldpatin.backend.usuarios.AutenticacionController;
@@ -63,7 +65,7 @@ import tools.jackson.databind.json.JsonMapper;
 @WebMvcTest(controllers = { AutenticacionController.class, CsrfController.class, MfaController.class,
 		MfaAdminController.class, FamiliaAdminController.class, FamiliaGestionAdminController.class,
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
-		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class })
+		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })
@@ -121,6 +123,8 @@ abstract class BaseOpenApiWebMvc {
 	protected FamiliaPortalService familiaPortalService;
 	@MockitoBean
 	protected TemporadaAdminService temporadaAdminService;
+	@MockitoBean
+	protected DeportistaTemporadaAdminService deportistaTemporadaAdminService;
 
 	protected Cookie sesion(Rol rol) {
 		UUID familia = rol == Rol.FAMILIA ? UUID.randomUUID() : null;

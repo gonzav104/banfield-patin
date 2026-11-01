@@ -38,6 +38,8 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 	TemporadaAdminService servicio;
 	@Autowired
 	TransactionTemplate transaccion;
+	@Autowired
+	jakarta.persistence.EntityManagerFactory emf;
 
 	ExecutorService hilos;
 	DatosDb datos;
@@ -61,6 +63,21 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 		hilos.shutdownNow();
 		datos.limpiarEscuela(escuelaA);
 		datos.limpiarEscuela(escuelaB);
+	}
+
+	/** DNI de 8 digitos distinto por llamada dentro de una prueba (el DNI es unico por escuela). */
+	private int contadorDni = 40000000;
+
+	UUID deportista(UUID escuela, String nombre, String apellido, boolean activo) {
+		return datos.deportista(escuela, String.valueOf(contadorDni++), nombre, apellido, activo);
+	}
+
+	/** Sentencias SQL que prepara Hibernate al ejecutar la accion (requiere generate_statistics=true). */
+	long sentencias(Runnable accion) {
+		var estadisticas = emf.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+		estadisticas.clear();
+		accion.run();
+		return estadisticas.getPrepareStatementCount();
 	}
 
 	long contarAuditoria(UUID escuela, String accion) {

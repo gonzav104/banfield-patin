@@ -53,7 +53,10 @@ class InventarioRutasTest {
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
 			// Temporadas (temp-1): alta y activacion; sin PUT, DELETE ni PATCH.
-			"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
+			"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar",
+			// Datos deportivos por temporada (temp-2): alta y reemplazo completo; sin DELETE ni PATCH.
+			"POST /api/admin/deportistas/{deportistaId}/temporadas",
+			"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
 
 	private static final Set<RequestMethod> MUTANTES = Set.of(RequestMethod.POST, RequestMethod.PUT,
 			RequestMethod.PATCH, RequestMethod.DELETE);
@@ -134,7 +137,9 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
-				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
+				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar",
+				"POST /api/admin/deportistas/{deportistaId}/temporadas",
+				"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
 	}
 
 	@Test
@@ -165,11 +170,12 @@ class InventarioRutasTest {
 	void losDeportistasSoloSeCreanReemplazanYCambianDeEstadoSinBorradoNiPatch() throws Exception {
 		Set<String> mutantes = rutas(true);
 
-		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/deportistas"))).containsExactlyInAnyOrder(
-				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
-				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
-		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas"))).containsExactlyInAnyOrder(
-				"GET /api/admin/deportistas", "POST /api/admin/deportistas", "GET /api/admin/deportistas/{id}",
+		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
+				.containsExactlyInAnyOrder("POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
+						"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
+		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
+				.containsExactlyInAnyOrder("GET /api/admin/deportistas", "POST /api/admin/deportistas",
+				"GET /api/admin/deportistas/{id}",
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
 				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
@@ -192,11 +198,25 @@ class InventarioRutasTest {
 
 	@Test
 	void lasTemporadasSoloSeCreanYSeActivanSinReemplazoBorradoNiPatch() throws Exception {
-		assertThat(rutas(true).stream().filter(r -> r.contains("/api/admin/temporadas"))).containsExactlyInAnyOrder(
-				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
-		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/temporadas"))).containsExactlyInAnyOrder(
+		assertThat(rutas(true).stream().filter(r -> r.contains("/api/admin/temporadas") && !r.contains("/deportistas")))
+				.containsExactlyInAnyOrder("POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar");
+		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/temporadas") && !r.contains("/deportistas")))
+				.containsExactlyInAnyOrder(
 				"GET /api/admin/temporadas", "POST /api/admin/temporadas", "GET /api/admin/temporadas/{id}",
 				"POST /api/admin/temporadas/{id}/activar");
+	}
+
+	@Test
+	void losDatosDeportivosPorTemporadaSoloSeCreanYSeReemplazanSinBorradoNiPatch() throws Exception {
+		assertThat(rutas(true).stream().filter(r -> r.contains("/temporadas") && r.contains("/deportistas")))
+				.containsExactlyInAnyOrder("POST /api/admin/deportistas/{deportistaId}/temporadas",
+						"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
+		assertThat(rutas(false).stream().filter(r -> r.contains("/temporadas") && r.contains("/deportistas")))
+				.containsExactlyInAnyOrder("GET /api/admin/deportistas/{deportistaId}/temporadas",
+						"POST /api/admin/deportistas/{deportistaId}/temporadas",
+						"GET /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
+						"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
+						"GET /api/admin/temporadas/{temporadaId}/deportistas");
 	}
 
 	@Test

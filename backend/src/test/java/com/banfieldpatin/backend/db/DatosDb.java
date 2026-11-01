@@ -224,7 +224,7 @@ final class DatosDb {
 	/** Borra todo lo colgado de la escuela (en orden de dependencias); no borra la escuela. */
 	void limpiarContenido(UUID escuelaId) {
 		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "familia_deportista", "tutor",
-				"deportista", "temporada", "usuario", "familia" }) {
+				"deportista_temporada", "deportista", "temporada", "usuario", "familia" }) {
 			jdbc.sql("DELETE FROM gestion_patin." + tabla + " WHERE escuela_id = :e").param("e", escuelaId).update();
 		}
 	}
