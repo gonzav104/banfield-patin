@@ -174,3 +174,14 @@ Esqueleto: entidad, repositorio con sus consultas, DTOs con su normalización y 
 
 Sin RED para la capa que ya estaba completa en el esqueleto: `DeportistaTemporadaTest` (2) y `DeportistaTemporadaSolicitudTest` (7) pasaron desde el primer intento, y los 13 tests de `DeportistaTemporadaAdminControllerWebMvcTest` también (el controlador y los DTO se escribieron completos antes que sus pruebas; el servicio va simulado). Es una desviación del TDD estricto que se compensa con mutaciones en la unidad T6.
 
+### L11 — RED de la unidad B (edición), observado antes de implementar
+
+Esqueleto: `DeportistaTemporada.reemplazar` y `DeportistaTemporadaAdminService.actualizar` lanzando `UnsupportedOperationException("pendiente")`.
+
+| Capa | Comando | Resultado RED |
+| --- | --- | --- |
+| Entidad y servicio (unitarias) | `./mvnw test -Dtest='DeportistaTemporadaTest,DeportistaTemporadaAdminServiceTest'` | 26 tests: **3 fallos y 7 errores** |
+| BD real | `./mvnw verify -Pdb-tests -Dtest='DeportistaTemporadaEdicionDbTest'` | 6 tests: **2 fallos y 4 errores** |
+
+Un error de compilación previo (import faltante en mi propia prueba) se corrigió antes de observar este RED; no cuenta como evidencia.
+

@@ -1,6 +1,8 @@
 package com.banfieldpatin.backend.temporadas;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -70,6 +72,27 @@ public class DeportistaTemporada {
 	/** Reemplazo completo; devuelve los nombres de los campos cuyo valor cambio, en el orden de la solicitud. */
 	public List<String> reemplazar(String categoria, String rama, String divisional, String numeroCorredor,
 			EstadoDeportivo estadoDeportivo) {
-		throw new UnsupportedOperationException("pendiente");
+		List<String> cambios = new ArrayList<>();
+		if (!Objects.equals(this.categoria, categoria)) {
+			this.categoria = categoria;
+			cambios.add("categoria");
+		}
+		if (!Objects.equals(this.rama, rama)) {
+			this.rama = rama;
+			cambios.add("rama");
+		}
+		if (!Objects.equals(this.divisional, divisional)) {
+			this.divisional = divisional;
+			cambios.add("divisional");
+		}
+		if (!Objects.equals(this.numeroCorredor, numeroCorredor)) {
+			this.numeroCorredor = numeroCorredor;
+			cambios.add("numeroCorredor");
+		}
+		if (this.estadoDeportivo != estadoDeportivo) {
+			this.estadoDeportivo = estadoDeportivo;
+			cambios.add("estadoDeportivo");
+		}
+		return cambios;
 	}
 }

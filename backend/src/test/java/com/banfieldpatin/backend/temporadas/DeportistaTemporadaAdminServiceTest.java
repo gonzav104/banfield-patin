@@ -31,6 +31,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.Deportista;
 import com.banfieldpatin.backend.deportistas.DeportistaRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
+import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion;
 import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaRespuesta;
 import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaSolicitud;
 import com.banfieldpatin.backend.temporadas.dto.PlantelRespuesta;
@@ -285,4 +286,142 @@ class DeportistaTemporadaAdminServiceTest {
 		assertThatThrownBy(() -> servicio.plantel(admin, temporadaId, "x", PageRequest.of(0, 20)))
 				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA"));
 	}
+
+	// ---------- edicion ----------
+
+	private DeportistaTemporada filaEntidad() {
+		return DeportistaTemporada.crear(escuelaId, deportistaId, temporadaId, "Sub 12", "Femenino", "A", "007",
+				EstadoDeportivo.ACTIVO);
+	}
+
+	private DeportistaTemporadaActualizacion cambio(String categoria, String numero, EstadoDeportivo estado) {
+		return new DeportistaTemporadaActualizacion(categoria, "Femenino", "A", numero, estado);
+	}
+
+	private void conFilaBloqueada(DeportistaTemporada fila) {
+		when(datos.bloquear(escuelaId, deportistaId, temporadaId)).thenReturn(Optional.of(UUID.randomUUID()));
+		when(datos.findByEscuelaIdAndDeportistaIdAndTemporadaId(escuelaId, deportistaId, temporadaId))
+				.thenReturn(Optional.of(fila));
+		when(temporadas.vistaDe(temporadaId, escuelaId))
+				.thenReturn(Optional.of(new TemporadaVista(temporadaId, (short) 2027, false)));
+		when(datos.saveAndFlush(any(DeportistaTemporada.class))).thenAnswer(i -> i.getArgument(0));
+	}
+
+	@Test
+	void actualizarBloqueaLaFilaLaVuelveALeerGuardaYAuditaSoloNombresDeCamposYElCambioDeEstado() {
+		DeportistaTemporada fila = filaEntidad();
+		conFilaBloqueada(fila);
+
+		DeportistaTemporadaRespuesta r = servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.SUSPENDIDO), DATOS);
+
+		assertThat(r.categoria()).isEqualTo("Sub 14");
+		assertThat(r.estadoDeportivo()).isEqualTo(EstadoDeportivo.SUSPENDIDO);
+		assertThat(r.anio()).isEqualTo(2027);
+		org.mockito.InOrder orden = org.mockito.Mockito.inOrder(lockTimeout, datos, auditoria);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(datos).bloquear(escuelaId, deportistaId, temporadaId);
+		orden.verify(datos).findByEscuelaIdAndDeportistaIdAndTemporadaId(escuelaId, deportistaId, temporadaId);
+		orden.verify(datos).saveAndFlush(fila);
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		ArgumentCaptor<EventoAuditoria> evento = ArgumentCaptor.forClass(EventoAuditoria.class);
+		verify(auditoria).registrar(evento.capture());
+		assertThat(evento.getValue().accion()).isEqualTo(AccionAuditoria.DEPORTISTA_TEMPORADA_ACTUALIZADA);
+		assertThat(evento.getValue().recursoId()).isEqualTo(fila.getId());
+		assertThat(evento.getValue().detalle()).containsOnlyKeys("temporadaId", "camposModificados", "estadoAnterior",
+				"estadoNuevo").containsEntry("camposModificados", List.of("categoria", "estadoDeportivo"))
+				.containsEntry("estadoAnterior", "ACTIVO").containsEntry("estadoNuevo", "SUSPENDIDO");
+		assertThat(evento.getValue().detalle().toString()).doesNotContain("Sub 14", "007", "Femenino");
+	}
+
+	@Test
+	void actualizarSinCambiosRealesDevuelveLaFilaSinGuardarNiAuditar() {
+		conFilaBloqueada(filaEntidad());
+
+		DeportistaTemporadaRespuesta r = servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "007", EstadoDeportivo.ACTIVO), DATOS);
+
+		assertThat(r.categoria()).isEqualTo("Sub 12");
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void unCambioQueNoTocaElEstadoNoLoAgregaALaAuditoria() {
+		conFilaBloqueada(filaEntidad());
+
+		servicio.actualizar(admin, deportistaId, temporadaId, cambio("Sub 14", "007", EstadoDeportivo.ACTIVO), DATOS);
+
+		ArgumentCaptor<EventoAuditoria> evento = ArgumentCaptor.forClass(EventoAuditoria.class);
+		verify(auditoria).registrar(evento.capture());
+		assertThat(evento.getValue().detalle()).containsOnlyKeys("temporadaId", "camposModificados");
+	}
+
+	@Test
+	void actualizarUnNumeroTomadoPorOtraFilaDa409YConservarElPropioNoEsConflicto() {
+		conFilaBloqueada(filaEntidad());
+		when(datos.existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(any(), any(), any(), any())).thenReturn(true);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "008", EstadoDeportivo.ACTIVO), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "NUMERO_CORREDOR_DUPLICADO"));
+		verify(datos, never()).saveAndFlush(any());
+
+		// Mismo numero que ya tiene (007) y quitarlo (null): no se consulta unicidad.
+		servicio.actualizar(admin, deportistaId, temporadaId, cambio("Sub 12", "007", EstadoDeportivo.ACTIVO), DATOS);
+		servicio.actualizar(admin, deportistaId, temporadaId, cambio("Sub 12", null, EstadoDeportivo.ACTIVO), DATOS);
+		verify(datos, org.mockito.Mockito.times(1)).existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(any(), any(),
+				any(), any());
+	}
+
+	@Test
+	void actualizarUnaFilaInexistenteDistingueDeportistaTemporadaOFila() {
+		when(datos.bloquear(escuelaId, deportistaId, temporadaId)).thenReturn(Optional.empty());
+		when(deportistas.findByIdAndEscuelaId(deportistaId, escuelaId)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
+
+		when(deportistas.findByIdAndEscuelaId(deportistaId, escuelaId)).thenReturn(Optional.of(deportista(true)));
+		when(temporadas.vistaDe(temporadaId, escuelaId)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
+
+		when(temporadas.vistaDe(temporadaId, escuelaId))
+				.thenReturn(Optional.of(new TemporadaVista(temporadaId, (short) 2027, false)));
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_TEMPORADA_NO_ENCONTRADA"));
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void editarSigueSiendoPosibleConElDeportistaInactivoYEnUnaTemporadaInactiva() {
+		conFilaBloqueada(filaEntidad());
+		when(deportistas.findByIdAndEscuelaId(deportistaId, escuelaId)).thenReturn(Optional.of(deportista(false)));
+
+		servicio.actualizar(admin, deportistaId, temporadaId, cambio("Sub 14", "007", EstadoDeportivo.INACTIVO), DATOS);
+
+		verify(datos).saveAndFlush(any(DeportistaTemporada.class));
+	}
+
+	@Test
+	void unaCarreraEnElNumeroResueltaPorLaBaseDa409YUnBloqueoQueVenceDa409ConMensajePropio() {
+		conFilaBloqueada(filaEntidad());
+		when(datos.saveAndFlush(any(DeportistaTemporada.class))).thenThrow(violacionDe("uq_numero_corredor_por_temporada"));
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "008", EstadoDeportivo.ACTIVO), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "NUMERO_CORREDOR_DUPLICADO"));
+
+		when(datos.bloquear(escuelaId, deportistaId, temporadaId)).thenThrow(new org.springframework.dao.CannotAcquireLockException("l"));
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "007", EstadoDeportivo.ACTIVO), DATOS)).satisfies(e -> {
+					assertError(e, HttpStatus.CONFLICT, "CONFLICTO_CONCURRENCIA");
+					assertThat(e.getMessage()).doesNotContain("deportista ", "activacion").doesNotContain("lock");
+				});
+		verifyNoInteractions(auditoria);
+	}
 }
+

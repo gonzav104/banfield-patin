@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,6 +42,7 @@ import com.banfieldpatin.backend.temporadas.dto.PlantelRespuesta;
 @Service
 public class DeportistaTemporadaAdminService {
 
+	private static final Logger log = LoggerFactory.getLogger(DeportistaTemporadaAdminService.class);
 	private static final String RECURSO = "DEPORTISTA_TEMPORADA";
 	static final String RESTRICCION_PAR = "uq_deportista_temporada";
 	static final String RESTRICCION_NUMERO = "uq_numero_corredor_por_temporada";
@@ -72,6 +76,12 @@ public class DeportistaTemporadaAdminService {
 	static ExcepcionNegocio numeroDuplicado() {
 		return new ExcepcionNegocio(HttpStatus.CONFLICT, "NUMERO_CORREDOR_DUPLICADO",
 				"Ya existe un deportista con ese numero de corredor en la temporada.");
+	}
+
+	/** Mismo codigo que el resto de los conflictos de concurrencia, con mensaje propio de los datos deportivos. */
+	static ExcepcionNegocio conflictoConcurrente() {
+		return new ExcepcionNegocio(HttpStatus.CONFLICT, "CONFLICTO_CONCURRENCIA",
+				"Otra modificacion de los datos deportivos esta en curso. Reintentá en unos segundos.");
 	}
 
 	static ExcepcionNegocio deportistaInactivo() {
@@ -118,10 +128,56 @@ public class DeportistaTemporadaAdminService {
 				.orElseThrow(() -> diagnosticarAusencia(admin.escuelaId(), deportistaId, temporadaId));
 	}
 
+	/**
+	 * Reemplazo completo. Orden: lock_timeout acotado, bloqueo de ESA fila ({@code FOR NO KEY UPDATE}) y relectura DENTRO de
+	 * la transaccion, asi que la lista de campos modificados de la auditoria se calcula contra el estado confirmado mas
+	 * reciente. El bloqueo serializa las escrituras sobre la fila, pero NO evita que un PUT armado con datos viejos pise un
+	 * cambio posterior: no hay version por fila (agregarla exigiria una migracion) y la ultima escritura gana. Si el bloqueo
+	 * no se obtiene a tiempo o hay un deadlock, 409 CONFLICTO_CONCURRENCIA sin escribir ni auditar.
+	 */
 	@Transactional
 	public DeportistaTemporadaRespuesta actualizar(UsuarioAutenticado admin, UUID deportistaId, UUID temporadaId,
-			DeportistaTemporadaActualizacion actualizacion, DatosSolicitud solicitud) {
-		throw new UnsupportedOperationException("pendiente");
+			DeportistaTemporadaActualizacion a, DatosSolicitud solicitud) {
+		try {
+			return actualizarConBloqueo(admin, deportistaId, temporadaId, a, solicitud);
+		} catch (PessimisticLockingFailureException e) {
+			log.warn("Conflicto de concurrencia por bloqueo de base de datos (409): operacion=DeportistaTemporadaAdminService.actualizar excepcion={}",
+					e.getClass().getName());
+			throw conflictoConcurrente();
+		}
+	}
+
+	private DeportistaTemporadaRespuesta actualizarConBloqueo(UsuarioAutenticado admin, UUID deportistaId, UUID temporadaId,
+			DeportistaTemporadaActualizacion a, DatosSolicitud solicitud) {
+		lockTimeout.aplicar();
+		UUID escuelaId = admin.escuelaId();
+		datos.bloquear(escuelaId, deportistaId, temporadaId)
+				.orElseThrow(() -> diagnosticarAusencia(escuelaId, deportistaId, temporadaId));
+		// Primera carga de la entidad: ocurre DESPUES del bloqueo, asi que ve lo que otra edicion confirmo mientras se esperaba.
+		DeportistaTemporada fila = datos.findByEscuelaIdAndDeportistaIdAndTemporadaId(escuelaId, deportistaId, temporadaId)
+				.orElseThrow(DeportistaTemporadaAdminService::filaNoEncontrada);
+		if (a.numeroCorredor() != null && !a.numeroCorredor().equals(fila.getNumeroCorredor())
+				&& datos.existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(escuelaId, temporadaId,
+						a.numeroCorredor(), fila.getId())) {
+			throw numeroDuplicado();
+		}
+		EstadoDeportivo estadoAnterior = fila.getEstadoDeportivo();
+		List<String> cambios = fila.reemplazar(a.categoria(), a.rama(), a.divisional(), a.numeroCorredor(),
+				a.estadoDeportivo());
+		Short anio = temporadas.vistaDe(temporadaId, escuelaId).orElseThrow(TemporadaAdminService::temporadaNoEncontrada)
+				.anio();
+		if (!cambios.isEmpty()) {
+			guardar("actualizar", fila);
+			Map<String, Object> detalle = new LinkedHashMap<>();
+			detalle.put("temporadaId", temporadaId);
+			detalle.put("camposModificados", cambios);
+			if (cambios.contains("estadoDeportivo")) {
+				detalle.put("estadoAnterior", estadoAnterior.name());
+				detalle.put("estadoNuevo", fila.getEstadoDeportivo().name());
+			}
+			registrar(admin, AccionAuditoria.DEPORTISTA_TEMPORADA_ACTUALIZADA, fila.getId(), detalle, solicitud);
+		}
+		return respuesta(fila, anio);
 	}
 
 	@Transactional(readOnly = true)
