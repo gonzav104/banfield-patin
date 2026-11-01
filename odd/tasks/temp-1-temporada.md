@@ -1,6 +1,6 @@
 # TEMP-1 — Temporada: alta, listado, detalle y activación
 
-Objetivo: módulo ADMIN de `Temporada` sobre el esquema existente (sin migración). Estado: **IMPLEMENTADO localmente (3 commits, sin push); a la espera de revisión y de autorización de push/PR**.
+Objetivo: módulo ADMIN de `Temporada` sobre el esquema existente (sin migración). Estado: **CERRADA: validada remotamente y fusionada en `main` (PR #4, merge commit `660eb2868a6837a363ae27e49a2aee79071a41ed`)**.
 Rama: `feat/temp-1-temporada` (desde `main` = `356b32c`). Entrega: `ask-on-risk`; sin commits, push ni merge sin autorización. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -185,4 +185,23 @@ Orden de bloqueo único (escuela primero) para evitar deadlocks; 55P03/40P01 ya 
 - Pendiente: revisión nativa RDD si corresponde, push/PR y CI remoto (no autorizados).
 
 Risk: item 4 (concurrencia: bloqueo de fila de la escuela, orden de escrituras con índice parcial no diferible y `lock_timeout`).
+
+### L12 — Revisión nativa, validación remota y merge
+
+**Revisión nativa RDD:** `gentle-ai review assess` dio riesgo medio y `review_due: false`; al escalar con el ítem 4 (concurrencia) pasó a `high_risk` y `review_due: true`. Se otorgó el consentimiento para tres lentes (riesgo, resiliencia, confiabilidad) sobre el rango completo de la rama (32 archivos, 2045 líneas). Resultado: **aprobada sin hallazgos**; el acuse exacto se ejecutó y la autoridad quedó consumida.
+
+**PR [#4](https://github.com/gonzav104/banfield-patin/pull/4)** (`feat/temp-1-temporada` → `main`), HEAD `d146efe`, base `main` = `356b32c`. Estado de merge: `BLOCKED` mientras los checks corrían; `OPEN` / `MERGEABLE` / `CLEAN` al terminar.
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `41345285962` | `push` | Suite normal | 801 | 0 | 0 | 0 | SUCCESS |
+| `41345285962` | `push` | Suite db (PostgreSQL 17) | 341 | 0 | 0 | 0 | SUCCESS |
+| `41345291044` | `pull_request` | Suite normal | 801 | 0 | 0 | 0 | SUCCESS |
+| `41345291044` | `pull_request` | Suite db (PostgreSQL 17) | 341 | 0 | 0 | 0 | SUCCESS |
+
+Los conteos remotos coinciden con los locales (801 y 341). Sin secretos ni Supabase.
+
+**Merge:** autorizado por el usuario ("Sí, merge commit para el PR #4"); se verificó que el HEAD del PR seguía siendo `d146efe` y se fusionó con merge commit `660eb2868a6837a363ae27e49a2aee79071a41ed` el 2026-11-01 20:10Z. La unidad queda **validada remotamente y fusionada**.
+
+**Sincronización Engram pendiente:** desde el PR #4 `mem_save` rechaza las escrituras sin `session_id` (`multiple active runtime sessions match the current project and directory`). Quedan sin reflejar en el espejo `odd/temp-1-temporada/tasks`: el PR #4, los runs `41345285962` y `41345291044`, el merge `660eb28` y esta cláusula L12. Este documento es la fuente durable hasta resolverlo (ver `odd/tasks/temp-2-deportista-temporada.md`, L3).
 
