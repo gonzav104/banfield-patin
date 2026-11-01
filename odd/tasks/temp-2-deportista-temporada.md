@@ -1,6 +1,6 @@
 # TEMP-2 — DeportistaTemporada: alta, edición y consulta
 
-Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **PLAN; a la espera de aprobación de las decisiones D1–D8. No implementado.**
+Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **APROBADO; en implementación (commits locales; sin push ni merge).**
 Rama: `feat/temp-2-deportista-temporada` (desde `main` = `660eb28`). Entrega: `ask-on-risk`; solo commits locales de documentación autorizados hasta la aprobación; sin push, merge ni Supabase. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -126,3 +126,39 @@ Procedimiento por tarea: (1) esqueleto mínimo que compila (clases y métodos qu
 | D6 | Edición concurrente de la misma fila | Bloqueo de fila `FOR NO KEY UPDATE` con `lock_timeout` (reutiliza `compartido`) |
 | D7 | "Copiar los datos del año anterior" a una temporada nueva | Fuera de `temp-2`; unidad propia si se necesita |
 | D8 | Incluir el plantel por temporada (`GET /api/admin/temporadas/{temporadaId}/deportistas`) | Sí: sin él no hay forma de consultar "por temporada" |
+
+### L9 — Aprobación y decisiones (verbatim)
+
+> Apruebo comenzar la implementación de `temp-2-deportista-temporada` siguiendo ODD.
+>
+> **Decisiones:**
+>
+> - D1, D2, D3, D5, D7 y D8 aprobadas.
+> - D4 modificada: categoría, rama y divisional serán textos configurables, pero deben validarse al guardar (longitud, espacios, obligatoriedad y restricciones del esquema). No esperar hasta la LBF para detectar datos inválidos. No crear enums rígidos sin un catálogo oficial.
+> - D6 aprobada con condición: bloquear la fila mediante `FOR NO KEY UPDATE` y releer dentro de la transacción. Documentar que el bloqueo serializa escrituras, pero no evita necesariamente que un PUT construido con datos antiguos sobrescriba cambios.
+>
+> **Reglas adicionales:**
+>
+> 1. Permitir cargar y editar datos de una temporada inactiva, para preparar el año siguiente.
+> 2. Mantener el número de corredor opcional, como texto, preservando ceros iniciales.
+> 3. Respetar las restricciones de unicidad de V1.
+> 4. No modificar la ficha permanente del deportista al editar sus datos deportivos.
+> 5. Mantener aislamiento por escuela y autorizaciones ADMIN.
+> 6. No incluir DNI en el plantel por temporada.
+> 7. Evitar consultas N+1 y probar la cantidad de consultas del listado.
+> 8. Implementar con TDD real, registrando RED antes de GREEN.
+> 9. Mantener auditoría de cambios sin datos personales innecesarios.
+> 10. Ejecutar las suites normal y DB antes del cierre.
+>
+> Autorizo implementar y crear commits locales siguiendo las unidades ODD.
+>
+> No autorizo push, merge, migraciones contra Supabase ni modificaciones de las migraciones V1–V4.
+>
+> **Engram:** no forzar ni resolver unilateralmente los conflictos de sesiones. Mantener los artefactos ODD locales actualizados y señalar la sincronización pendiente.
+>
+> Al finalizar, informar contratos implementados, resultados de pruebas, commits y riesgos residuales.
+
+**Reglas de validación que derivo de D4 (a confirmar con la implementación):** `categoria` (≤80), `rama` (≤40) y `divisional` (≤80) son opcionales porque el esquema los admite nulos; se recortan, las rachas de espacios internos se colapsan a uno, un valor en blanco pasa a nulo y se rechazan caracteres de control (`400 VALIDACION`). `numeroCorredor` (≤30) es opcional, texto opaco que conserva ceros iniciales y espacios internos, se recorta, en blanco pasa a nulo y se rechazan caracteres de control. Nada se valida contra un catálogo.
+
+**D6 (aprobada con condición):** `FOR NO KEY UPDATE` sobre la fila y relectura dentro de la transacción: serializa las escrituras y hace exacta la lista de campos modificados de la auditoría, pero **no** evita que un `PUT` armado con datos viejos pise cambios posteriores (gana la última escritura; no hay columna de versión y no se agrega migración).
+
