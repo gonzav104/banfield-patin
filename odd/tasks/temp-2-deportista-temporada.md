@@ -162,3 +162,15 @@ Procedimiento por tarea: (1) esqueleto mínimo que compila (clases y métodos qu
 
 **D6 (aprobada con condición):** `FOR NO KEY UPDATE` sobre la fila y relectura dentro de la transacción: serializa las escrituras y hace exacta la lista de campos modificados de la auditoría, pero **no** evita que un `PUT` armado con datos viejos pise cambios posteriores (gana la última escritura; no hay columna de versión y no se agrega migración).
 
+### L10 — RED de la unidad A (alta y consulta), observado antes de implementar
+
+Esqueleto: entidad, repositorio con sus consultas, DTOs con su normalización y controlador completos; `DeportistaTemporadaAdminService` con todos sus métodos lanzando `UnsupportedOperationException("pendiente")`; `OpenApiConfig.RUTAS` sin las cinco rutas nuevas. Comando y resultado antes de escribir la lógica:
+
+| Capa | Comando | Resultado RED |
+| --- | --- | --- |
+| Servicio (unitarias) | `./mvnw test -Dtest='DeportistaTemporadaAdminServiceTest'` | 14 tests: **11 fallos y 3 errores** (los métodos lanzan `UnsupportedOperationException` o no devuelven lo esperado) |
+| Cableado de rutas y OpenAPI | `./mvnw test -Dtest='InventarioRutasTest,OpenApi*Test,DeportistaTemporadaAdminControllerWebMvcTest'` | **5 fallos**: falta la entrada de las rutas nuevas en `OpenApiConfig.RUTAS` (`todaRutaDeLaAplicacionTieneSuEntrada...`, éxito 201 y seguridad de la operación) y el `201` probado en `OpenApiEstadosRealesTest`; además `InventarioRutasTest` detectó que el filtro de `lasTemporadasSoloSeCrean...` ahora también captura el plantel (se corrigió el filtro, no el código) |
+| BD real | `./mvnw verify -Pdb-tests -Dtest='DeportistaTemporadaDbTest'` | 11 tests: **1 fallo y 9 errores** (`UnsupportedOperationException: pendiente`); 1 pasa por naturaleza (comprueba las restricciones que ya existen en V1) |
+
+Sin RED para la capa que ya estaba completa en el esqueleto: `DeportistaTemporadaTest` (2) y `DeportistaTemporadaSolicitudTest` (7) pasaron desde el primer intento, y los 13 tests de `DeportistaTemporadaAdminControllerWebMvcTest` también (el controlador y los DTO se escribieron completos antes que sus pruebas; el servicio va simulado). Es una desviación del TDD estricto que se compensa con mutaciones en la unidad T6.
+
