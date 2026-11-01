@@ -1,6 +1,6 @@
 # TEMP-2 — DeportistaTemporada: alta, edición y consulta
 
-Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **APROBADO; en implementación (commits locales; sin push ni merge).**
+Objetivo: datos deportivos anuales por deportista y temporada (categoría, rama, divisional, número de corredor, estado deportivo) para ADMIN, sobre el esquema existente. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
 Rama: `feat/temp-2-deportista-temporada` (desde `main` = `660eb28`). Entrega: `ask-on-risk`; solo commits locales de documentación autorizados hasta la aprobación; sin push, merge ni Supabase. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -18,13 +18,13 @@ Rama: `feat/temp-2-deportista-temporada` (desde `main` = `660eb28`). Entrega: `a
 | ID | S# | Tarea | Ruta | Estado | Evidencia |
 | --- | --- | --- | --- | --- | --- |
 | T0 | S5 | Descubrimiento y plan | inline | hecho | este documento |
-| T1 | S1 | `DeportistaTemporada` (entidad), `EstadoDeportivo`, repositorio | inline | pendiente | RED: `DeportistaTemporadaTest` |
-| T2 | S1, S3 | DTOs de solicitud/respuesta con validación y normalización | inline | pendiente | RED: validación en WebMvc |
-| T3 | S1, S2 | Servicio: alta y consulta (historial por deportista, detalle, plantel por temporada) | inline | pendiente | RED: `DeportistaTemporadaServiceTest` + DB |
-| T4 | S3 | Controller, `OpenApiConfig.RUTAS`, inventario de rutas, docs | inline | pendiente | RED: WebMvc + tests de inventario/OpenAPI |
-| T5 | S1, S2 | Edición (PUT), unicidad de número de corredor, auditoría de cambios | inline | pendiente | RED: servicio + DB |
-| T6 | S2 | Pruebas DB de concurrencia, aislamiento y cambios entre temporadas | inline | pendiente | RED/GREEN + mutaciones |
-| T7 | — | Cierre: suites, diferencial, Risk | inline | pendiente | — |
+| T1 | S1 | `DeportistaTemporada` (entidad), `EstadoDeportivo`, repositorio | inline | hecho | `f77e1f0`, `114ccb3`; RED en L10/L11 |
+| T2 | S1, S3 | DTOs de solicitud/respuesta con validación y normalización | inline | hecho | `f77e1f0`; sin RED previo (ver L10) |
+| T3 | S1, S2 | Servicio: alta y consulta (historial por deportista, detalle, plantel por temporada) | inline | hecho | `f77e1f0`; RED L10: 11 fallos+3 errores (unitarias), 1+9 (BD) |
+| T4 | S3 | Controller, `OpenApiConfig.RUTAS`, inventario de rutas, docs | inline | hecho | `f77e1f0`, docs en el commit de pruebas de concurrencia; RED L10: 5 fallos |
+| T5 | S1, S2 | Edición (PUT), unicidad de número de corredor, auditoría de cambios | inline | hecho | `114ccb3`; RED L11: 3 fallos+7 errores (unitarias), 2+4 (BD) |
+| T6 | S2 | Pruebas DB de concurrencia, aislamiento y cambios entre temporadas | inline | hecho | commit de pruebas de concurrencia; 4 mutaciones detectadas (L12) |
+| T7 | — | Cierre: suites, diferencial, Risk | inline | hecho | normal 847/0/0/0; DB 367/0/0/0 (L12) |
 
 Ruta: todo inline (una sola unidad de comportamiento). Estimación: ~450 líneas de producción y ~800 de pruebas. Cortes de commit (≈400 líneas autoradas cada uno): **C1** T1–T4 (alta y consulta), **C2** T5 (edición y número de corredor), **C3** T6 (concurrencia en BD), **C4** documentación ODD.
 
@@ -184,4 +184,30 @@ Esqueleto: `DeportistaTemporada.reemplazar` y `DeportistaTemporadaAdminService.a
 | BD real | `./mvnw verify -Pdb-tests -Dtest='DeportistaTemporadaEdicionDbTest'` | 6 tests: **2 fallos y 4 errores** |
 
 Un error de compilación previo (import faltante en mi propia prueba) se corrigió antes de observar este RED; no cuenta como evidencia.
+
+### L12 — Evidencia de implementación y cierre
+
+**Commits locales** (rama `feat/temp-2-deportista-temporada`, sobre `main` = `660eb28`): `1a36636` y `d7265e2` documentación previa; `4075dcc` aprobación; `f77e1f0` alta y consulta; `114ccb3` edición; el commit de pruebas de concurrencia y contrato en `docs/TEMPORADAS.md` §8; y el de esta evidencia.
+
+**Suites:** `./mvnw clean verify` = **847 tests, 0 fallos/errores/omitidos** (801 previos + 46 nuevos). `./mvnw verify -Pdb-tests` = **367 tests, 0/0/0** (341 previos + 26 nuevos). Sin migraciones; V1–V4 intactas.
+
+**Reglas del usuario (L9):** (1) carga y edición en temporada inactiva: probado en BD; (2) número de corredor opcional, texto, con ceros iniciales: `DeportistaTemporadaSolicitudTest` y BD (`007` y `7` distintos); (3) unicidades de V1: pares, número parcial y varios nulos, probadas por servicio y con SQL directo; (4) la ficha permanente no cambia: se compara la fila completa del deportista antes y después, en alta y edición; (5) aislamiento por escuela y ADMIN: 404 indistinguibles, FK compuestas rechazan cruzar escuelas, `401`/`403`/CSRF en las cinco rutas; (6) el plantel no incluye DNI (verificado por reflexión sobre el record y por el JSON del controlador); (7) sin N+1: la cantidad de sentencias del historial y del plantel no crece de 1 a 12 filas (estadísticas de Hibernate); (8) RED registrado en L10 y L11; (9) la auditoría solo tiene ids, año y nombres de campo (verificado: no contiene ningún valor deportivo); (10) ambas suites verdes.
+
+**Concurrencia (PostgreSQL real):** dos altas del mismo par y dos altas con el mismo número, una detrás de otra (determinista) y 15 rondas con hilos libres, dejan siempre una fila y la otra recibe 409; dos ediciones de la misma fila se serializan y la segunda calcula sus cambios contra lo ya confirmado (no genera un segundo evento); 15 rondas de ediciones libres; el SQL efectivo del bloqueo contiene `gestion_patin.deportista_temporada` y `for no key update`; una edición retenida no frena la edición de otra fila; una activación de temporada retenida no frena ni el alta ni la edición; con `lock_timeout` de 0,3 s una edición bloqueada responde 409 `CONFLICTO_CONCURRENCIA` con mensaje propio, sin escribir ni auditar, y el límite no se filtra a otras conexiones. **Limitación aceptada (D6):** un `PUT` armado con datos viejos pisa un cambio posterior (gana la última escritura); hay una prueba que lo documenta.
+
+**Mutaciones** (código restaurado con `git checkout` y verificado limpio): (M1) sin bloquear la fila → fallan 2 pruebas; (M2) `FOR UPDATE` en lugar de `FOR NO KEY UPDATE` → falla la aserción del SQL efectivo; (M3) sin traducir las restricciones a 409 → fallan 3 pruebas de carrera; (M4) leer la fila antes del bloqueo → fallan 2 pruebas.
+
+**Desviaciones y honestidad:**
+- La capa de DTO, entidad y controlador quedó completa en el esqueleto, por eso `DeportistaTemporadaSolicitudTest` (7), parte de `DeportistaTemporadaTest` (2) y las pruebas WebMvc del controlador (13) no tuvieron RED observado; el RED real está en el servicio, la edición, el cableado de OpenAPI/inventario y la BD (L10, L11).
+- Las pruebas de concurrencia (T6) se escribieron sobre código ya implementado; su evidencia de sensibilidad son las mutaciones.
+- `categoria`, `rama` y `divisional` son opcionales (el esquema los admite nulos); "obligatoriedad" se interpretó como el contrato del esquema, no como un campo requerido. Si se quisiera exigirlos, sería una decisión de negocio nueva.
+- Mensaje de `409 CONFLICTO_CONCURRENCIA` propio de los datos deportivos (el global de vínculos habla del deportista).
+
+**Diferencial:** código compartido tocado: el enum de auditoría (se agregó al final), `OpenApiConfig.RUTAS` (5 entradas) y utilidades de prueba (`DatosDb`, pruebas de conteo de rutas). Ningún endpoint existente cambió de comportamiento; los 801 + 341 tests previos siguen verdes sin modificación de su lógica.
+
+**Riesgos residuales:** el `PUT` con datos viejos pisa cambios (aceptado); texto libre en categoría, rama y divisional puede generar variantes; los conteos de rutas se mantienen a mano en cinco lugares; sin prueba de carga; la revisión nativa RDD y el CI remoto están pendientes.
+
+**Engram:** sigue sin escribirse (sesiones duplicadas, ver L3); los espejos de `temp-1` y `temp-2` quedan pendientes de sincronizar y este documento es la fuente durable.
+
+Risk: none (sin migración ni cambio de contratos existentes; la concurrencia nueva se limita a un bloqueo de fila propio del módulo, cubierto por pruebas de BD y mutaciones).
 
