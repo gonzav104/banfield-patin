@@ -129,3 +129,33 @@ Transversales: `401` sin sesión, `403` para FAMILIA y `403 CSRF_INVALIDO` sin t
 
 **Auditoría** (misma transacción, solo con cambio real): `TEMPORADA_CREADA` con `{anio}` y `TEMPORADA_ACTIVADA` con `{anio, anteriorTemporadaId}` (nulo si no había activa). Activar la ya activa no audita.
 
+## 8. Datos deportivos por temporada (`temp-2-deportista-temporada`)
+
+Solo ADMIN (`/api/admin/**`); la escuela y el actor salen del JWT, nunca del cliente. La identidad de una fila es el par `(deportistaId, temporadaId)` de la ruta. Sin `DELETE` ni `PATCH`: un deportista que no compite una temporada pasa a `INACTIVO`, la fila no se borra. Sin migración (V1 ya cubre el contrato).
+
+| Ruta | Éxito | Errores propios |
+| --- | --- | --- |
+| `GET /api/admin/deportistas/{deportistaId}/temporadas` | `200` historial, del año más nuevo al más viejo (a lo sumo 81 filas por el `CHECK` del año) | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `POST /api/admin/deportistas/{deportistaId}/temporadas` con `{temporadaId, categoria?, rama?, divisional?, numeroCorredor?, estadoDeportivo?}` | `201` con `Location` del par; el estado por defecto es `ACTIVO` | `400 VALIDACION` / `SOLICITUD_INVALIDA`; `404 DEPORTISTA_NO_ENCONTRADO`, `TEMPORADA_NO_ENCONTRADA`; `409 DEPORTISTA_INACTIVO`, `DEPORTISTA_TEMPORADA_DUPLICADA`, `NUMERO_CORREDOR_DUPLICADO` |
+| `GET /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}` | `200` | `404 DEPORTISTA_NO_ENCONTRADO`, `TEMPORADA_NO_ENCONTRADA`, `DEPORTISTA_TEMPORADA_NO_ENCONTRADA` |
+| `PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}` con `{categoria?, rama?, divisional?, numeroCorredor?, estadoDeportivo}` | `200` reemplazo completo | los `404` de arriba; `409 NUMERO_CORREDOR_DUPLICADO`, `CONFLICTO_CONCURRENCIA` |
+| `GET /api/admin/temporadas/{temporadaId}/deportistas?estadoDeportivo&page&size` | `200` plantel paginado por apellido y nombre; `estadoDeportivo` admite `TODOS` (por defecto), `ACTIVO`, `INACTIVO` o `SUSPENDIDO` | `404 TEMPORADA_NO_ENCONTRADA`; `400 SOLICITUD_INVALIDA` con un estado desconocido |
+
+Una fila responde `{id, deportistaId, temporadaId, anio, categoria, rama, divisional, numeroCorredor, estadoDeportivo}`; el plantel agrega `nombre` y `apellido` y **no incluye el DNI** (el enmascarado llega en `temp-4`). Transversales: `401` sin sesión, `403` para FAMILIA y `403 CSRF_INVALIDO` en las escrituras; la lectura de FAMILIA llega en `temp-3`.
+
+**Validación al guardar** (no se espera a la exportación de la LBF; no hay catálogo oficial, así que no hay enums de categoría, rama ni divisional):
+- `categoria` (≤ 80), `rama` (≤ 40) y `divisional` (≤ 80) son opcionales, como en el esquema. Se recortan, las rachas de espacios internos se colapsan a uno y un valor en blanco pasa a `null`.
+- `numeroCorredor` (≤ 30) es opcional y es **texto opaco**: se recorta, conserva los ceros iniciales (`007` y `7` son distintos) y los espacios internos, y en blanco pasa a `null`.
+- Ningún valor puede contener caracteres de control (`400 VALIDACION`). El estado deportivo es un enum cerrado (el `CHECK` de V1); en el `PUT` es obligatorio.
+- El cuerpo no acepta propiedades que decide el servidor o la ruta (`escuelaId`, `deportistaId`, `temporadaId` en el `PUT`, `id`): `400 SOLICITUD_INVALIDA`.
+
+**Reglas:**
+- Se puede cargar y editar en una temporada **inactiva** (se prepara el año siguiente) y editar el historial de un deportista inactivo; el **alta** exige un deportista activo (`409 DEPORTISTA_INACTIVO`).
+- Una fila por deportista y temporada y un número de corredor único por temporada (índices de V1). La consulta previa da el `409` amable y la base arbitra la carrera con el mismo código; varios `null` y el mismo número en otra temporada o escuela sí se permiten.
+- Editar una fila nunca modifica la ficha permanente del deportista ni las filas de otras temporadas (RF-07).
+- El plantel y el historial se resuelven en una consulta (más su conteo): no hay una consulta por fila.
+
+**Concurrencia del `PUT`:** bloquea la fila con `FOR NO KEY UPDATE` (con `banfield.temporadas.lock-timeout`) y la vuelve a leer dentro de la transacción, así que dos ediciones simultáneas se serializan y la lista de campos modificados de la auditoría se calcula contra el estado confirmado más reciente. **Limitación aceptada:** el bloqueo serializa las escrituras pero no evita que un `PUT` armado con datos viejos pise un cambio posterior; no hay columna de versión (agregarla exige una migración) y gana la última escritura. El bloqueo de la fila no frena otras filas ni la activación de una temporada.
+
+**Auditoría** (misma transacción, solo con cambio real, solo ids, año y **nombres** de campo; nunca un valor deportivo): `DEPORTISTA_TEMPORADA_CREADA` con `{temporadaId, anio}` y `DEPORTISTA_TEMPORADA_ACTUALIZADA` con `{temporadaId, camposModificados}`, más `{estadoAnterior, estadoNuevo}` cuando cambia el estado deportivo.
+

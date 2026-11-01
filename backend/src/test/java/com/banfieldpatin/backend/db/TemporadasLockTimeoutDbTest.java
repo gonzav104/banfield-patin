@@ -49,4 +49,37 @@ class TemporadasLockTimeoutDbTest extends BaseTemporadasDb {
 			assertThat(jdbc.sql("SHOW lock_timeout").query(String.class).single()).isEqualTo("0");
 		}
 	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	com.banfieldpatin.backend.temporadas.DeportistaTemporadaAdminService dts;
+
+	@Test
+	void unaEdicionDeDatosDeportivosQueNoObtieneElBloqueoDeLaFilaATiempoDa409SinEscribirNiAuditar() throws Exception {
+		UUID d = deportista(escuelaA, "Ana", "Perez", true);
+		UUID t = datos.temporada(escuelaA, 2027, false);
+		dts.crear(admin, d, new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaSolicitud(t, "Sub 12", null,
+				null, null, null), DATOS);
+		var cambioA = new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion("Sub 14", null, null, null,
+				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO);
+		var cambioB = new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion("Sub 16", null, null, null,
+				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO);
+
+		try (Retencion a = new Retencion(() -> dts.actualizar(admin, d, t, cambioA, DATOS))) {
+			Future<Object> b = enOtroHilo(() -> dts.actualizar(admin, d, t, cambioB, DATOS));
+
+			assertThat(b.get(10, TimeUnit.SECONDS)).isInstanceOfSatisfying(ExcepcionNegocio.class, e -> {
+				assertThat(e.getEstado()).isEqualTo(HttpStatus.CONFLICT);
+				assertThat(e.getCodigo()).isEqualTo("CONFLICTO_CONCURRENCIA");
+				assertThat(e.getMessage()).contains("datos deportivos").doesNotContain("activacion");
+			});
+			a.confirmar();
+		}
+
+		assertThat(dts.obtener(admin, d, t).categoria()).isEqualTo("Sub 14");
+		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).isEqualTo(1);
+		for (int i = 0; i < 5; i++) {
+			assertThat(jdbc.sql("SHOW lock_timeout").query(String.class).single()).isEqualTo("0");
+		}
+	}
 }
+
