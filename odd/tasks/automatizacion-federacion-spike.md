@@ -2,7 +2,7 @@
 
 Objetivo: determinar si Playwright puede completar los formularios reales de empadronamiento y aptos físicos de la federación (con adjuntos) sin duplicar la carga.
 Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `ask-on-risk`. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
-Estado: **DESCUBRIMIENTO PARCIAL — bloqueado por el login de Google (ver V1 y §8).** Sin implementación, sin push ni merge.
+Estado: **DESCUBRIMIENTO PARCIAL — mapeo real pendiente; la conexión a un Chrome ya autenticado está definida y a la espera de que el usuario instale la extensión y recargue la sesión (V6–V8, §10).** Sin implementación, sin push ni merge.
 
 ## Specs
 
@@ -20,7 +20,7 @@ Estado: **DESCUBRIMIENTO PARCIAL — bloqueado por el login de Google (ver V1 y 
 | --- | --- | --- | --- | --- |
 | D1 | S1 | Verificar accesibilidad anónima de ambos formularios | inline | **hecho** (V1) |
 | D2 | S6 | Leer ficha médica, nota CAP y Reglamento Nacional 2026 | inline | **hecho** (V2–V4) |
-| D3 | S1,S2 | Mapear campos, obligatoriedad, opciones, validaciones, secciones y subida de archivos | inline | **bloqueado: requiere sesión de Google iniciada por el usuario** (§8) |
+| D3 | S1,S2 | Mapear campos, obligatoriedad, opciones, validaciones, secciones y subida de archivos | inline | **pendiente: necesita un Chrome autenticado al que conectarse** (§10) |
 | D4 | — | Comparar con lo que guarda el backend | inline | **preliminar** (§5); se completa con D3 |
 | D5 | S4,S5,S7 | Arquitectura, diseño del spike y criterios | inline | **propuesta** (§6, §7) |
 | I1… | S3 | Implementación del spike | — | **no autorizada** |
@@ -34,6 +34,8 @@ Estado: **DESCUBRIMIENTO PARCIAL — bloqueado por el login de Google (ver V1 y 
 **L2 — enlaces y alcance (2026-11-02, textual, resumen de las instrucciones).** Formularios: Empadronamiento 2026 `https://forms.gle/AkdJR7r1yFMKmsuZ7`; Aptos físicos 2026 `https://forms.gle/aUSDJwWwHa7cWmAVA`. Documentación: ficha médica oficial, nota CAP y Reglamento Nacional 2026 (enlaces de Drive). "Autorizo continuar exclusivamente el descubrimiento": 1. verificar la accesibilidad de ambos formularios con un navegador controlado; 2. identificar campos, obligatoriedad, opciones, validaciones y secciones condicionales; 3. analizar los controles de subida de archivos y sus restricciones; 4. comparar con los datos del backend; 5. identificar qué campos se completan automáticamente y qué documentos se recuperan del expediente digital; 6. evaluar si los enlaces precompletados complementan a Playwright; 7. diferenciar el formulario de presentación federativa de la ficha médica; 8. proponer una arquitectura reutilizable para otros años sin fijar los identificadores de Google Forms en la lógica de negocio; 9. registrar resultados y limitaciones verificadas en el plan ODD. "No enviar respuestas, no subir archivos a formularios oficiales y no utilizar datos reales de menores." "No implementar todavía el worker, no modificar Spring Boot ni Supabase, no hacer push ni merge." Entregables: mapeo real de ambos formularios, limitaciones encontradas y propuesta de implementación del spike.
 
 **L3 — evidencia de `temp-5` registrada** en `fase-1-cierre.md` y `temp-5-cierre.md` (commit `f025739`).
+
+**L4 — 2026-11-02 (resumen textual del usuario).** "Confirmé que puedo iniciar sesión con la cuenta institucional de Banfield en Google Chrome normal de Windows y acceder a los formularios. Por lo tanto, el bloqueo ocurre específicamente cuando intentamos iniciar sesión desde Chrome controlado por Playwright. … No seguir intentando automatizar el login ni eludir las restricciones de Google." Después pidió usar la extensión oficial de Playwright para conectarse a un Chrome ya autenticado: "No volver a intentar automatizar el inicio de sesión de Google. No completar campos, adjuntar documentos ni enviar respuestas. No extraer ni guardar cookies, contraseñas o tokens."
 
 ## 1. Resultados verificados
 
@@ -57,6 +59,12 @@ IDs de formulario resueltos (identifican el formulario, no son secretos; viven s
 - La inscripción en la web de la CAP **no** reemplaza el Excel con n.º de licencia, n.º de deportista, nombre, nacimiento, categoría, club y función.
 
 **V5 — Entorno.** Node 24.21.0; Playwright 1.64.1 se instaló solo en un directorio de trabajo fuera del repo; hay Chromium en caché y **pantalla disponible (WSLg)**, por lo que un login manual en un navegador visible es viable. El MCP de Playwright de esta sesión busca Chrome estable (`/opt/google/chrome/chrome`), que no está instalado: no sirve para el spike y no se instala.
+
+**V6 — Autenticación (limitación técnica NO resuelta).** Con Chrome 156 estable de Linux lanzado por Playwright (`channel: 'chrome'`, visible, perfil persistente fuera del repo, permisos `700`), la sesión de Google no se pudo completar: el navegador se cerró a los ~3 minutos sin llegar a los formularios (no se sabe si lo cerró el usuario o Google). El usuario confirmó que en Chrome normal de Windows el inicio de sesión funciona. No se volvió a intentar ni se intentó evitar el control. La causa exacta no se verificó; queda registrada como limitación del navegador **controlado** por Playwright.
+
+**V7 — Cómo se conecta la extensión (verificado en el código de `playwright-core` 1.64.1 y `@playwright/mcp` 0.0.84).** El servidor MCP abre un relé WebSocket en un puerto aleatorio de **su propio** `localhost` y lanza el Chrome **de su propio sistema operativo** con `chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html?mcpRelayUrl=ws://localhost:<puerto>…`. La extensión oficial es "Playwright Extension" de la Chrome Web Store (ese ID). Sin variable de token, la página de conexión espera la aprobación manual de la persona; con token, el servidor espera 30 s. La extensión se adhiere al navegador real (sesiones, cookies, extensiones), por eso la persona decide qué pestaña comparte. En 0.0.84 el flag es `--extension` (`--extension=chrome` falla con `unknown option`).
+
+**V8 — WSL2 ↔ Windows (verificado).** Red de WSL2 en modo **NAT** (`wslinfo --networking-mode` = `nat`, sin `.wslconfig`): un servidor en Linux no alcanza el `localhost` de Windows ni al revés de forma garantizada, y un servidor MCP en Linux lanzaría el Chrome de Linux, que no tiene la extensión ni la sesión. Hay interop con Windows (`cmd.exe`), Node 20.19.5 y Chrome en `C:\Program Files\Google\Chrome\Application\chrome.exe`. **Prueba:** `cmd.exe /c "npx -y @playwright/mcp@0.0.84 --extension"` desde WSL por stdio respondió `initialize` y devolvió 25 herramientas (incluida `browser_evaluate`), sin abrir Chrome. Es decir, el servidor corre en Windows (relé y Chrome en el mismo `localhost`) y Claude Code en WSL lo usa por stdio. `cmd.exe` imprime un aviso por el directorio UNC y vuelve a `C:\Windows`; es inofensivo.
 
 ## 2. Hallazgo que corrige una premisa de la ficha
 
@@ -141,7 +149,7 @@ Ubicación propuesta: `tools/federacion-spike/` (directorio nuevo, independiente
 
 | ID | Riesgo o dependencia | Mitigación |
 | --- | --- | --- |
-| R1 | **Login de Google bloquea navegadores automatizados** ("este navegador no es seguro") | Contexto persistente con Chromium visible; si falla, probar el Chrome real del usuario con puerto de depuración; no se automatiza CAPTCHA ni MFA |
+| R1 | **El login de Google no funciona en el Chrome controlado por Playwright** (V6, causa no verificada) | Limitación aceptada: no se automatiza el login ni se evade el control. La persona inicia sesión en su Chrome normal y Playwright se conecta a esa sesión mediante la extensión (§10); alternativa sin dependencias: fragmento de consola que descarga el esquema |
 | R2 | El formulario cambia (preguntas, `entry`, opciones) | Perfil versionado + huella de esquema + detención |
 | R3 | La subida de archivos usa un selector embebido difícil de automatizar | Fase C aparte; si falla, queda manual |
 | R4 | Datos de menores en la URL precompletada | §4; datos ficticios en el spike |
@@ -156,3 +164,21 @@ Ubicación propuesta: `tools/federacion-spike/` (directorio nuevo, independiente
 ## 9. Próximo paso (esperando al usuario)
 
 Para cerrar D3: iniciar sesión **a mano** en un Chromium visible lanzado por el spike, con el perfil fuera del repo. No hace falta compartir credenciales. Después, un script de solo lectura extrae el esquema de ambos formularios; el resultado (sin datos personales) se incorpora a este plan.
+
+## 10. Conexión a un Chrome ya autenticado (a la espera del usuario)
+
+**Configuración propuesta (sin tocar el servidor `playwright` existente, que es global y sin `--extension`).** Un servidor con otro nombre, en alcance local (queda en `~/.claude.json`, no en el repo, sin `.mcp.json` nuevo):
+
+```
+claude mcp add playwright-extension --scope local -- cmd.exe /c "cd /d %USERPROFILE% && npx -y @playwright/mcp@0.0.84 --extension"
+```
+
+- Versión fijada (0.0.84) para que la prueba sea reproducible; `@latest` puede cambiar flags.
+- Corre en Windows (V8). No se define `PLAYWRIGHT_MCP_EXTENSION_TOKEN`: cada conexión exige la aprobación manual de la persona en la página de conexión.
+- Las herramientas aparecerán como `mcp__playwright-extension__*` al **reiniciar o reanudar la sesión de Claude Code** (un servidor MCP nuevo no se carga en caliente).
+
+**Pasos del usuario:** instalar "Playwright Extension" desde la Chrome Web Store en el Chrome de Windows; iniciar sesión en Google con la cuenta institucional en ese Chrome; abrir una pestaña solo con el formulario; ejecutar el comando de arriba; reanudar la sesión; al primer uso aceptar la conexión y elegir esa pestaña.
+
+**Riesgo de privilegios.** La extensión da acceso al navegador real: con `browser_evaluate` se podría leer más que el formulario. Mitigaciones: compartir **solo** la pestaña del formulario; recomendado un perfil de Chrome dedicado con solo la cuenta institucional (flag `--profile-dir-name`); la extracción lee únicamente los cuatro campos del esquema de `FB_PUBLIC_LOAD_DATA_`, sin `document.cookie`, almacenamiento ni otras páginas.
+
+**Alternativas si falla:** (1) fragmento de consola en Chrome normal que descarga `padron.esquema.json` y `apto.esquema.json` (ya entregado, sin dependencias); (2) `--cdp-endpoint` a un Chrome de Windows: exige red `mirrored` en `.wslconfig` y un reinicio de WSL, no recomendado.
