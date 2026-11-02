@@ -21,6 +21,9 @@ const PESO = { [ESTADO.OK]: 5, [ESTADO.DISTINTO]: 4, [ESTADO.VACIO]: 3, [ESTADO.
 const unir = (...listas) => [...new Map(listas.flat().sort((a, b) => PESO[a.estado] - PESO[b.estado]).map((f) => [f.clave, f])).values()];
 
 const cliente = await ClienteMcp.iniciar();
+console.log('Esperando que apruebes la conexión de la extensión de Playwright en Chrome (hasta 15 minutos)…');
+await cliente.herramienta('browser_tabs', { action: 'list' }, { timeoutMs: 15 * 60 * 1000 });
+console.log('Conexión aprobada.');
 const informe = { fecha: new Date().toISOString(), formularios: {} };
 try {
   for (const form of ['padron', 'apto']) {
