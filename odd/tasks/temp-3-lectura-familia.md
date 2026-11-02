@@ -1,6 +1,6 @@
 # TEMP-3 — Lectura FAMILIA de los datos deportivos anuales
 
-Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); revisión nativa RDD APROBADA; a la espera de autorización de push/PR.**
+Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **CERRADA: validada remotamente y fusionada en `main` (PR #6, merge commit `da823be4fb24d5eab83d10a9a7eaa14f3cee4a4b`)**.
 Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on-risk`; sin push, merge ni migraciones. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -237,4 +237,23 @@ Risk: item 2 (seguridad: se partió la guarda `ALCANCE_FAMILIA` y se agregaron c
 **Resultado: aprobada, sin hallazgos bloqueantes; acuse exacto ejecutado y autoridad consumida.**
 - *Riesgo:* sin hallazgos. Autorización en el backend con alcance por id y escuela; `familiaId`/`escuelaId` solo del JWT; los joins nuevos están anclados a `fd.escuelaId`; visibilidad que falla cerrado; un `404` de mensaje fijo por endpoint y la segunda consulta del historial no agrega oráculo; DTO de 8 campos con `toString` redactado; controlador solo `GET`; equivalencia textual del alcance fijada por prueba; sin secretos ni dependencias.
 - *Confiabilidad:* una sugerencia **no bloqueante** (`R3-flaky-substring`): `FamiliaPortalTemporadasAislamientoDbTest` (líneas 279-280) busca las subcadenas cortas `-2027` y `35000` en la salida serializada, que también contiene UUID aleatorios; una coincidencia fortuita haría fallar la prueba con probabilidad del orden de 1e-4 por corrida. Queda como trabajo posterior (acotar la búsqueda a campos o valores concretos); no se corrigió para no modificar el candidato ya revisado.
+
+### L18 — Corrección de la sugerencia de la revisión, validación remota y merge
+
+**Corrección previa a publicar (autorizada):** la sugerencia no bloqueante `R3-flaky-substring` se corrigió en el commit independiente `d0017dd`: `FamiliaPortalTemporadasAislamientoDbTest.ningunaRespuestaDeLaFamiliaContieneDatosNiIdsAjenos` ya no busca subcadenas cortas en un texto con UUID aleatorios; ahora verifica por campo que cada respuesta tiene exactamente los ocho campos, que `temporadaId` pertenece a las temporadas visibles, que `anio` es 2025 o 2026, que `categoria` está en el conjunto propio y que todos los mensajes de error son el mismo mensaje fijo. Una mutación de la regla de visibilidad la hizo fallar (sensibilidad comprobada). `assess` del commit: riesgo medio, `review_due: false`; no se inició otra revisión. Suites locales: 865 y 398 tests, 0 fallos.
+
+**PR [#6](https://github.com/gonzav104/banfield-patin/pull/6)** (`feat/temp-3-lectura-familia` → `main`), HEAD `d0017ddf5a988dfeaa83fd924a1d8cf379cd2303`, base `main` = `549fa65`, ocho commits. Estado de merge: `BLOCKED` mientras los checks corrían; `OPEN` / `MERGEABLE` / `CLEAN` al terminar.
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `41368903823` | `push` | Suite normal | 865 | 0 | 0 | 0 | SUCCESS |
+| `41368903823` | `push` | Suite db (PostgreSQL 17) | 398 | 0 | 0 | 0 | SUCCESS |
+| `41368908259` | `pull_request` | Suite normal | 865 | 0 | 0 | 0 | SUCCESS |
+| `41368908259` | `pull_request` | Suite db (PostgreSQL 17) | 398 | 0 | 0 | 0 | SUCCESS |
+
+Los conteos remotos coinciden con los locales y cumplen el mínimo pedido (865 y 398). Sin secretos ni Supabase.
+
+**Merge:** autorizado por el usuario; se verificó que el HEAD seguía siendo `d0017dd`, ambos checks en verde y el PR `MERGEABLE`/`CLEAN`, y se fusionó con merge commit `da823be4fb24d5eab83d10a9a7eaa14f3cee4a4b` el 2026-11-02 00:50Z. `main` local quedó en `da823be` (igual a `origin/main`), sin cambios sin preservar.
+
+**Engram:** observaciones 588 (estado), 589 (PR #6 con checks verdes) y 590 (merge), cada una con una revisión de conflictos histórica pendiente que no se resolvió. Los espejos de `temp-1` y `temp-2` siguen sin sincronizar.
 
