@@ -96,7 +96,11 @@ Alternativa más simple: confiar solo en el índice parcial y reintentar. Se des
 | ¿`numero_corredor` es obligatorio? | A: no / B: sí al activar la temporada | **A**; se valida al exportar LBF |
 | ¿Se cargan temporadas históricas? | A: solo desde 2026 / B: backfill manual | **B** si la escuela tiene datos previos útiles para LBF |
 
+Las seis recomendaciones de esta tabla fueron las adoptadas en la Fase 1 (puede no haber activa; no hay desactivación aparte; el año no se edita; sin acción automática al cambiar de año; `numero_corredor` opcional y validado al guardar su forma, no su obligatoriedad; cualquier año entre 2020 y 2100 se puede cargar, lo que permite el backfill manual).
+
 ## 6. Alcance de la Fase 1
+
+**Estado: todo lo que sigue está implementado y verificado** (`temp-1` a `temp-5`; secciones 7 a 9).
 
 Incluye:
 
@@ -124,6 +128,8 @@ Solo ADMIN (`/api/admin/**`); la escuela y el actor salen del JWT, nunca del cli
 | `POST /api/admin/temporadas` con `{"anio": 2027}` | `201` con `Location`; nace inactiva | `400 VALIDACION` (año nulo o fuera de 2020–2100), `400 SOLICITUD_INVALIDA` (cuerpo ilegible o con otros campos), `409 TEMPORADA_ANIO_DUPLICADO` |
 | `GET /api/admin/temporadas/{id}` | `200` | `404 TEMPORADA_NO_ENCONTRADA` (también si es de otra escuela) |
 | `POST /api/admin/temporadas/{id}/activar` | `200` con la temporada activa; idempotente | `404 TEMPORADA_NO_ENCONTRADA`, `409 CONFLICTO_CONCURRENCIA` |
+
+**Entrada del año:** solo se acepta un **entero JSON** entre 2020 y 2100. Un decimal (`2027.9`, `2027.0`), la notación exponencial (`1e3`), una cadena (`"2027"`), un booleano, un arreglo, un objeto o un entero fuera de `int` dan `400 SOLICITUD_INVALIDA` sin crear nada; `null`, la propiedad ausente y un entero fuera de rango dan `400 VALIDACION`. La lectura estricta es de ese campo (`AnioEstricto`); no cambia la configuración global de Jackson ni otros endpoints.
 
 Transversales: `401` sin sesión, `403` para FAMILIA y `403 CSRF_INVALIDO` sin token en las escrituras. La lectura de FAMILIA llega en `temp-3`.
 

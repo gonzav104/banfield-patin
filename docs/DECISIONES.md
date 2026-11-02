@@ -1,6 +1,6 @@
 # Decisiones del proyecto
 
-Estado a 2026-10-31. Las decisiones cerradas ya fueron aprobadas por el usuario. Las abiertas **no** están decididas: incluyen recomendación, pero requieren confirmación.
+Estado actualizado el 2026-11-02. Las decisiones cerradas ya fueron aprobadas por el usuario. Las abiertas **no** están decididas: incluyen recomendación, pero requieren confirmación. **Ya aprobadas e implementadas** (se conservan abajo con su opción y su evidencia): O8 (`temp-4`), O10 (`temp-1`…`temp-3`) y O13 (`ci-1`…`ci-3`).
 
 ## 1. Decisiones cerradas
 
@@ -118,6 +118,8 @@ Fase: 8.
 
 ### O10 — Reglas de temporada
 
+**Estado: APROBADA (opción A) e implementada en la Fase 1.** Evidencia: una temporada nace inactiva (`Temporada.crear`, `TemporadaServiceDbTest.unaTemporadaNuevaNaceInactiva…`); a lo sumo una activa por escuela (índice parcial `uq_temporada_activa_por_escuela`, `laBaseRechazaDosActivas…`, activación concurrente en `TemporadasConcurrenciaDbTest`); puede no haber ninguna activa (`sinTemporadaActivaPreviaActivarFunciona…`) y FAMILIA no ve datos en ese caso (`FamiliaPortalTemporadasAislamientoDbTest.sinTemporadaActivaNoHayNingunaVisible…`). Ver `docs/TEMPORADAS.md`.
+
 - **A. Puede no haber temporada activa; el ADMIN activa cuando corresponde.**
 - **B. Siempre debe existir exactamente una activa.**
 
@@ -144,6 +146,8 @@ Recomendación: **B acotada**, un solo deportista, con autorización explícita 
 Fase: 2.
 
 ### O13 — CI: alcance y obligatoriedad
+
+**Estado: APROBADA (opción A) e implementada en `ci-1`, `ci-2` y `ci-3`.** Evidencia: `.github/workflows/backend.yml` con los jobs `Suite normal` y `Suite db (PostgreSQL 17)` en `push` y `pull_request`, sin secretos; `main` protegida con PR obligatorio y esos dos checks obligatorios (comprobado por lectura de la API de GitHub el 2026-11-02); los PR #1 a #7 pasaron por esos dos checks. Ver `odd/tasks/ci-1-suite-normal.md`, `ci-2-suite-db.md` y `ci-3-proteccion.md`.
 
 - **A. Dos jobs obligatorios en PR y push a `main`: suite normal y `-Pdb-tests`.**
 - **B. Solo suite normal obligatoria; Testcontainers opcional.**

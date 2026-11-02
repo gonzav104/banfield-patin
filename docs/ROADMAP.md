@@ -1,14 +1,14 @@
 # Roadmap
 
-Secuencia vigente desde 2026-10-31. Reemplaza el roadmap anterior. Cada fase cierra con evidencia, no con fechas.
+Secuencia vigente desde 2026-10-31 (estados actualizados el 2026-11-02). Reemplaza el roadmap anterior. Cada fase cierra con evidencia, no con fechas. ✅ cerrada · 🔄 en curso.
 
 ## 1. Fases
 
 | Fase | Resultado | Alcance | Depende de |
 | --- | --- | --- | --- |
-| **0** | Decisiones y documentación cerradas | `docs/ODD.md`, `docs/DECISIONES.md`, `docs/REVISION-DOCUMENTAL.md`, `docs/TEMPORADAS.md`, este roadmap; estados alineados; procedimiento de segunda cuenta ADMIN | — |
-| **CI-0** | Pipeline verde | Suite normal y suite Testcontainers en GitHub Actions, sin secretos reales | Repo en GitHub |
-| **1** | Temporadas y datos anuales | `Temporada` + `DeportistaTemporada`; activación única; DNI enmascarado en listados | 0, CI-0 |
+| **0** ✅ | Decisiones y documentación cerradas | `docs/ODD.md`, `docs/DECISIONES.md`, `docs/REVISION-DOCUMENTAL.md`, `docs/TEMPORADAS.md`, este roadmap; estados alineados; procedimiento de segunda cuenta ADMIN | — |
+| **CI-0** ✅ | Pipeline verde | Suite normal y suite Testcontainers en GitHub Actions, sin secretos reales | Repo en GitHub |
+| **1** 🔄 | Temporadas y datos anuales | `Temporada` + `DeportistaTemporada`; activación única; DNI enmascarado en listados | 0, CI-0 |
 | **2** | Spike federativo | Playwright sobre los formularios reales de empadronamiento y apto: login Google, campos, secciones condicionales, uploads, hasta antes de "Enviar" | 0 |
 | **3** | Documentos privados | Supabase Storage privado; carga FAMILIA/ADMIN; revisión; reemplazo; descarga firmada; ZIP | 1, 2 |
 | **4** | Aptos físicos | Apto por deportista/temporada con documento, médico, matrícula, estados | 1, 3 |
@@ -30,23 +30,23 @@ Secuencia vigente desde 2026-10-31. Reemplaza el roadmap anterior. Cada fase cie
 
 ### CI-0
 
-| Unidad | Contenido | Verificación |
-| --- | --- | --- |
-| `ci-1-suite-normal` | `.github/workflows/backend.yml`: job con `./mvnw -B clean verify`, cache de Maven, triggers `push` y `pull_request` | Workflow verde en un PR de prueba |
-| `ci-2-suite-db` | Segundo job con `./mvnw -B verify -Pdb-tests` (Docker disponible en `ubuntu-latest`) | Job verde; sin Supabase ni secretos |
-| `ci-3-proteccion` | Jobs obligatorios en `main` (configuración de GitHub, no código) | PR bloqueado si falla un job |
+| Unidad | Contenido | Verificación | Estado |
+| --- | --- | --- | --- |
+| `ci-1-suite-normal` | `.github/workflows/backend.yml`: job con `./mvnw -B clean verify`, cache de Maven, triggers `push` y `pull_request` | Workflow verde en un PR de prueba | ✅ PR #1 |
+| `ci-2-suite-db` | Segundo job con `./mvnw -B verify -Pdb-tests` (Docker disponible en `ubuntu-latest`) | Job verde; sin Supabase ni secretos | ✅ PR #2 |
+| `ci-3-proteccion` | Jobs obligatorios en `main` (configuración de GitHub, no código) | PR bloqueado si falla un job | ✅ PR #3 |
 
 Riesgo de `ci-2`: Testcontainers descarga la imagen en cada corrida. Mitigación: cache de imágenes o aceptar el costo inicial.
 
 ### Fase 1 — Temporadas
 
-| Unidad | Contenido | Verificación |
-| --- | --- | --- |
-| `temp-1-temporada` | Entidad, repositorio, servicio, controller ADMIN: alta, listado, detalle, activación con `FOR UPDATE` + índice parcial | Servicio, WebMvc (401/403/CSRF/validación), DB (unicidad, activación concurrente, auditoría) |
-| `temp-2-deportista-temporada` | Alta, edición y consulta de categoría, rama, divisional, número de corredor y estado deportivo | Servicio, WebMvc, DB (unicidad por deportista/temporada y por número de corredor) |
-| `temp-3-lectura-familia` | Lectura de temporada y datos anuales para FAMILIA, solo de sus deportistas vinculados | WebMvc de autorización; prueba de aislamiento entre familias |
-| `temp-4-dni-enmascarado` | `DeportistaResumen` sin DNI completo; búsqueda por prefijo se mantiene; DNI completo solo en detalle | WebMvc de contrato + prueba de búsqueda |
-| `temp-5-cierre` | OpenAPI, documentación del módulo, eventos de auditoría, revisión de riesgos | `./mvnw clean verify` y `-Pdb-tests` verdes |
+| Unidad | Contenido | Verificación | Estado |
+| --- | --- | --- | --- |
+| `temp-1-temporada` | Entidad, repositorio, servicio, controller ADMIN: alta, listado, detalle, activación con `FOR NO KEY UPDATE` sobre la escuela + índice parcial | Servicio, WebMvc (401/403/CSRF/validación), DB (unicidad, activación concurrente, auditoría) | ✅ PR #4 |
+| `temp-2-deportista-temporada` | Alta, edición y consulta de categoría, rama, divisional, número de corredor y estado deportivo | Servicio, WebMvc, DB (unicidad por deportista/temporada y por número de corredor) | ✅ PR #5 |
+| `temp-3-lectura-familia` | Lectura de temporada y datos anuales para FAMILIA, solo de sus deportistas vinculados | WebMvc de autorización; prueba de aislamiento entre familias | ✅ PR #6 |
+| `temp-4-dni-enmascarado` | `DeportistaResumen` sin DNI completo; búsqueda por prefijo se mantiene; DNI completo solo en detalle | WebMvc de contrato + prueba de búsqueda | ✅ PR #7 |
+| `temp-5-cierre` | OpenAPI, documentación del módulo, eventos de auditoría, revisión de riesgos | `./mvnw clean verify` y `-Pdb-tests` verdes | 🔄 en curso (cierre de la Fase 1) |
 
 Orden: `ci-1` y `ci-2` antes de cerrar Fase 1; `temp-4` puede hacerse en paralelo porque no depende de las otras unidades.
 

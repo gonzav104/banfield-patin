@@ -40,7 +40,8 @@ class RutasDocumentadasTest {
 				|| (paquete.startsWith(BASE + ".familias") && !paquete.startsWith(BASE + ".familias.invitaciones"));
 	}
 
-	private static Set<String> rutasDelModulo() throws ClassNotFoundException {
+	/** Rutas de los controladores de {@code familias} (salvo invitaciones) y {@code deportistas}, leidas del codigo. */
+	static Set<String> rutasDelModulo() throws ClassNotFoundException {
 		ClassPathScanningCandidateComponentProvider escaner = new ClassPathScanningCandidateComponentProvider(false);
 		escaner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
 		Set<String> rutas = new TreeSet<>();

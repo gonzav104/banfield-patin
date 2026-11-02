@@ -125,6 +125,26 @@ class TemporadaAdminControllerWebMvcTest {
 	}
 
 	@Test
+	void altaSoloAceptaUnEnteroJsonYRechazaDecimalesCadenasYDemasTiposSinLlamarAlServicio() throws Exception {
+		for (String cuerpo : List.of("{\"anio\":2027.9}", "{\"anio\":2027.0}", "{\"anio\":1e3}", "{\"anio\":2.027e3}",
+				"{\"anio\":\"2027\"}", "{\"anio\":\" 2027 \"}", "{\"anio\":true}", "{\"anio\":[2027]}",
+				"{\"anio\":{\"valor\":2027}}", "{\"anio\":99999999999}")) {
+			mvc.perform(alta(admin(), cuerpo)).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void unEnteroJsonDentroDelRangoSeAceptaConCualquierEspaciadoYLosLimitesTambien() throws Exception {
+		when(servicio.crear(any(), any(), any())).thenReturn(new TemporadaRespuesta(id, 2027, false));
+
+		for (String cuerpo : List.of("{\"anio\":2027}", "{ \"anio\" : 2020 }", "{\"anio\":2100}")) {
+			mvc.perform(alta(admin(), cuerpo)).andExpect(status().isCreated());
+		}
+	}
+
+	@Test
 	void altaNoAceptaCamposQueDecideElServidor() throws Exception {
 		for (String campo : List.of("escuelaId", "activa", "estado", "id")) {
 			mvc.perform(alta(admin(), "{\"anio\":2027,\"" + campo + "\":\"x\"}")).andExpect(status().isBadRequest())
