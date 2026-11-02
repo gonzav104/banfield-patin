@@ -2,7 +2,7 @@
 
 Objetivo: determinar si Playwright puede completar los formularios reales de empadronamiento y aptos físicos de la federación (con adjuntos) sin duplicar la carga.
 Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `single-pr` por decisión explícita del usuario; cadena de commits en la rama actual y un único PR final hacia `main`, sin PRs intermedios. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
-Estado: **FASE A COMPLETA; L1 DE §12 CERRADA Y VALIDADA POR EL USUARIO; L2 NO CONCLUYENTE (§12.7); PRUEBAS EN VIVO DETENIDAS POR ORDEN DEL USUARIO (§12.8); AUDITORÍA INTEGRAL OFFLINE COMPLETA (§12.9); CORRECCIÓN DE PRIVACIDAD EN VERIFICACIÓN (§12.10).** Detector de cambios (D) validado offline y contra los formularios reales, sin diferencias en L1. Las mediciones anteriores de la fase B siguen siendo **no válidas** (§12.3); las métricas de solo lectura de L1 se conservan por separado (§12.6). Informe de cierre técnico en `docs/auditoria-federacion-spike.md`, pendiente de revisión del usuario; sin fase C, push ni merge.
+Estado: **FASE A COMPLETA; L1 DE §12 CERRADA Y VALIDADA POR EL USUARIO; L2 NO CONCLUYENTE (§12.7); PRUEBAS EN VIVO DETENIDAS POR ORDEN DEL USUARIO (§12.8); AUDITORÍA INTEGRAL OFFLINE COMPLETA (§12.9); CORRECCIÓN DE PRIVACIDAD VERIFICADA OFFLINE Y REVISADA POR RDD (§§12.10–12.11).** Detector de cambios (D) validado offline y contra los formularios reales, sin diferencias en L1. Las mediciones anteriores de la fase B siguen siendo **no válidas** (§12.3); las métricas de solo lectura de L1 se conservan por separado (§12.6). Informe de cierre técnico en `docs/auditoria-federacion-spike.md`; el PR final, push y merge requieren autorización separada. No es automatización de producción.
 
 ## Specs
 
@@ -30,7 +30,7 @@ Estado: **FASE A COMPLETA; L1 DE §12 CERRADA Y VALIDADA POR EL USUARIO; L2 NO C
 | D5 | S4,S5,S7 | Arquitectura, diseño del spike y criterios | inline | **propuesta** (§6, §7) |
 | I1… | S3 | Implementación del spike | — | **no autorizada** |
 | A1 | S1,S2,S8 | Auditoría integral offline y cierre técnico | delegado (exploración) + inline (verificación e informe) | **hecho** (§12.9; 9/9 pruebas offline; sin código) |
-| C1 | S9,S10,S11 | Corrección de enlaces, redacción y aislamiento experimental con pruebas | inline (las capas comparten el contrato del ejecutor; riesgo 2: privacidad) | **en curso** (§12.10; RED/GREEN y revisión pendientes) |
+| C1 | S9,S10,S11,S12 | Corrección de enlaces, redacción y aislamiento experimental con pruebas | inline (las capas comparten el contrato del ejecutor; riesgo 2: privacidad) | **hecho** (`25106e6`; 13/13 offline; RDD aprobado y acusado) |
 
 ## Log
 
@@ -535,3 +535,5 @@ La sesión actual expuso `spawn_agent`, `wait_agent` y `list_agents`; `list_agen
 > Al finalizar, indicá si la rama está lista para solicitar el PR final como prueba de concepto experimental, sin presentarla como automatización de producción.
 
 **Estrategia registrada:** los commits existentes permanecen intactos; la corrección de privacidad forma el siguiente commit coherente en esta rama. Se preparará un solo PR final hacia `main` cuando el usuario lo autorice, sin PRs intermedios ni tracker. La rama supera ampliamente el presupuesto orientativo de 400 líneas; la opción de PR único es una decisión explícita y debe señalarse como excepción de tamaño al solicitar revisión, no ocultarse mediante cambios cosméticos. RDD y commit: pendientes.
+
+**Cierre observado:** el candidato exacto de 15 archivos y 560 líneas fue evaluado `high` por el assess RDD con escalación del ítem 2 (privacidad); el consentimiento nativo del candidato indicó `medium` y el usuario respondió `granted`. Los cuatro lentes (`risk`, `resilience`, `readability`, `reliability`) terminaron sin hallazgos bloqueantes, y el acuse exacto produjo `gentle-ai.review-acknowledged/v1`, `action=acknowledged`, `authority=burned`, para el target `sha256:c92c764f0799f9a9dde5207792d177cbfbbfd5e3f4ca557f190e36db81a99cb9`. Sobre esos mismos bytes se creó `25106e6 fix(spike): restringir enlaces y redactar diagnosticos`, sin reescribir commits anteriores. La suite offline completa volvió a pasar 13/13 después del commit; no se ejecutó Playwright. El diff acumulado desde `main` era de 43 archivos, 5212 inserciones y 5 eliminaciones antes de esta actualización documental: predominan esquemas y contratos federativos, el plan ODD y el spike independiente. No cambia `backend/`, `frontend/` ni `infra/`; no hay push, merge ni PR. La revisión de un PR único de ese tamaño requiere una excepción de tamaño explícita en su descripción.
