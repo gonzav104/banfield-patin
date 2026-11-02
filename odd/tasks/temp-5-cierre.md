@@ -1,6 +1,6 @@
 # TEMP-5 — Cierre integral de la Fase 1 (Temporadas y DeportistaTemporada)
 
-Objetivo: verificar que la Fase 1 está completa, corregir solo lo realmente necesario y declararla cerrada con criterios objetivos. Estado: **APROBADO; en implementación (commits locales; sin push ni merge).**
+Objetivo: verificar que la Fase 1 está completa, corregir solo lo realmente necesario y declararla cerrada con criterios objetivos. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
 Rama: `feat/temp-5-cierre` (desde `main` = `d12afe9`, PR #7 fusionado). Entrega: `ask-on-risk`; sin push, merge, migraciones ni Supabase. Alcance: **solo Fase 1**; no se amplía hacia Documentos, Aptos, Licencias ni Competencias.
 
 ## Specs
@@ -17,13 +17,13 @@ Rama: `feat/temp-5-cierre` (desde `main` = `d12afe9`, PR #7 fusionado). Entrega:
 | ID | S# | Tarea | Ruta | Estado | Evidencia |
 | --- | --- | --- | --- | --- | --- |
 | T0 | S1–S6 | Descubrimiento, auditoría y plan | inline | hecho | este documento |
-| T1 | S2 | Evidencia remota de `temp-4` y cierre documental de `temp-1`…`temp-4` | inline | pendiente | commit documental separado |
-| T2 | S2 | Corregir la documentación desactualizada o contradictoria (H1–H5) | inline | pendiente | revisión de los 5 puntos |
-| T3 | S2 | Conteos de rutas sostenibles (derivarlos de la fuente única y agregar una guarda de completitud) | inline | pendiente | RED: guarda; GREEN: sin literales |
-| T4 | S2 | Entrada estricta del año (`anio`): rechazar decimales y cadenas numéricas (si se aprueba D4) | inline | pendiente | RED: WebMvc + BD |
-| T5 | S2 | Pruebas faltantes para completar la evidencia (listado ADMIN de temporadas sin N+1; códigos de error documentados existen) | inline | pendiente | RED/GREEN |
-| T6 | S4 | Informe de cierre de la Fase 1 (matriz de requisitos, criterios, hallazgos) | inline | pendiente | `odd/tasks/fase-1-cierre.md` |
-| T7 | S4 | `./mvnw clean verify` y `./mvnw verify -Pdb-tests`; CI remoto; RDD según protocolo | inline | pendiente | conteos y runs |
+| T1 | S2 | Evidencia remota de `temp-4` y cierre documental de `temp-1`…`temp-4` | inline | hecho | `df2e24a` |
+| T2 | S2 | Corregir la documentación desactualizada o contradictoria (H1–H5) | inline | hecho | `05a9dc2` |
+| T3 | S2 | Conteos de rutas sostenibles (derivarlos de la fuente única y agregar una guarda de completitud) | inline | hecho | `59692d5` |
+| T4 | S2 | Entrada estricta del año (`anio`): rechazar decimales y cadenas numéricas (si se aprueba D4) | inline | hecho | `03e1673`; reproducción y RED en L13 |
+| T5 | S2 | Pruebas faltantes para completar la evidencia (listado ADMIN de temporadas sin N+1; códigos de error documentados existen) | inline | hecho | `89b15a8` |
+| T6 | S4 | Informe de cierre de la Fase 1 (matriz de requisitos, criterios, hallazgos) | inline | hecho | `odd/tasks/fase-1-cierre.md` |
+| T7 | S4 | `./mvnw clean verify` y `./mvnw verify -Pdb-tests`; CI remoto; RDD según protocolo | inline | parcial | local 891/408 y `assess` hechos; CI remoto pendiente de push |
 
 Ruta: todo inline. Estimación: ~40 líneas de producción (T4) y ~250 de pruebas; el resto es documentación.
 
@@ -207,4 +207,24 @@ La Fase 1 se declara **terminada** cuando se cumplen **todos**:
 > Autorizo implementación y commits locales. No autorizo push ni merge todavía.
 >
 > Al terminar, presentar cambios realizados, pruebas, evidencia de H7, criterios C1–C10, commits y riesgos residuales.
+
+### L13 — Evidencia de implementación
+
+**Commits locales** (rama `feat/temp-5-cierre`, sobre `main` = `d12afe9`): `b8c9eb1` plan y aprobación; `df2e24a` evidencia remota de `temp-4`; `03e1673` año estricto (H7); `59692d5` conteos de rutas derivados y guarda de controladores (H6); `89b15a8` coherencia de códigos de error y sentencias del listado (H9, H8); `05a9dc2` corrección de la documentación (H1–H4); y el commit de esta evidencia con `fase-1-cierre.md`.
+
+**Suites:** `./mvnw clean verify` = **891 tests, 0 fallos/errores/omitidos** (885 + 6). `./mvnw verify -Pdb-tests` = **408 tests, 0/0/0** (403 + 5). Sin migraciones; V1–V4 sin tocar.
+
+**H7: reproducción y corrección.** Reproducción antes de tocar el código, por HTTP real (cadena de seguridad completa, PostgreSQL 17 descartable y el mapeador **real** de la aplicación), `TemporadaEntradaHttpDbTest`:
+- `{"anio":2027.9}` → **`201`** (creó la temporada 2027); a continuación `{"anio":2027.0}`, `{"anio":2.027e3}`, `{"anio":"2027"}` y `{"anio":" 2027 "}` → **`409`** (coaccionados a 2027 y chocaron con la temporada ya creada) y `{"anio":1e3}` → `400 VALIDACION` (coaccionado a 1000, fuera de rango). Es decir, la aplicación real **sí** convertía en silencio decimales y cadenas.
+- RED también en `TemporadaAdminControllerWebMvcTest` (el servicio recibía el año 2027 en lugar de un `400`).
+
+Corrección (`03e1673`): un `ValueDeserializer` **solo para ese campo** (`AnioEstricto`, aplicado con `@JsonDeserialize` en `TemporadaSolicitud`), sin tocar la configuración global de Jackson ni otros endpoints: acepta únicamente `VALUE_NUMBER_INT` que entre en un `int`; el resto es cuerpo ilegible → `400 SOLICITUD_INVALIDA` sin eco del valor; `null`/ausente/fuera de rango → `400 VALIDACION`. Después: 16/16 en WebMvc y 3/3 por HTTP real; la especificación OpenAPI sigue describiendo `anio` como entero.
+
+**Mutaciones de las guardas nuevas** (código restaurado y verificado): (a) un código documentado que deja de existir → falla; (b) cambia el estado HTTP con el que se lanza → falla; (c) se lanza un código de la Fase 1 sin documentar → falla; (d) un controlador sale del contexto de OpenAPI → `ControladoresDeLaEspecificacionTest` falla con el mensaje que indica qué agregar. **Incidente de proceso:** al restaurar con `git checkout -- <directorio>` revertí por error la edición sin commitear de `TemporadaSolicitud`; lo detecté en el `git status`, la reapliqué y volví a ejecutar las pruebas de H7 (16/16 y 3/3) antes de commitear. Las mutaciones (a) a (c) corrieron sin ese cambio y no se ven afectadas.
+
+**Condiciones del usuario (L12):** (1) H1–H4 corregidos; (2) evidencia de `temp-4` incorporada; (3) conteos derivados sin tocar `InventarioRutasTest` ni la comparación 1:1 con la especificación; (4) pruebas de consultas ADMIN y de códigos de error acotadas a Temporadas; (5) H7 reproducido por HTTP real y corregido a nivel de campo; (6) `fase-1-cierre.md` creado; (7) O10 y O13 marcadas **tras verificar su evidencia** (workflow, protección de `main` leída por API, pruebas); (8) sin smoke ni Supabase; (9) V1–V4 intactas; (10) ambas suites y `assess`; (11) artefactos locales íntegros, Engram sincronizable con `project` explícito.
+
+**RDD:** `gentle-ai review assess` sobre el rango (base `d12afe9`, 18 archivos, 731 líneas): riesgo **medio**, `review_due: false` (`under_budget`). La única línea de producción nueva es la lectura estricta de un campo de entrada, un cambio pedido y sin consumidores; sin ítem de alto riesgo. No se inició revisión. `Risk: none`.
+
+**Riesgos residuales:** ver `fase-1-cierre.md` §5 (A1–A12). Nuevos de esta unidad: ninguno; el endurecimiento de `anio` rechaza entradas que antes se aceptaban en silencio (sin consumidores). Pendiente: CI remoto del PR de `temp-5` (criterio C1) y sincronización de los espejos de Engram de `temp-1`/`temp-2`.
 
