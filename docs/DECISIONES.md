@@ -138,6 +138,8 @@ Fase: 7 (bloqueada).
 
 ### O12 — Acceso para el spike Playwright
 
+**Estado: APROBADA el 2026-11-01 con una variante propia (ver abajo).** Cuenta de Google autorizada con autenticación manual; exploración de los formularios oficiales sin enviar respuestas ni adjuntar archivos; datos personales ficticios y archivos sintéticos; pruebas completas con archivos solo en una copia de prueba autorizada o en un entorno controlado; ninguna credencial ni sesión dentro del repositorio; sin automatizar CAPTCHA, MFA ni otros controles de seguridad; sin información real de menores. Reemplaza la recomendación original (**B acotada**), que usaba datos reales de un deportista. Plan en `odd/tasks/automatizacion-federacion-spike.md`.
+
 - **A. Cuenta Google de prueba y datos ficticios.**
 - **B. Cuenta real con datos reales de un deportista autorizado.**
 
