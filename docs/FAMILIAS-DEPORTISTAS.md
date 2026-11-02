@@ -55,6 +55,8 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/familia/mi-familia` | FAMILIA | — | `200` `{id, nombreReferencia, tutores: [{id, nombre, apellido, parentesco, telefono, email}]}` (solo tutores activos) | `404 FAMILIA_NO_ENCONTRADA` |
 | `GET /api/familia/deportistas` | FAMILIA | `page`, `size` | `200` `Pagina<{id, nombre, apellido, fechaNacimiento, activo}>` | — |
 | `GET /api/familia/deportistas/{id}` | FAMILIA | — | `200` `{id, nombre, apellido, dni, cuil, fechaNacimiento, nacionalidad, domicilio, otrosDatosDomicilio, localidad, partido, codigoPostal, telefonoContacto, emailFederativo, activo}` | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
+| `GET /api/familia/deportistas/{deportistaId}/temporadas` | FAMILIA | — | `200` `List<{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}>` de las temporadas **visibles** (año descendente, sin paginar; `[]` si el deportista es propio y no tiene ninguna visible) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
+| `GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}` | FAMILIA | — | `200` `{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}` | `400` (id no UUID), `404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` (uniforme: una sola respuesta para cualquier causa) |
 
 `DELETE` y `PATCH` no existen en ninguna ruta de este módulo (`405 METODO_NO_PERMITIDO`): una familia, un deportista o un vínculo se desactivan o revocan, nunca se
 borran. `VinculoRespuesta` es `{vinculoId, familiaId, familiaNombre, deportistaId, deportistaNombre, deportistaApellido, deportistaActivo, estado, esPrincipal,
@@ -150,6 +152,7 @@ superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotad
 - **N1:** una familia inactiva, un usuario inactivo o inexistente o una escuela inactiva no llegan nunca al portal: la revalidación central responde `401 NO_AUTENTICADO`
   y borra la cookie en **todas** las rutas (incluida `/api/auth/me`); reactivar restablece la sesión sin nuevo login. Si la base no responde, `503` y la cookie queda
   intacta. El predicado `f.activa = true` se conserva en la consulta del portal como defensa en profundidad y se prueba solo a nivel de repositorio.
+- **Datos deportivos anuales (`temp-3`):** `GET /api/familia/deportistas/{deportistaId}/temporadas[/{temporadaId}]` (solo lectura, regla de visibilidad y `404` uniforme por endpoint) se documenta en [TEMPORADAS.md](TEMPORADAS.md) sección 9; el historial ≤ 1 sentencia (2 si vino vacío) y el detalle ≤ 1.
 - Techos de sentencias de Hibernate (medidos con más de 5 filas): `mi-familia` ≤ 2, listado ≤ 2 (con cualquier `page`/`size`), detalle ≤ 1; la revalidación central
   suma una sentencia JDBC aparte por solicitud autenticada.
 

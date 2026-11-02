@@ -100,7 +100,7 @@ class OpenApiArranqueDbTest extends BaseDbTest {
 		Set<String> enLaEspecificacion = new TreeSet<>();
 		documento.path("paths").properties().forEach(ruta -> ruta.getValue().propertyNames()
 				.forEach(metodo -> enLaEspecificacion.add(metodo.toUpperCase() + " " + ruta.getKey())));
-		assertThat(rutasApiMapeadas()).hasSize(48);
+		assertThat(rutasApiMapeadas()).hasSize(50);
 		assertThat(enLaEspecificacion).containsExactlyInAnyOrderElementsOf(rutasApiMapeadas());
 	}
 

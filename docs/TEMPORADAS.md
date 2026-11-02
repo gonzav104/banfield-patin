@@ -159,3 +159,23 @@ Una fila responde `{id, deportistaId, temporadaId, anio, categoria, rama, divisi
 
 **Auditoría** (misma transacción, solo con cambio real, solo ids, año y **nombres** de campo; nunca un valor deportivo): `DEPORTISTA_TEMPORADA_CREADA` con `{temporadaId, anio}` y `DEPORTISTA_TEMPORADA_ACTUALIZADA` con `{temporadaId, camposModificados}`, más `{estadoAnterior, estadoNuevo}` cuando cambia el estado deportivo.
 
+## 9. Lectura de FAMILIA (`temp-3-lectura-familia`)
+
+La FAMILIA consulta, **solo en lectura**, los datos deportivos anuales de sus deportistas con vínculo `ACTIVO` (portal `/api/familia/**`, rol FAMILIA). Sin migración y sin rutas de escritura ni auditoría de lecturas.
+
+| Ruta | Éxito | Error |
+| --- | --- | --- |
+| `GET /api/familia/deportistas/{deportistaId}/temporadas` | `200` lista de las temporadas **visibles**, del año más nuevo al más viejo, sin paginar (a lo sumo 81); `[]` si el deportista es propio y no tiene ninguna visible | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}` | `200` una temporada visible | `404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` |
+
+Cada temporada se muestra con **exactamente** `{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}`. No se exponen el `id` de la fila, `escuelaId`, `deportistaId` (ya está en la ruta), marcas de tiempo, auditoría ni el DNI. `deportista.activo` tampoco se repite: el estado global del deportista sigue solo en `GET /api/familia/deportistas[/{id}]` y el **estado deportivo anual** (`ACTIVO`, `INACTIVO`, `SUSPENDIDO`) es un plano distinto; un deportista globalmente inactivo con vínculo `ACTIVO` conserva su historial.
+
+**Regla de visibilidad.** La FAMILIA solo ve las temporadas cuyo año es **menor o igual** al de la temporada **activa** de su escuela. **Si no hay temporada activa, no hay ninguna visible** (falla cerrado). Consecuencias, que son parte del contrato:
+- **Activar una temporada hace visibles los datos deportivos de ese año** (y los de los años anteriores) para todas las familias. Cargar o preparar el año siguiente en una temporada **inactiva** no lo expone hasta activarla.
+- **Reactivar una temporada anterior puede ocultar años posteriores:** si se activa 2025 cuando la activa era 2026, las filas de 2026 y 2027 siguen en la base pero la FAMILIA deja de verlas hasta que se active un año igual o posterior.
+- Antes de la primera activación de una escuela, las familias no ven nada (`200 []` en el historial y `404` en el detalle).
+
+**404 uniforme dentro de cada endpoint.** El historial responde un único `404` para todo deportista que no sea propio con vínculo `ACTIVO` y familia activa (de otra familia, de otra escuela, con vínculo revocado, pendiente o rechazado, o inexistente). El detalle responde un único `404` para **todas** las causas, incluidas la temporada futura, inexistente, de otra escuela o sin fila para ese deportista. Mensaje fijo y cuerpo idéntico byte a byte; a diferencia del ADMIN, nunca se diagnostica qué falta.
+
+**Consultas.** La autorización y la visibilidad son el `WHERE` de **una** sentencia (vínculo, familia, deportista, fila deportiva, su temporada y la temporada activa unidos por id **y** escuela), sin cargar nada para comparar después. Techos de sentencias de Hibernate: detalle 1, historial 1 (2 si vino vacío, para decidir entre `404` y `200 []`), con cualquier cantidad de temporadas. La revalidación central de la sesión (usuario, escuela y familia activos, vínculo revocado, etc.) rige desde la siguiente solicitud con el mismo token.
+

@@ -208,10 +208,10 @@ class InventarioRutasTest {
 
 	@Test
 	void losDatosDeportivosPorTemporadaSoloSeCreanYSeReemplazanSinBorradoNiPatch() throws Exception {
-		assertThat(rutas(true).stream().filter(r -> r.contains("/temporadas") && r.contains("/deportistas")))
+		assertThat(rutas(true).stream().filter(r -> r.contains("/api/admin/") && r.contains("/temporadas") && r.contains("/deportistas")))
 				.containsExactlyInAnyOrder("POST /api/admin/deportistas/{deportistaId}/temporadas",
 						"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
-		assertThat(rutas(false).stream().filter(r -> r.contains("/temporadas") && r.contains("/deportistas")))
+		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/") && r.contains("/temporadas") && r.contains("/deportistas")))
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas/{deportistaId}/temporadas",
 						"POST /api/admin/deportistas/{deportistaId}/temporadas",
 						"GET /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
@@ -226,10 +226,13 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void elPortalDeFamiliaTieneExactamenteTresRutasYTodasSonGet() throws Exception {
+	void elPortalDeFamiliaTieneExactamenteCincoRutasYTodasSonGet() throws Exception {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
-				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}");
+				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}",
+				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
+				"GET /api/familia/deportistas/{deportistaId}/temporadas",
+				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}");
 	}
 }

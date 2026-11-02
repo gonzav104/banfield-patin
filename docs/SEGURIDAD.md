@@ -128,6 +128,7 @@ El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPO
   mismo `404 DEPORTISTA_NO_ENCONTRADO`, con el mismo mensaje fijo y el mismo cuerpo byte a byte (`FamiliaPortalHttpDbTest`). Los DTO del portal omiten
   `escuelaId`, `esPrincipal`, datos del vínculo, marcas de tiempo y el DNI y el estado del tutor. Un deportista inactivo con vínculo `ACTIVO` es visible con
   `activo=false` (la inactividad deportiva no revoca el acceso); con vínculo revocado, no.
+- **Datos deportivos anuales (`temp-3`).** `GET /api/familia/deportistas/{deportistaId}/temporadas[/{temporadaId}]` aplica la misma regla: el `WHERE` de una sola sentencia con el alcance de la familia (`ALCANCE_FAMILIA_JOINS` + `ALCANCE_FAMILIA_FILTRO`, cuyo texto conjunto es idéntico al anterior a partirlo y está fijado por `AlcanceFamiliaTest`) más la visibilidad: solo años menores o iguales al de la temporada activa de la escuela, y ninguno sin temporada activa. Un único `404` por endpoint para cualquier causa (cuerpo idéntico byte a byte), sin diagnosticar; un deportista propio sin temporadas visibles da `200 []`. Ver [TEMPORADAS.md](TEMPORADAS.md) sección 9.
 - **Sin escritura y sin auditoría.** No existe ninguna ruta que escriba bajo `/api/familia/` (`InventarioRutasTest`); cualquier otro método da `405` (con CSRF) o `403 CSRF_INVALIDO`.
   Las lecturas del portal no se auditan.
 - **La revalidación central cubre al usuario y a la familia.** El portal no repite el `exists` de usuario: la revalidación de la sesión (sección 2) corre antes de
