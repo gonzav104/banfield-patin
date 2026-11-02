@@ -1,6 +1,6 @@
 # Fase 1 — Temporadas y DeportistaTemporada: informe de cierre
 
-Estado: **FUNCIONALMENTE COMPLETA Y VERIFICADA EN LOCAL; el cierre se confirma con el CI remoto del PR de `temp-5-cierre` (pendiente de push, no autorizado).**
+Estado: **CERRADA.** `temp-5-cierre` se fusionó en `main` (PR #8, merge `d367137`, 2026-11-02) con los dos checks en verde.
 Alcance: `temp-1-temporada`, `temp-2-deportista-temporada`, `temp-3-lectura-familia`, `temp-4-dni-enmascarado` y `temp-5-cierre`, sobre `CI-0` (`ci-1`…`ci-3`). No incluye Documentos, Aptos, Licencias ni Competencias.
 Este documento es el **índice** de la Fase 1: remite a los artefactos de cada unidad (`odd/tasks/temp-N-*.md`) y al contrato técnico (`docs/TEMPORADAS.md`, `docs/FAMILIAS-DEPORTISTAS.md`, `docs/SEGURIDAD.md`, `docs/DECISIONES.md`).
 
@@ -15,7 +15,7 @@ Este documento es el **índice** de la Fase 1: remite a los artefactos de cada u
 | `temp-2-deportista-temporada` | #5 | `549fa65` | 847 / 367 | `temp-2-deportista-temporada.md` |
 | `temp-3-lectura-familia` | #6 | `da823be` | 865 / 398 | `temp-3-lectura-familia.md` |
 | `temp-4-dni-enmascarado` | #7 | `d12afe9` | 885 / 403 | `temp-4-dni-enmascarado.md` |
-| `temp-5-cierre` | pendiente | pendiente | local: **891 / 408** | `temp-5-cierre.md` |
+| `temp-5-cierre` | #8 | `d367137` | 891 / 408 | `temp-5-cierre.md` |
 
 Todas las ejecuciones remotas terminaron con 0 fallos, 0 errores y 0 omitidos. `main` está protegida con PR obligatorio y los checks `Suite normal` y `Suite db (PostgreSQL 17)` obligatorios (comprobado por la API de GitHub el 2026-11-02).
 
@@ -62,7 +62,7 @@ Cambios de contrato en rutas existentes: `GET /api/admin/deportistas` (`Deportis
 
 | Criterio | Estado | Evidencia |
 | --- | --- | --- |
-| **C1** Suites en verde, local y en CI | **Local ✅ (891/408, 0 fallos); CI remoto pendiente** del PR de `temp-5` | `temp-5` L13; se completa al publicar el PR |
+| **C1** Suites en verde, local y en CI | ✅ Local 891/408; CI remoto del PR #8 (HEAD `64a5714`): runs `41374996542` (push) y `41375001632` (pull_request), ambos 891/408 sin fallos; `main` tras el merge: run `41376178593` verde | `temp-5` L14 |
 | **C2** Solo V1–V4, sin modificar | ✅ | `git log -- db/migration` (V4 `8381ebf` es el último); `V4MigracionEstaticaTest` |
 | **C3** Contrato coincidente (código, `RUTAS`, inventario, `docs/`, OpenAPI) | ✅ | `OpenApiRutasTest`, `RutasDocumentadasTest`, `InventarioRutasTest`, `ControladoresDeLaEspecificacionTest` |
 | **C4** Documentación sin contradicciones | ✅ | H1–H4 corregidos (commit `05a9dc2`); ver §6 |
