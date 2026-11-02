@@ -139,6 +139,7 @@ El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPO
   `SET LOCAL lock_timeout` (`banfield.vinculos.lock-timeout`, por defecto `PT3S`): el límite vale solo hasta el fin de esa transacción, no se filtra a otras ni al
   pool y no existe un límite global. Al vencer, o ante un *deadlock*, se responde `409 CONFLICTO_CONCURRENCIA` con mensaje fijo (sin SQL, ids ni trazas), una
   sola línea `WARN` con la operación y la clase de la excepción, y la transacción se revierte sin escribir ni auditar.
+- **DNI enmascarado en los listados ADMIN (O8).** Los listados de deportistas y los tutores anidados en el detalle de familia exponen `dniEnmascarado` (últimos 3 dígitos, resto `•`, mismo largo); el DNI completo solo viaja en los detalles individuales autorizados y, en el portal, en el detalle del propio deportista. Detalle y guardas en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md) sección 11.
 - **Logs sin DNI ni CUIL aunque el nivel raíz sea DEBUG.** `application.yml` apaga el logger JDBC de Hibernate (`org.hibernate.orm.jdbc.error: OFF`, que de otro modo
   registra el mensaje de PostgreSQL con los valores de la clave) y fija en `INFO` los resolutores MVC `ExceptionHandlerExceptionResolver` y
   `ResponseStatusExceptionResolver`, que a `DEBUG` imprimen «Resolved [excepción]» con el mensaje completo. `DefaultHandlerExceptionResolver` emite esa línea a

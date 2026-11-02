@@ -98,6 +98,8 @@ Fase: 6.
 
 ### O8 — Formato de enmascarado de DNI
 
+**Estado: APROBADA e implementada en `temp-4` (opción A, con el campo `dniEnmascarado`; ver `docs/FAMILIAS-DEPORTISTAS.md` sección 11).**
+
 - **A. Últimos 3 dígitos:** `•••••322`.
 - **B. Sin DNI en el listado**, solo en detalle.
 

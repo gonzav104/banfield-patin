@@ -278,7 +278,7 @@ class DeportistaAdminServiceTest {
 		verify(deportistas).buscar(eq(escuelaId), eq("TODOS"), eq("12.345"), eq("12345"), any());
 		assertThat(r.totalElementos()).isEqualTo(1);
 		assertThat(r.contenido().get(0).id()).isEqualTo(id);
-		assertThat(r.contenido().get(0).dni()).isEqualTo(DNI);
+		assertThat(r.contenido().get(0).dniEnmascarado()).isEqualTo("•••••222");
 
 		servicio.listar(admin, FiltroEstado.ACTIVOS, "100%_Perez!", Pagina.pedir(0, 20));
 		verify(deportistas).buscar(eq(escuelaId), eq("ACTIVOS"), eq("100!%!_Perez!!"), eq(""), any());
