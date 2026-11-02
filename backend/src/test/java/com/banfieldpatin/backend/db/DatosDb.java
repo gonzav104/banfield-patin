@@ -221,6 +221,24 @@ final class DatosDb {
 				""").param("e", escuelaId).param("a", anio).param("act", activa).query(UUID.class).single();
 	}
 
+	UUID datosDeportivos(UUID escuelaId, UUID deportistaId, UUID temporadaId, String categoria, String numeroCorredor,
+			String estadoDeportivo) {
+		return jdbc.sql("""
+				INSERT INTO gestion_patin.deportista_temporada
+				    (escuela_id, deportista_id, temporada_id, categoria, rama, divisional, numero_corredor, estado_deportivo)
+				VALUES (:e, :d, :t, :c, 'Femenino', 'A', :n, :s) RETURNING id
+				""").param("e", escuelaId).param("d", deportistaId).param("t", temporadaId).param("c", categoria)
+				.param("n", numeroCorredor).param("s", estadoDeportivo).query(UUID.class).single();
+	}
+
+	/** Cambia cual es la temporada activa de la escuela (a lo sumo una): desactiva las demas y activa la indicada. */
+	void activarTemporada(UUID escuelaId, UUID temporadaId) {
+		jdbc.sql("UPDATE gestion_patin.temporada SET activa = false WHERE escuela_id = :e AND activa").param("e", escuelaId).update();
+		if (temporadaId != null) {
+			jdbc.sql("UPDATE gestion_patin.temporada SET activa = true WHERE id = :t").param("t", temporadaId).update();
+		}
+	}
+
 	/** Borra todo lo colgado de la escuela (en orden de dependencias); no borra la escuela. */
 	void limpiarContenido(UUID escuelaId) {
 		for (String tabla : new String[] { "auditoria", "invitacion", "usuario_mfa", "familia_deportista", "tutor",
