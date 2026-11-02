@@ -1,6 +1,6 @@
 # TEMP-3 — Lectura FAMILIA de los datos deportivos anuales
 
-Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **APROBADO; en implementación (commits locales; sin push ni merge).**
+Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); revisión nativa RDD en curso.**
 Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on-risk`; sin push, merge ni migraciones. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -22,11 +22,11 @@ Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on
 | --- | --- | --- | --- | --- | --- |
 | T0 | — | Preparación y descubrimiento | inline | hecho | `3ebd304` (evidencia de temp-2); este documento |
 | T1 | S2, S5 | Separar `ALCANCE_FAMILIA` en tramos (mismo texto) con prueba de equivalencia | inline | hecho | commit del refactor; RED/GREEN en L14 |
-| T2 | S1, S8 | DTO de solo lectura y consultas con alcance de FAMILIA | inline | pendiente | RED: BD |
-| T3 | S1–S6 | Servicio del portal: historial y detalle por temporada | inline | pendiente | RED: unitarias |
-| T4 | S7 | Controlador, `OpenApiConfig.RUTAS`, inventario, docs | inline | pendiente | RED: WebMvc + inventario/OpenAPI |
-| T5 | S2–S6 | Pruebas de aislamiento y de sesión en BD (HTTP real) | inline | pendiente | RED/GREEN + mutaciones |
-| T6 | — | Cierre: suites, diferencial, Risk, revisión nativa | inline | pendiente | — |
+| T2 | S1, S8 | DTO de solo lectura y consultas con alcance de FAMILIA | inline | hecho | `aa0d1b5`; RED en L15 |
+| T3 | S1–S6 | Servicio del portal: historial y detalle por temporada | inline | hecho | `aa0d1b5`; RED en L15 |
+| T4 | S7 | Controlador, `OpenApiConfig.RUTAS`, inventario, docs | inline | hecho | `aa0d1b5`; RED en L15 |
+| T5 | S2–S6 | Pruebas de aislamiento y de sesión en BD (HTTP real) | inline | hecho | `bede9f7`; RED en L15; 6 mutaciones detectadas (L16) |
+| T6 | — | Cierre: suites, diferencial, Risk, revisión nativa | inline | en curso | suites verdes (L16); revisión nativa pendiente de consentimiento |
 
 Ruta: todo inline. Estimación: ~250 líneas de producción y ~700 de pruebas. Cortes de commit (≈400 líneas): **C1** T1 (refactor de seguridad, solo), **C2** T2–T4 (lectura), **C3** T5 (aislamiento en BD), **C4** documentación ODD. T1 va solo por tocar una guarda (ver R1).
 
@@ -191,4 +191,42 @@ Esqueleto: `ALCANCE_FAMILIA_JOINS = ""` y `ALCANCE_FAMILIA_FILTRO = ""` agregado
 | Equivalencia de comportamiento | `./mvnw verify -Pdb-tests -Dtest='FamiliaPortal*DbTest,ConsultasVinculosDbTest,SesionVigente*DbTest'` | **69 tests, 0 fallos, sin modificar ninguna de esas pruebas** (matriz de aislamiento, HTTP real, JWT viejo, sesión vigente, consultas del portal) |
 
 `ALCANCE_FAMILIA` queda definida como `ALCANCE_FAMILIA_JOINS + ALCANCE_FAMILIA_FILTRO` y su texto es idéntico carácter por carácter al anterior; las tres consultas que la usan (`deportistasDelPortal`, `deportistaDelPortal` y su conteo) no cambiaron.
+
+### L15 — RED de las unidades T2–T5, observado antes de implementar
+
+Esqueleto (ninguna capa completa): `TemporadaDeFamilia` con sus campos y **sin** protección de datos; las tres consultas nuevas de `FamiliaDeportistaRepository` como métodos `default` que lanzan `UnsupportedOperationException("pendiente")`; `FamiliaPortalTemporadasService` con ambos métodos lanzando lo mismo; `FamiliaPortalTemporadasController` **sin rutas**; `OpenApiConfig.RUTAS` sin las dos rutas nuevas.
+
+| Capa | Comando | Resultado RED |
+| --- | --- | --- |
+| DTO, servicio, WebMvc, inventario y OpenAPI | `./mvnw test -Dtest='TemporadaDeFamiliaTest,FamiliaPortalTemporadas*Test,InventarioRutasTest,OpenApi*Test,RutasDocumentadasTest'` | 85 tests: **15 fallos y 3 errores** (el `toString` del DTO imprime los datos; el servicio lanza; el controlador no tiene rutas: todo `404`; el portal sigue con 3 rutas; `OpenApiConfig.RUTAS` no las conoce) |
+| BD real, servicio y consultas | `./mvnw verify -Pdb-tests -Dtest='FamiliaPortalTemporadasAislamientoDbTest'` | 16 tests: **7 fallos y 9 errores** |
+| BD real, HTTP completo | `./mvnw verify -Pdb-tests -Dtest='FamiliaPortalTemporadasHttpDbTest'` | 15 tests: **13 fallos** (los 2 que pasan —un ADMIN recibe `403` y los métodos que escriben fallan— pasan porque la seguridad ya cubre `/api/familia/**` antes de que existan las rutas) |
+
+`RutasDocumentadasTest` pasa en RED porque todavía no hay rutas; pasará a exigir la tabla de `docs/FAMILIAS-DEPORTISTAS.md` cuando existan.
+
+### L16 — Evidencia de implementación
+
+**Commits locales** (rama `feat/temp-3-lectura-familia`, sobre `main` = `549fa65`): `3ebd304` evidencia de `temp-2`; `295f126` plan y aprobación; `0f7e794` refactor de `ALCANCE_FAMILIA` (solo); `aa0d1b5` lectura de FAMILIA (código, pruebas unitarias/WebMvc/cableado y documentación); `bede9f7` pruebas de aislamiento en BD y HTTP; y el commit de esta evidencia.
+
+**Suites:** `./mvnw clean verify` = **865 tests, 0 fallos/errores/omitidos** (847 previos + 18 nuevos). `./mvnw verify -Pdb-tests` = **398 tests, 0/0/0** (367 previos + 31 nuevos). Sin migraciones; V1–V4 intactas.
+
+**Contratos implementados** (`GET`, rol FAMILIA): `/api/familia/deportistas/{deportistaId}/temporadas` (historial visible, año descendente, sin paginar; `200 []` si es propio sin temporadas visibles; `404 DEPORTISTA_NO_ENCONTRADO` único) y `/api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}` (`404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` único para todas las causas). Campos: `temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo`.
+
+**Condiciones del usuario (L12):** (1) visibilidad `anio <= anio de la activa`, sin activa nada: `join Temporada ta … ta.activa = true and ta.anio >= t.anio`; (2) documentado en `docs/TEMPORADAS.md` §9 que activar publica y que reactivar una temporada anterior puede ocultar años posteriores; (3) solo los campos del plan (verificado por reflexión del record, por JSON del controlador y por el esquema OpenAPI); (4) historial descendente sin paginar; (5) un `404` por endpoint con cuerpo y encabezados idénticos byte a byte; (6) `200 []` para un deportista propio sin temporadas visibles (segunda consulta con alcance solo si vino vacío); (7) refactor en commit independiente; (8) servicio y controlador propios en `familias.portal`; (9) solo `GET`, sin auditoría (probado: `405`/`403 CSRF_INVALIDO` y cero filas de auditoría); (10) RED registrado (L14 y L15); (11) aislamiento, inactivos globales, revalidación y N+1 probados; (12) ambas suites verdes; revisión RDD solicitada (ver más abajo).
+
+**Evidencia de aislamiento** (31 tests de BD nuevos): matriz de dos familias en una escuela y una en otra, con deportistas propios, compartidos, globalmente inactivos y con vínculo `ACTIVO`/`REVOCADO`/`PENDIENTE`/`RECHAZADO`; cada causa ajena da el mismo `404` (servicio y HTTP, byte a byte); la familia de una escuela con la escuela de otra no ve nada (y por HTTP el token se rechaza con `401`); temporada futura, de otra escuela, inexistente y sin fila indistinguibles; sin temporada activa no hay ninguna visible; activar/reactivar cambia la visibilidad en la siguiente solicitud con el mismo token; revocar el vínculo, desactivar la familia o el usuario cierra el acceso inmediatamente; base caída ⇒ `503` sin borrar la cookie; ningún método de escritura funciona ni deja rastro; las lecturas no escriben auditoría; ninguna respuesta contiene datos ni ids ajenos. **Sin N+1:** historial = 1 sentencia (2 si vino vacío) y detalle = 1, con 2 o 7 temporadas.
+
+**Mutaciones** (código restaurado y verificado con `cmp`): (M1) sin `vínculo ACTIVO` → 5 fallos; (M2) sin `familia activa` → 1; (M3) sin la regla de visibilidad → 16; (M4) visibilidad contra cualquier temporada, sin `ta.activa` → 19; (M5) historial vacío siempre `200` (sin consulta de alcance) → 10; (M6) el detalle diagnostica con otro código → 5. Todas detectadas.
+
+**Desviaciones y honestidad:**
+- La condición 5 se leyó como "un solo `404` por endpoint": el detalle ya no distingue "deportista propio" de "ajeno" (L13).
+- No hay mutación para quitar `dt.escuelaId = fd.escuelaId` y `t.escuelaId = fd.escuelaId`: son defensa en profundidad, porque las claves foráneas compuestas de V1 ya impiden cruzar escuelas; el cruce se prueba con datos de otra escuela.
+- `ConfigFamiliasAdminDb` ganó un bean (`FamiliaPortalTemporadasService`) compartido por otras pruebas de BD, que siguen verdes.
+- Se actualizaron a conciencia `InventarioRutasTest` (portal 3→5 rutas), `RutasDocumentadasTest`, `OpenApiRutasTest`/`OpenApiValidezTest`/`OpenApiArranqueDbTest` (48→50 rutas, 38→40 paths) y `OpenApiSinDatosSensiblesTest`.
+
+**Riesgos residuales:** visibilidad por año: reactivar un año anterior oculta años posteriores (documentado); `estadoDeportivo = SUSPENDIDO` es visible para la familia sin motivo; textos libres; los conteos de rutas se mantienen a mano en seis lugares; sin prueba de carga; el CI remoto está pendiente (sin push).
+
+**Engram:** el plan se guardó con `project` explícito (observación 587); esta evidencia se sincronizará con la misma vía, sin forzar los conflictos históricos. Los espejos de `temp-1` y `temp-2` siguen sin sincronizar.
+
+Risk: item 2 (seguridad: se partió la guarda `ALCANCE_FAMILIA` y se agregaron consultas de autorización de FAMILIA; cubierto por equivalencia textual, la batería de aislamiento previa sin modificar, 31 pruebas nuevas de aislamiento y 6 mutaciones).
 
