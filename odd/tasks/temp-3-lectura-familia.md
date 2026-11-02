@@ -1,6 +1,6 @@
 # TEMP-3 — Lectura FAMILIA de los datos deportivos anuales
 
-Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); revisión nativa RDD en curso.**
+Objetivo: que FAMILIA consulte, solo en lectura, los datos deportivos anuales de sus deportistas con vínculo ACTIVO. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); revisión nativa RDD APROBADA; a la espera de autorización de push/PR.**
 Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on-risk`; sin push, merge ni migraciones. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -26,7 +26,7 @@ Rama: `feat/temp-3-lectura-familia` (desde `main` = `549fa65`). Entrega: `ask-on
 | T3 | S1–S6 | Servicio del portal: historial y detalle por temporada | inline | hecho | `aa0d1b5`; RED en L15 |
 | T4 | S7 | Controlador, `OpenApiConfig.RUTAS`, inventario, docs | inline | hecho | `aa0d1b5`; RED en L15 |
 | T5 | S2–S6 | Pruebas de aislamiento y de sesión en BD (HTTP real) | inline | hecho | `bede9f7`; RED en L15; 6 mutaciones detectadas (L16) |
-| T6 | — | Cierre: suites, diferencial, Risk, revisión nativa | inline | en curso | suites verdes (L16); revisión nativa pendiente de consentimiento |
+| T6 | — | Cierre: suites, diferencial, Risk, revisión nativa | inline | hecho | suites verdes (L16); revisión nativa aprobada (L17) |
 
 Ruta: todo inline. Estimación: ~250 líneas de producción y ~700 de pruebas. Cortes de commit (≈400 líneas): **C1** T1 (refactor de seguridad, solo), **C2** T2–T4 (lectura), **C3** T5 (aislamiento en BD), **C4** documentación ODD. T1 va solo por tocar una guarda (ver R1).
 
@@ -229,4 +229,12 @@ Esqueleto (ninguna capa completa): `TemporadaDeFamilia` con sus campos y **sin**
 **Engram:** el plan se guardó con `project` explícito (observación 587); esta evidencia se sincronizará con la misma vía, sin forzar los conflictos históricos. Los espejos de `temp-1` y `temp-2` siguen sin sincronizar.
 
 Risk: item 2 (seguridad: se partió la guarda `ALCANCE_FAMILIA` y se agregaron consultas de autorización de FAMILIA; cubierto por equivalencia textual, la batería de aislamiento previa sin modificar, 31 pruebas nuevas de aislamiento y 6 mutaciones).
+
+### L17 — Revisión nativa RDD
+
+`gentle-ai review assess` sobre el rango completo (base `549fa65`, 25 archivos, 1608 líneas) dio riesgo medio y no debida; al escalar con el ítem 2 (seguridad: guarda `ALCANCE_FAMILIA` y consultas de autorización de FAMILIA) pasó a `high_risk` y `review_due: true`. El consentimiento llegó como riesgo **medio** (la herramienta no refleja la escalada) y el usuario lo otorgó en la sesión. Lentes: riesgo y confiabilidad.
+
+**Resultado: aprobada, sin hallazgos bloqueantes; acuse exacto ejecutado y autoridad consumida.**
+- *Riesgo:* sin hallazgos. Autorización en el backend con alcance por id y escuela; `familiaId`/`escuelaId` solo del JWT; los joins nuevos están anclados a `fd.escuelaId`; visibilidad que falla cerrado; un `404` de mensaje fijo por endpoint y la segunda consulta del historial no agrega oráculo; DTO de 8 campos con `toString` redactado; controlador solo `GET`; equivalencia textual del alcance fijada por prueba; sin secretos ni dependencias.
+- *Confiabilidad:* una sugerencia **no bloqueante** (`R3-flaky-substring`): `FamiliaPortalTemporadasAislamientoDbTest` (líneas 279-280) busca las subcadenas cortas `-2027` y `35000` en la salida serializada, que también contiene UUID aleatorios; una coincidencia fortuita haría fallar la prueba con probabilidad del orden de 1e-4 por corrida. Queda como trabajo posterior (acotar la búsqueda a campos o valores concretos); no se corrigió para no modificar el candidato ya revisado.
 
