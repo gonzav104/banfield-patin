@@ -1,6 +1,6 @@
 # TEMP-4 — DNI enmascarado en los listados ADMIN (O8)
 
-Objetivo: que los listados ADMIN dejen de exponer el DNI completo, manteniendo el DNI completo en el detalle y sin afectar los procesos federativos que lo necesitan. Estado: **APROBADO; en implementación (commits locales; sin push ni merge).**
+Objetivo: que los listados ADMIN dejen de exponer el DNI completo, manteniendo el DNI completo en el detalle y sin afectar los procesos federativos que lo necesitan. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
 Rama: `feat/temp-4-dni-enmascarado` (desde `main` = `da823be`). Entrega: `ask-on-risk`; sin push, merge ni migraciones. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -15,11 +15,11 @@ Rama: `feat/temp-4-dni-enmascarado` (desde `main` = `da823be`). Entrega: `ask-on
 | ID | S# | Tarea | Ruta | Estado | Evidencia |
 | --- | --- | --- | --- | --- | --- |
 | T0 | S1 | Descubrimiento y plan | inline | hecho | este documento |
-| T1 | S2, S3 | `EnmascaradoDni` (función pura) y DTO de listado de deportistas | inline | pendiente | RED: unitarias + WebMvc |
-| T2 | S2 | Tutores: DNI enmascarado dentro del detalle de familia | inline | pendiente | RED: unitarias + WebMvc |
-| T3 | S1 | Guarda: ningún DTO de listado expone un componente `dni`; el detalle no cambia | inline | pendiente | RED: reflexión + OpenAPI |
-| T4 | S1 | BD real: la búsqueda por prefijo y las consultas de DNI completo no cambian | inline | pendiente | `-Pdb-tests` |
-| T5 | — | Documentación, OpenAPI, cierre, Risk | inline | pendiente | — |
+| T1 | S2, S3 | `EnmascaradoDni` (función pura) y DTO de listado de deportistas | inline | hecho | `d7b8f3a`; RED en L13 |
+| T2 | S2 | Tutores: DNI enmascarado dentro del detalle de familia | inline | hecho | `d7b8f3a`; RED en L13 |
+| T3 | S1 | Guarda: ningún DTO de listado expone un componente `dni`; el detalle no cambia | inline | hecho | `d7b8f3a`; `ContratoDniTest` + OpenAPI; mutación M5 (L14) |
+| T4 | S1 | BD real: la búsqueda por prefijo y las consultas de DNI completo no cambian | inline | hecho | `d7b8f3a`; `DniEnmascaradoDbTest` 5 tests |
+| T5 | — | Documentación, OpenAPI, cierre, Risk | inline | hecho | `docs/FAMILIAS-DEPORTISTAS.md` §11, `SEGURIDAD.md`, `DECISIONES.md` (O8); L14 |
 
 Ruta: todo inline. Estimación: ~120 líneas de producción y ~350 de pruebas, un solo corte de commit más el documental.
 
@@ -150,4 +150,37 @@ Esqueleto: `EnmascaradoDni.de` lanza `UnsupportedOperationException`, el record 
 - **Guarda del JSON serializado (condición 6):** se recorre el árbol JSON de las respuestas de listado y se comprueba que ninguna clave se llame `dni` y que ningún valor de texto —salvo los UUID— contenga el DNI completo; no se buscan subcadenas en el texto crudo (los UUID aleatorios podrían contener 8 dígitos seguidos).
 - **Sin tocar (condiciones 4 y 8):** entidad `Deportista`, `DocumentoIdentidad`, `DeportistaRepository` (incluida la búsqueda por prefijo y las consultas por DNI completo), `DeportistaDetalle`, portal FAMILIA y sus DTO.
 - **Mejora futura documentada (condición 5):** búsqueda por sufijo (los últimos 3 dígitos visibles).
+
+### L13 — RED, observado antes de implementar
+
+Esqueleto (sin lógica de enmascarado): `EnmascaradoDni.de` lanza `UnsupportedOperationException("pendiente")`; `DeportistaResumen` con el componente renombrado a `dniEnmascarado` pero **con el valor sin enmascarar**; `TutorResumen` (nuevo) con `dniEnmascarado` sin enmascarar y **sin** `toString` protegido; `FamiliaDetalle.tutores` ya es `List<TutorResumen>`. Las pruebas existentes que miraban el DNI del listado se adaptaron al contrato nuevo (`DeportistaAdminServiceTest`, `DeportistaAdminControllerWebMvcTest`).
+
+| Capa | Comando | Resultado RED |
+| --- | --- | --- |
+| Unitarias, WebMvc y OpenAPI | `./mvnw test -Dtest='EnmascaradoDniTest,DeportistaResumenTest,TutorResumenTest,ContratoDniTest,DeportistaAdminServiceTest,DeportistaAdminControllerWebMvcTest,FamiliaGestionAdminControllerWebMvcTest,OpenApiSinDatosSensiblesTest'` | 102 tests: **7 fallos y 6 errores** |
+| BD real | `./mvnw verify -Pdb-tests -Dtest='DniEnmascaradoDbTest'` | 5 tests: **3 fallos** (los 2 que pasan —el detalle conserva el DNI completo y la entidad/almacenamiento no cambian— comprueban lo que no debe cambiar) |
+
+`ContratoDniTest` (estructura) pasa en RED porque el esqueleto ya tiene la estructura final; su sensibilidad se comprueba con mutaciones. Las pruebas de JSON serializado y de contrato (`JsonDeContrato`) fallan en RED porque el valor aún no está enmascarado.
+
+### L14 — Evidencia de implementación
+
+**Commits locales** (rama `feat/temp-4-dni-enmascarado`, sobre `main` = `da823be`): `2845e83` evidencia remota y merge de `temp-3` (documental, separado); `1f8f27a` plan y aprobación; `d7b8f3a` enmascarado del DNI (código, pruebas y documentación); y el commit de esta evidencia.
+
+**Suites:** `./mvnw clean verify` = **885 tests, 0 fallos/errores/omitidos** (865 previos + 20 nuevos). `./mvnw verify -Pdb-tests` = **403 tests, 0/0/0** (398 previos + 5 nuevos). Sin migraciones; V1–V4 intactas.
+
+**Archivos de producción modificados o nuevos:** nuevo `deportistas/EnmascaradoDni`; `deportistas/dto/DeportistaResumen` (`dni` → `dniEnmascarado`); nuevo `familias/tutores/dto/TutorResumen`; `familias/dto/FamiliaDetalle` (`tutores` pasa a `List<TutorResumen>`); `familias/FamiliaAdminService` (usa `TutorResumen::de`). **No se tocaron:** la entidad `Deportista`, `DocumentoIdentidad`, `DeportistaRepository` (búsqueda por prefijo y consultas por DNI completo), `DeportistaDetalle`, `TutorRespuesta`, el portal FAMILIA ni la base.
+
+**Condiciones del usuario (L11):** (1) `•` para todos los dígitos menos los últimos tres, mismo largo: `EnmascaradoDniTest` (7, 8 y 9 dígitos, vacío, 1 a 4 dígitos) y BD; (2) campo `dniEnmascarado` sin `dni` simultáneo: `ContratoDniTest` y el esquema OpenAPI; (3) tutores anidados enmascarados y detalles individuales completos: `TutorResumenTest`, WebMvc y `DniEnmascaradoDbTest`; (4) entidad, almacenamiento, validaciones y búsqueda por DNI completo sin cambios: pruebas previas sin modificar su lógica más `laEntidadYElAlmacenamientoConservanElDniCompleto`; (5) prefijo mantenido (con y sin puntos, y con el DNI entero); búsqueda por sufijo documentada como mejora futura en `docs/FAMILIAS-DEPORTISTAS.md` §11; (6) contrato: estructura de los DTO por reflexión, esquema OpenAPI y **JSON serializado** recorriendo el árbol (claves y valores, sin buscar subcadenas en el texto crudo por los UUID aleatorios); (7) DNI de 7, 8 y 9 dígitos y DNI opcional de tutores (`null`); (8) portal FAMILIA y contratos de procesos federativos intactos; (9) RED en L13; (10) ambas suites verdes y protocolo RDD (abajo).
+
+**Mutaciones** (código restaurado y verificado con `cmp`): (M1) listado con el DNI completo → falla en BD (2) y en unitarias/WebMvc (3); (M2) cuatro dígitos visibles → falla en BD (3); (M3) largo fijo en lugar de conservar el largo → BD (2) y unitarias (4); (M4) tutor anidado con el DNI completo → BD (1) y unitarias (3); (M5) un DTO nuevo `*Resumen` con componente `dni` → `ContratoDniTest` falla en 2 pruebas. Todas detectadas.
+
+**Protocolo RDD:** `gentle-ai review assess` sobre el rango (base `da823be`, 20 archivos, 798 líneas) = riesgo **medio**, `review_due: false` (`under_budget`). No hay ítem de alto riesgo: no hay migración, ni cambio de autorización, ni concurrencia, y el cambio de contrato (`dni` → `dniEnmascarado`) es pedido y no tiene consumidores (`frontend/` solo documentación; el script de smoke no lee el DNI de ningún listado). No se escaló ni se inició revisión. `Risk: none`.
+
+**Desviaciones y honestidad:**
+- El esqueleto ya tenía la estructura final de los DTO (el renombrado), por lo que `ContratoDniTest` y las pruebas de estructura pasaron en RED; el RED real está en el enmascarado de valores (7 fallos y 6 errores en unitarias/WebMvc/OpenAPI; 3 fallos en BD) y la sensibilidad de la guarda se comprobó con M5.
+- `EnmascaradoDniTest` fija el comportamiento de valores de 4 dígitos o menos (`•234`, `•••`): no son DNI válidos (F2 exige 7 a 9) y solo garantizan que la función es total.
+
+**Riesgos residuales:** el administrador no puede buscar tipeando los últimos 3 dígitos que ve (búsqueda por prefijo; sufijo como mejora futura); el enmascarado conserva el largo, así que revela si el DNI tiene 7, 8 o 9 dígitos; el DNI completo sigue visible para el ADMIN en el detalle y por búsqueda por prefijo (el objetivo es minimizar exposición, no ocultarlo a quien administra); cuando se construyan los procesos federativos hay que leer el DNI del servidor, no de `DeportistaResumen`/`TutorResumen` (regla y guardas documentadas); el CI remoto está pendiente (sin push).
+
+**Engram:** el plan se guardó con `project` explícito (observación 591) y esta evidencia se sincronizará con la misma vía, sin forzar conflictos históricos. Los espejos de `temp-1` y `temp-2` siguen sin sincronizar.
 
