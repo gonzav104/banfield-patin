@@ -11,13 +11,19 @@ export class SesionFormulario {
   #anotar(accion, detalle) { this.bitacora.push({ accion, ...detalle }); }
   snapshot() { return this.c.herramienta('browser_snapshot'); }
 
-  // Si hay un borrador guardado, Google pregunta qué usar y el borrador anula la precarga: se elige "Continuar" (la URL precompletada).
+  // Si hay un borrador guardado, Google pregunta qué usar (con retraso) y el borrador anula la precarga: se elige "Continuar"
+  // (la URL precompletada) y se exige que el diálogo haya desaparecido antes de leer nada.
   async abrir(url) {
     await this.c.herramienta('browser_navigate', { url });
-    const s = await this.snapshot(); const d = dialogoBorrador(s);
-    if (d?.refContinuar) await this.c.herramienta('browser_click', { element: 'enlace Continuar del diálogo de borrador', target: d.refContinuar });
-    this.#anotar('abrir', { dialogoBorrador: Boolean(d) });
-    return { dialogoBorrador: d?.titulo ?? null };
+    let titulo = null;
+    for (let intento = 0; intento < 4; intento++) {
+      await this.c.herramienta('browser_wait_for', { time: 2 });
+      const d = dialogoBorrador(await this.snapshot());
+      if (!d) { this.#anotar('abrir', { dialogoBorrador: titulo !== null, intentos: intento + 1 }); return { dialogoBorrador: titulo }; }
+      titulo = d.titulo;
+      if (d.refContinuar) await this.c.herramienta('browser_click', { element: 'enlace Continuar del diálogo de borrador', target: d.refContinuar });
+    }
+    throw new Error('El diálogo de borrador no se pudo resolver: no se lee ni se rellena nada');
   }
   async esquemaVivo() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: ESQUEMA })); }
   async controles() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: LEER_CONTROLES })); }
