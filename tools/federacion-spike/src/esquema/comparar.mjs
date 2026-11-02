@@ -18,6 +18,8 @@ export function comparar(base, nuevo) {
 
   if (base.titulo !== nuevo.titulo) reportar(SEVERIDAD.AVISO, 'titulo-del-formulario', null, `"${base.titulo}" → "${nuevo.titulo}"`);
 
+  if (!mismo(base.configuracion ?? null, nuevo.configuracion ?? null)) reportar(SEVERIDAD.INCOMPATIBLE, 'configuracion-cambiada', null, `configuración del formulario (p. ej. correo verificado obligatorio): ${JSON.stringify(base.configuracion)} → ${JSON.stringify(nuevo.configuracion)}`);
+
   for (const [id, antes] of Object.entries(base.preguntas)) {
     const despues = nuevo.preguntas[id];
     if (!despues) { reportar(SEVERIDAD.INCOMPATIBLE, 'pregunta-eliminada', antes, 'la pregunta ya no existe'); continue; }

@@ -81,6 +81,11 @@ test('renombrar una sección es un aviso', () => {
   assert.equal(r.compatible, true); assert.deepEqual(codigos(r), ['seccion-renombrada']);
 });
 
+test('un cambio en la configuración del formulario (p. ej. correo verificado) es incompatible', () => {
+  const r = comparar(base(), cambiar((x) => { x.config = [null, 1, null, 1, null, null, 2]; }));
+  assert.equal(r.compatible, false); assert.deepEqual(codigos(r, SEVERIDAD.INCOMPATIBLE), ['configuracion-cambiada']); assert.notEqual(r.huellaBase, r.huellaNueva);
+});
+
 test('el apto también se compara (otro formulario, mismas reglas)', () => {
   const b = normalizar(crudo('apto'));
   const r = comparar(b, cambiar((x) => { def(x, 'Atleta empadronado?')[1][1][2] = -2; }, 'apto'));

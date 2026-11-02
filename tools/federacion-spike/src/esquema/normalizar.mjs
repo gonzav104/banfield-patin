@@ -49,7 +49,7 @@ export function normalizar(crudo) {
     actual.preguntas.push(id);
   }
   secciones.push(actual);
-  return { titulo: limpiarTexto(crudo.titulo), secciones, preguntas };
+  return { titulo: limpiarTexto(crudo.titulo), configuracion: crudo.config ?? null, secciones, preguntas };
 }
 
 function ordenar(valor) {
@@ -62,6 +62,7 @@ export const canonico = (valor) => JSON.stringify(ordenar(valor));
 // Parte del contrato que importa para rellenar: ignora títulos, textos de ayuda y el orden de preguntas y opciones.
 export function contratoDuro(contrato) {
   return {
+    configuracion: contrato.configuracion ?? null,
     secciones: contrato.secciones.map((s) => ({ id: s.id, preguntas: [...s.preguntas].sort((a, b) => a - b) })),
     preguntas: Object.fromEntries(Object.entries(contrato.preguntas).map(([id, q]) => [id, {
       entry: q.entry, tipo: q.tipo, obligatoria: q.obligatoria, validacion: q.validacion, fecha: q.fecha,
