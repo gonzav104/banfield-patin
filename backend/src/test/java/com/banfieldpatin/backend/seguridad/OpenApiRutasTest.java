@@ -38,7 +38,7 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 	void cadaRutaApiMapeadaApareceEnLaEspecificacionConSuMetodoYNoSobraNinguna() throws Exception {
 		Set<String> mapeadas = rutasDelMapeo();
 
-		assertThat(mapeadas).as("el contexto debe mapear las rutas de todos los controladores").hasSize(48);
+		assertThat(mapeadas).as("el contexto debe mapear las rutas de todos los controladores").hasSize(50);
 		assertThat(rutasDeLaEspecificacion(arbol())).containsExactlyInAnyOrderElementsOf(mapeadas);
 	}
 
@@ -49,10 +49,10 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 	}
 
 	@Test
-	void lasVeinticuatroRutasDeFamiliasDeportistasYPortalDeLaDocumentacionEstanEnLaEspecificacion() throws Exception {
+	void lasVeintiseisRutasDeFamiliasDeportistasYPortalDeLaDocumentacionEstanEnLaEspecificacion() throws Exception {
 		Set<String> documentadas = RutasDocumentadasTest.rutasDeLaTabla();
 
-		assertThat(documentadas).as("tabla de docs/FAMILIAS-DEPORTISTAS.md").hasSize(24);
+		assertThat(documentadas).as("tabla de docs/FAMILIAS-DEPORTISTAS.md").hasSize(26);
 		assertThat(rutasDeLaEspecificacion(arbol())).containsAll(documentadas);
 	}
 

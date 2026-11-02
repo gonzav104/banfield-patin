@@ -142,7 +142,10 @@ public class OpenApiConfig {
 			// --- Portal de FAMILIA (solo lectura)
 			entry("GET /api/familia/mi-familia", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
 			entry("GET /api/familia/deportistas", ruta(200)),
-			entry("GET /api/familia/deportistas/{id}", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")));
+			entry("GET /api/familia/deportistas/{id}", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
+			entry("GET /api/familia/deportistas/{deportistaId}/temporadas", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
+			entry("GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}",
+					ruta(200, "404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA")));
 
 	/** Respuestas con un secreto de un solo uso: nunca se cachean y no se vuelven a mostrar. */
 	private static final Map<String, String> DESCRIPCIONES = Map.of(

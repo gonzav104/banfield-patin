@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
+import com.banfieldpatin.backend.familias.portal.dto.TemporadaDeFamilia;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
 
 /**
@@ -170,4 +171,44 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			""")
 	Optional<DeportistaDeFamiliaDetalle> deportistaDelPortal(@Param("familiaId") UUID familiaId,
 			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
+
+	// ---------- datos deportivos anuales para la FAMILIA (solo lectura) ----------
+
+	/**
+	 * Une la fila deportiva y su temporada al alcance de la familia y aplica la VISIBILIDAD: solo las temporadas cuyo anio es
+	 * menor o igual al de la temporada ACTIVA de la escuela; sin temporada activa no hay ninguna (falla cerrado). Como
+	 * {@code uq_temporada_activa_por_escuela} garantiza a lo sumo una activa por escuela, el join con {@code ta} no
+	 * multiplica filas. Todo es el WHERE de UNA sentencia: nada se carga para comparar despues.
+	 */
+	String TEMPORADAS_VISIBLES_JOINS = """
+			join DeportistaTemporada dt on dt.deportistaId = d.id and dt.escuelaId = fd.escuelaId
+			join Temporada t on t.id = dt.temporadaId and t.escuelaId = fd.escuelaId
+			join Temporada ta on ta.escuelaId = fd.escuelaId and ta.activa = true and ta.anio >= t.anio
+			""";
+
+	String TEMPORADA_DE_FAMILIA = """
+			select new com.banfieldpatin.backend.familias.portal.dto.TemporadaDeFamilia(
+			    t.id, t.anio, t.activa, dt.categoria, dt.rama, dt.divisional, dt.numeroCorredor, dt.estadoDeportivo)
+			""";
+
+	/** Historial de un deportista propio, del anio mas nuevo visible al mas viejo; vacio tambien si el deportista no es propio. */
+	@Query(TEMPORADA_DE_FAMILIA + ALCANCE_FAMILIA_JOINS + TEMPORADAS_VISIBLES_JOINS + ALCANCE_FAMILIA_FILTRO + """
+			  and d.id = :deportistaId
+			order by t.anio desc
+			""")
+	List<TemporadaDeFamilia> temporadasDelPortal(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+			@Param("deportistaId") UUID deportistaId);
+
+	@Query(TEMPORADA_DE_FAMILIA + ALCANCE_FAMILIA_JOINS + TEMPORADAS_VISIBLES_JOINS + ALCANCE_FAMILIA_FILTRO + """
+			  and d.id = :deportistaId and t.id = :temporadaId
+			""")
+	Optional<TemporadaDeFamilia> temporadaDelPortal(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+			@Param("deportistaId") UUID deportistaId, @Param("temporadaId") UUID temporadaId);
+
+	/** Solo existencia: distingue un historial vacio de un deportista propio de uno que no lo es (ver el servicio). */
+	@Query("select d.id " + ALCANCE_FAMILIA + """
+			  and d.id = :deportistaId
+			""")
+	Optional<UUID> deportistaEnAlcance(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+			@Param("deportistaId") UUID deportistaId);
 }

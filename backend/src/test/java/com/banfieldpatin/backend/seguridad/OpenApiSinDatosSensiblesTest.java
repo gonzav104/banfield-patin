@@ -92,12 +92,16 @@ class OpenApiSinDatosSensiblesTest extends BaseOpenApiWebMvc {
 		assertThat(esquemas.propertyNames()).doesNotContain("Usuario", "Familia", "Deportista", "Tutor", "FamiliaDeportista",
 				"Invitacion", "UsuarioMfa", "Escuela", "Auditoria");
 		for (String portal : new String[] { "MiFamiliaRespuesta", "TutorDeFamilia", "DeportistaDeFamilia",
-				"DeportistaDeFamiliaDetalle" }) {
+				"DeportistaDeFamiliaDetalle", "TemporadaDeFamilia" }) {
 			assertThat(esquemas.path(portal).path("properties").propertyNames()).as(portal).doesNotContain("escuelaId",
 					"esPrincipal", "autorizadoPor", "autorizadoEn", "vinculoId", "creadoEn", "usuarioId");
 		}
 		assertThat(esquemas.path("TutorDeFamilia").path("properties").propertyNames()).doesNotContain("dni", "activo");
 		assertThat(esquemas.path("DeportistaDeFamilia").path("properties").propertyNames()).contains("activo");
+		// Datos deportivos anuales de FAMILIA: ni el id de la fila, ni el deportista, ni el estado global, ni el DNI.
+		assertThat(esquemas.path("TemporadaDeFamilia").path("properties").propertyNames()).containsExactlyInAnyOrder(
+				"temporadaId", "anio", "temporadaActiva", "categoria", "rama", "divisional", "numeroCorredor",
+				"estadoDeportivo");
 		// Las solicitudes no aceptan campos que decide el servidor (mass assignment): escuela, estado, rol, principal, actor.
 		for (Map.Entry<String, JsonNode> esquema : esquemas.properties()) {
 			if (esquema.getKey().endsWith("Solicitud")) {

@@ -104,7 +104,8 @@ class RutasDocumentadasTest {
 	void ningunaRutaDocumentadaEscribeBajoElPortalDeFamilia() throws Exception {
 		assertThat(rutasDeLaTabla().stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia")))
 				.containsExactlyInAnyOrder("GET /api/familia/mi-familia", "GET /api/familia/deportistas",
-						"GET /api/familia/deportistas/{id}");
+						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{deportistaId}/temporadas",
+						"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}");
 	}
 
 	@Test
