@@ -3,7 +3,10 @@ package com.banfieldpatin.backend.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +23,7 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.temporadas.EstadoDeportivo;
 import com.banfieldpatin.backend.usuarios.Rol;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -271,23 +275,35 @@ class FamiliaPortalTemporadasAislamientoDbTest extends BaseVinculosDb {
 
 	@Test
 	void ningunaRespuestaDeLaFamiliaContieneDatosNiIdsAjenos() throws Exception {
-		StringBuilder todo = new StringBuilder();
+		// Aserciones ESTRUCTURADAS sobre campos y valores esperados: nada de buscar subcadenas cortas en un texto que tambien
+		// lleva UUID aleatorios (una coincidencia fortuita haria fallar la prueba).
+		Set<String> categoriasPropias = new HashSet<>();
+		for (UUID d : List.of(dPropio, dInactivo, dCompartido)) {
+			categoriasPropias.add("cat-" + d.toString().substring(0, 8) + "-2025");
+			categoriasPropias.add("cat-" + d.toString().substring(0, 8) + "-2026");
+		}
+		List<JsonNode> respuestas = new ArrayList<>();
+		List<String> mensajesDeError = new ArrayList<>();
 		for (UUID d : List.of(dPropio, dInactivo, dCompartido, dSinFilas, dSoloBorrador)) {
-			todo.append(json.writeValueAsString(portal.historial(usuarioFa1(), d)));
+			json.valueToTree(portal.historial(usuarioFa1(), d)).forEach(respuestas::add);
 			for (UUID t : List.of(t25, t26, t27)) {
-				Throwable e = catchThrowable(() -> todo.append(json.writeValueAsString(portal.temporada(usuarioFa1(), d, t))));
-				if (e != null) {
-					todo.append(e.getMessage());
+				try {
+					respuestas.add(json.valueToTree(portal.temporada(usuarioFa1(), d, t)));
+				} catch (ExcepcionNegocio e) {
+					mensajesDeError.add(e.getMessage());
 				}
 			}
 		}
-		String texto = todo.toString();
 
-		for (UUID ajeno : List.of(dAjeno, dRevocado, dPendiente, dRechazado, dDeB)) {
-			assertThat(texto).doesNotContain(ajeno.toString()).doesNotContain("cat-" + ajeno.toString().substring(0, 8));
-		}
-		assertThat(texto).doesNotContain("cat-deB", "cat-solo-borrador", "-2027", "35000", escuelaA.toString(),
-				escuelaB.toString(), "Propia", "Lola");
+		assertThat(respuestas).isNotEmpty().allSatisfy(r -> {
+			assertThat(r.propertyNames()).containsExactlyInAnyOrder("temporadaId", "anio", "temporadaActiva", "categoria",
+					"rama", "divisional", "numeroCorredor", "estadoDeportivo");
+			assertThat(UUID.fromString(r.get("temporadaId").asString())).isIn(t25, t26);
+			assertThat(r.get("anio").asInt()).isIn(2025, 2026);
+			assertThat(r.get("categoria").asString()).isIn(categoriasPropias);
+		});
+		// Todo lo que no se ve (futuro, sin fila, ajeno) es el mismo mensaje fijo: no nombra ids, datos ni motivos.
+		assertThat(mensajesDeError).isNotEmpty().containsOnly("El deportista no tiene datos cargados en esa temporada.");
 	}
 
 	// ---------- sin N+1 ----------
