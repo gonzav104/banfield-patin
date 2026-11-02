@@ -1,0 +1,11 @@
+{
+  "name": "federacion-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike de automatización de los formularios federativos. Independiente de Spring Boot. Sin dependencias.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

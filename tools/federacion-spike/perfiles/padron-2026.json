@@ -1,0 +1,338 @@
+{
+  "formulario": "padron",
+  "anio": 2026,
+  "formId": "1FAIpQLSfZmFQWM2gZ8MgLCgaFjGc4CmLUJpFZc-ObR38Kk6baa5zcQA",
+  "fechaFormato": "iso",
+  "preguntas": [
+    {
+      "clave": "escuela.club",
+      "itemId": 425296573,
+      "entry": 1551725616,
+      "tipo": "lista",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "BANFIELD_SAN_PEDRO": "Club Social y Deportivo Banfield San Pedro"
+      }
+    },
+    {
+      "clave": "federado.funcion",
+      "itemId": 342672130,
+      "entry": 905774763,
+      "tipo": "lista",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "ATLETA": "Atleta",
+        "TECNICO": "Técnico",
+        "JUEZ": "Juez",
+        "DIRIGENTE": "Dirigente"
+      }
+    },
+    {
+      "clave": "licencia.tipo",
+      "itemId": 192798947,
+      "entry": 1603123285,
+      "tipo": "lista",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "SOLO_SEGURO": "Solo Seguro",
+        "REGIONAL": "Regional",
+        "FEDERATIVA": "Federativa",
+        "PROMOCIONAL": "Promocional",
+        "NACIONAL": "Nacional"
+      }
+    },
+    {
+      "clave": "documento.SOLICITUD_LICENCIA",
+      "itemId": 1689381875,
+      "entry": 1371472553,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.apellidos",
+      "itemId": 1158872914,
+      "entry": 2038527210,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.nombres",
+      "itemId": 1513568491,
+      "entry": 373714051,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.dni",
+      "itemId": 1792616973,
+      "entry": 1245518198,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.cuil",
+      "itemId": 1376105594,
+      "entry": 1125203474,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_DEPORTISTA_FRENTE",
+      "itemId": 1171914331,
+      "entry": 1533392906,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_DEPORTISTA_DORSO",
+      "itemId": 1406190868,
+      "entry": 1530094292,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.fechaNacimiento",
+      "itemId": 1873879615,
+      "entry": 1615450528,
+      "tipo": "fecha",
+      "formato": "fecha",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.nacionalidad",
+      "itemId": 1655509674,
+      "entry": 687468341,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.domicilio",
+      "itemId": 1671392580,
+      "entry": 1485601769,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.otrosDatosDomicilio",
+      "itemId": 158718735,
+      "entry": 559537710,
+      "tipo": "parrafo",
+      "formato": "texto",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.localidad",
+      "itemId": 1821348604,
+      "entry": 1110676023,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.partido",
+      "itemId": 936022093,
+      "entry": 1304122234,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.codigoPostal",
+      "itemId": 470082447,
+      "entry": 733384249,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.email",
+      "itemId": 673727184,
+      "entry": 2088867511,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.telefono",
+      "itemId": 550705524,
+      "entry": 776294012,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "federado.deporte",
+      "itemId": 1789733306,
+      "entry": 2033930699,
+      "tipo": "lista",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "ARTISTICO": "Artístico",
+        "VELOCIDAD": "Velocidad",
+        "HOCKEY": "Hockey",
+        "OTRO": "Otro"
+      }
+    },
+    {
+      "clave": "apto.tiene",
+      "itemId": 13000283,
+      "entry": 1747068347,
+      "tipo": "opcion",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "SI": "Sí",
+        "NO": "No"
+      }
+    },
+    {
+      "clave": "apto.fechaEmision",
+      "itemId": 1904583670,
+      "entry": 1754245199,
+      "tipo": "fecha",
+      "formato": "fecha",
+      "sensibilidad": "baja"
+    },
+    {
+      "clave": "apto.medicoNombre",
+      "itemId": 434152322,
+      "entry": 325538294,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "apto.medicoMatricula",
+      "itemId": 1761280741,
+      "entry": 890114021,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "documento.APTO_FISICO",
+      "itemId": 77327856,
+      "entry": 592837963,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "wada.tiene",
+      "itemId": 1115544486,
+      "entry": 577509160,
+      "tipo": "opcion",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "SI": "Sí",
+        "NO": "No"
+      }
+    },
+    {
+      "clave": "wada.fechaEmision",
+      "itemId": 1544229289,
+      "entry": 1408231423,
+      "tipo": "fecha",
+      "formato": "fecha",
+      "sensibilidad": "baja"
+    },
+    {
+      "clave": "documento.CERTIFICADO_WADA",
+      "itemId": 828742133,
+      "entry": 195438215,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.esMenor",
+      "itemId": 1048297,
+      "entry": 1572893979,
+      "tipo": "opcion",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "SI": "Sí",
+        "NO": "No"
+      }
+    },
+    {
+      "clave": "tutor.madre.nombreCompleto",
+      "itemId": 1673856412,
+      "entry": 971793754,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "tutor.madre.dni",
+      "itemId": 559262066,
+      "entry": 100113650,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_TUTOR_MADRE_FRENTE",
+      "itemId": 801104838,
+      "entry": 811314206,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_TUTOR_MADRE_DORSO",
+      "itemId": 676702845,
+      "entry": 721456363,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "tutor.padre.nombreCompleto",
+      "itemId": 1863275220,
+      "entry": 175571160,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "tutor.padre.dni",
+      "itemId": 1516255379,
+      "entry": 983267618,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_TUTOR_PADRE_FRENTE",
+      "itemId": 1246498842,
+      "entry": 2031360264,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "documento.DNI_TUTOR_PADRE_DORSO",
+      "itemId": 517420443,
+      "entry": 1178893024,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    }
+  ]
+}

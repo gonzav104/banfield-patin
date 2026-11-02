@@ -1,0 +1,87 @@
+{
+  "formulario": "apto",
+  "anio": 2026,
+  "formId": "1FAIpQLScQdYy9uaULjdGzVrua8NRGjDXdoA5L8z0H8t_JBudP7cUKww",
+  "fechaFormato": "iso",
+  "preguntas": [
+    {
+      "clave": "deportista.dni",
+      "itemId": 859855460,
+      "entry": 2011177755,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "deportista.apellidos",
+      "itemId": 1062010335,
+      "entry": 1262704907,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "deportista.nombres",
+      "itemId": 764603665,
+      "entry": 949077727,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "escuela.club",
+      "itemId": 2033320254,
+      "entry": 1397501273,
+      "tipo": "lista",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "BANFIELD_SAN_PEDRO": "Club Social y Deportivo Banfield San Pedro"
+      }
+    },
+    {
+      "clave": "deportista.empadronado",
+      "itemId": 1983536038,
+      "entry": 1942851838,
+      "tipo": "opcion",
+      "formato": "opcion",
+      "sensibilidad": "baja",
+      "opciones": {
+        "SI": "Sí",
+        "NO": "No"
+      }
+    },
+    {
+      "clave": "documento.APTO_FISICO",
+      "itemId": 1075489655,
+      "entry": 314532520,
+      "tipo": "archivo",
+      "formato": "archivo",
+      "sensibilidad": "alta"
+    },
+    {
+      "clave": "apto.fechaEmision",
+      "itemId": 856842522,
+      "entry": 2098635769,
+      "tipo": "fecha",
+      "formato": "fecha",
+      "sensibilidad": "baja"
+    },
+    {
+      "clave": "apto.medicoNombre",
+      "itemId": 1096332810,
+      "entry": 1070253322,
+      "tipo": "texto",
+      "formato": "texto",
+      "sensibilidad": "media"
+    },
+    {
+      "clave": "apto.medicoMatricula",
+      "itemId": 1930729392,
+      "entry": 647391604,
+      "tipo": "texto",
+      "formato": "digitos",
+      "sensibilidad": "media"
+    }
+  ]
+}

@@ -1,0 +1,763 @@
+{
+  "preguntas": {
+    "1048297": {
+      "ayuda": "",
+      "entry": 1572893979,
+      "fecha": null,
+      "itemId": 1048297,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Sí",
+          "salto": "seccion:1951630528"
+        },
+        {
+          "otro": false,
+          "rotulo": "No",
+          "salto": "enviar"
+        }
+      ],
+      "tipo": "opcion",
+      "titulo": "Es menor?",
+      "validacion": null
+    },
+    "13000283": {
+      "ayuda": "",
+      "entry": 1747068347,
+      "fecha": null,
+      "itemId": 13000283,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Sí",
+          "salto": "seccion:2837880"
+        },
+        {
+          "otro": false,
+          "rotulo": "No",
+          "salto": "seccion:642911103"
+        }
+      ],
+      "tipo": "opcion",
+      "titulo": "TIENE CERTIFICADO MEDICO?",
+      "validacion": null
+    },
+    "77327856": {
+      "ayuda": "Si la posee, adjuntar la planilla (Apto médico) vigente",
+      "entry": 592837963,
+      "fecha": null,
+      "itemId": 77327856,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "CERTIFICADO MEDICO",
+      "validacion": null
+    },
+    "158718735": {
+      "ayuda": "Piso, departamento, barrio, sección, circunscripción, KM, etc.",
+      "entry": 559537710,
+      "fecha": null,
+      "itemId": 158718735,
+      "obligatoria": false,
+      "opciones": [],
+      "tipo": "parrafo",
+      "titulo": "OTROS DATOS DEL DOMICILIO",
+      "validacion": null
+    },
+    "192798947": {
+      "ayuda": "",
+      "entry": 1603123285,
+      "fecha": null,
+      "itemId": 192798947,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Solo Seguro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Regional",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Federativa",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Promocional",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Nacional",
+          "salto": null
+        }
+      ],
+      "tipo": "lista",
+      "titulo": "TIPO LICENCIA",
+      "validacion": null
+    },
+    "342672130": {
+      "ayuda": "",
+      "entry": 905774763,
+      "fecha": null,
+      "itemId": 342672130,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Atleta",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Técnico",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Juez",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Dirigente",
+          "salto": null
+        }
+      ],
+      "tipo": "lista",
+      "titulo": "FUNCION",
+      "validacion": null
+    },
+    "425296573": {
+      "ayuda": "Si su club no se encuentra en el listado seleccione \"Asociación Gaucha\" y luego informe esta situación a info@patinajegaucha.org",
+      "entry": 1551725616,
+      "fecha": null,
+      "itemId": 425296573,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Alianza Colón",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Asociación Civil Campana Sobre Ruedas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Asociación Gaucha",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Campana sobre Ruedas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Cebras de Pergamino",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético 9 de Julio",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Argentino Rojas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético El Fortín",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Jorge Newbery",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Porteño de Chacabuco",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético y Social Dudignac",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Deportivo Argentino",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Social y Deportivo Banfield San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Social y Deportivo Independiente de Mones Cazón",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Escuela de Rollers Baradero",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Huincaló de San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Juventud de Belgrano",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Loop Escuela de Patín Artístico",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Mercedes B",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Paraná FC San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patiencantos",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patín Artístico Bragado",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patín Carrera Junín",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patín Visión",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Sociedad de Fomento 12 de Octubre",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Sprint Junín",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Viamonte Fútbol Club",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Villa Dalmine",
+          "salto": null
+        }
+      ],
+      "tipo": "lista",
+      "titulo": "CLUB",
+      "validacion": null
+    },
+    "434152322": {
+      "ayuda": "",
+      "entry": 325538294,
+      "fecha": null,
+      "itemId": 434152322,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "APELLIDO Y NOMBRE DEL MEDICO",
+      "validacion": null
+    },
+    "470082447": {
+      "ayuda": "",
+      "entry": 733384249,
+      "fecha": null,
+      "itemId": 470082447,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "CODIGO POSTAL",
+      "validacion": null
+    },
+    "517420443": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 1178893024,
+      "fecha": null,
+      "itemId": 517420443,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "Foto dorso DNI del Padre",
+      "validacion": null
+    },
+    "550705524": {
+      "ayuda": "Anteponer el código de área, consignar solo números.",
+      "entry": 776294012,
+      "fecha": null,
+      "itemId": 550705524,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "TELEFONO DE CONTACTO",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "559262066": {
+      "ayuda": "Solo números, sin puntos",
+      "entry": 100113650,
+      "fecha": null,
+      "itemId": 559262066,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "Número de DNI de la Madre",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "673727184": {
+      "ayuda": "Uno por persona. Ejemplo: dos atletas menores que sean herman@s y no tengan dirección de correo propia, deben registrar uno el correo del padre y otr@ el correo de la madre.",
+      "entry": 2088867511,
+      "fecha": null,
+      "itemId": 673727184,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "CORREO ELECTRONICO",
+      "validacion": [
+        [
+          2,
+          102
+        ]
+      ]
+    },
+    "676702845": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 721456363,
+      "fecha": null,
+      "itemId": 676702845,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "Foto dorso DNI de la Madre",
+      "validacion": null
+    },
+    "801104838": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 811314206,
+      "fecha": null,
+      "itemId": 801104838,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "Foto frente DNI de la Madre",
+      "validacion": null
+    },
+    "828742133": {
+      "ayuda": "Si lo posee, adjuntarlo",
+      "entry": 195438215,
+      "fecha": null,
+      "itemId": 828742133,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "CERTIFICADO WADA",
+      "validacion": null
+    },
+    "936022093": {
+      "ayuda": "",
+      "entry": 1304122234,
+      "fecha": null,
+      "itemId": 936022093,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "PARTIDO",
+      "validacion": null
+    },
+    "1115544486": {
+      "ayuda": "",
+      "entry": 577509160,
+      "fecha": null,
+      "itemId": 1115544486,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Sí",
+          "salto": "seccion:519574604"
+        },
+        {
+          "otro": false,
+          "rotulo": "No",
+          "salto": "seccion:119955917"
+        }
+      ],
+      "tipo": "opcion",
+      "titulo": "TIENE CERTIFICADO WADA?",
+      "validacion": null
+    },
+    "1158872914": {
+      "ayuda": "Tal como se visualiza en el DNI",
+      "entry": 2038527210,
+      "fecha": null,
+      "itemId": 1158872914,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "APELLIDOS",
+      "validacion": null
+    },
+    "1171914331": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 1533392906,
+      "fecha": null,
+      "itemId": 1171914331,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "FOTO FRENTE DEL DNI",
+      "validacion": null
+    },
+    "1246498842": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 2031360264,
+      "fecha": null,
+      "itemId": 1246498842,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "Foto frente DNI del Padre",
+      "validacion": null
+    },
+    "1376105594": {
+      "ayuda": "Tal como se visualiza en el dorso del DNI",
+      "entry": 1125203474,
+      "fecha": null,
+      "itemId": 1376105594,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "CUIL",
+      "validacion": null
+    },
+    "1406190868": {
+      "ayuda": "Un solo archivo (imagen o PDF)",
+      "entry": 1530094292,
+      "fecha": null,
+      "itemId": 1406190868,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "FOTO DORSO DNI",
+      "validacion": null
+    },
+    "1513568491": {
+      "ayuda": "",
+      "entry": 373714051,
+      "fecha": null,
+      "itemId": 1513568491,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "NOMBRES",
+      "validacion": null
+    },
+    "1516255379": {
+      "ayuda": "Solo números, sin puntos",
+      "entry": 983267618,
+      "fecha": null,
+      "itemId": 1516255379,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "Número de DNI del Padre",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "1544229289": {
+      "ayuda": "",
+      "entry": 1408231423,
+      "fecha": [
+        0,
+        1
+      ],
+      "itemId": 1544229289,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "fecha",
+      "titulo": "FECHA EMISION CERTIFICADO WADA",
+      "validacion": null
+    },
+    "1655509674": {
+      "ayuda": "",
+      "entry": 687468341,
+      "fecha": null,
+      "itemId": 1655509674,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "NACIONALIDAD",
+      "validacion": null
+    },
+    "1671392580": {
+      "ayuda": "Calle y Altura",
+      "entry": 1485601769,
+      "fecha": null,
+      "itemId": 1671392580,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "DOMICILIO",
+      "validacion": null
+    },
+    "1673856412": {
+      "ayuda": "",
+      "entry": 971793754,
+      "fecha": null,
+      "itemId": 1673856412,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "Apellido y Nombre de la Madre",
+      "validacion": null
+    },
+    "1689381875": {
+      "ayuda": "Lo deben subir únicamente los ATLETAS que solicitaron licencia: Federativa, Promocional ó Nacional. Si no dispone del mismo, puede descargarlo desde este link https://drive.google.com/file/d/18CaF8w_BDRGlR-kIl8-4N1ELi2wRVdxL/view?usp=sharing",
+      "entry": 1371472553,
+      "fecha": null,
+      "itemId": 1689381875,
+      "obligatoria": false,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "CERTIFICADO DE SOLICITUD DE LICENCIA - FEDERACION DE PATIN RIOPLATENSE",
+      "validacion": null
+    },
+    "1761280741": {
+      "ayuda": "",
+      "entry": 890114021,
+      "fecha": null,
+      "itemId": 1761280741,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "NUMERO DE MATRICULA DEL MEDICO",
+      "validacion": null
+    },
+    "1789733306": {
+      "ayuda": "",
+      "entry": 2033930699,
+      "fecha": null,
+      "itemId": 1789733306,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Artístico",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Velocidad",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Hockey",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Otro",
+          "salto": null
+        }
+      ],
+      "tipo": "lista",
+      "titulo": "DEPORTE",
+      "validacion": null
+    },
+    "1792616973": {
+      "ayuda": "",
+      "entry": 1245518198,
+      "fecha": null,
+      "itemId": 1792616973,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "DNI",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "1821348604": {
+      "ayuda": "",
+      "entry": 1110676023,
+      "fecha": null,
+      "itemId": 1821348604,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "LOCALIDAD",
+      "validacion": null
+    },
+    "1863275220": {
+      "ayuda": "",
+      "entry": 175571160,
+      "fecha": null,
+      "itemId": 1863275220,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "Apellido y Nombre del Padre",
+      "validacion": null
+    },
+    "1873879615": {
+      "ayuda": "",
+      "entry": 1615450528,
+      "fecha": [
+        0,
+        1
+      ],
+      "itemId": 1873879615,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "fecha",
+      "titulo": "FECHA DE NACIMIENTO",
+      "validacion": null
+    },
+    "1904583670": {
+      "ayuda": "",
+      "entry": 1754245199,
+      "fecha": [
+        0,
+        1
+      ],
+      "itemId": 1904583670,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "fecha",
+      "titulo": "FECHA EMISION CERTIFICADO MEDICO",
+      "validacion": null
+    }
+  },
+  "secciones": [
+    {
+      "id": null,
+      "preguntas": [
+        425296573,
+        342672130,
+        192798947,
+        1689381875,
+        1158872914,
+        1513568491,
+        1792616973,
+        1376105594,
+        1171914331,
+        1406190868,
+        1873879615,
+        1655509674,
+        1671392580,
+        158718735,
+        1821348604,
+        936022093,
+        470082447,
+        673727184,
+        550705524,
+        1789733306,
+        13000283
+      ],
+      "titulo": "(inicio)"
+    },
+    {
+      "id": 2837880,
+      "preguntas": [
+        1904583670,
+        434152322,
+        1761280741,
+        77327856
+      ],
+      "titulo": "Certificado Medico"
+    },
+    {
+      "id": 642911103,
+      "preguntas": [
+        1115544486
+      ],
+      "titulo": "Certificado WADA"
+    },
+    {
+      "id": 519574604,
+      "preguntas": [
+        1544229289,
+        828742133
+      ],
+      "titulo": "Subir certificado WADA"
+    },
+    {
+      "id": 119955917,
+      "preguntas": [
+        1048297
+      ],
+      "titulo": "Menores de Edad"
+    },
+    {
+      "id": 1951630528,
+      "preguntas": [
+        1673856412,
+        559262066,
+        801104838,
+        676702845,
+        1863275220,
+        1516255379,
+        1246498842,
+        517420443
+      ],
+      "titulo": "Datos Padres"
+    }
+  ],
+  "titulo": "AG_Padron_2026"
+}
