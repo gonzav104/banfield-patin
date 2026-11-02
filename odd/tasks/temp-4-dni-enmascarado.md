@@ -1,6 +1,6 @@
 # TEMP-4 — DNI enmascarado en los listados ADMIN (O8)
 
-Objetivo: que los listados ADMIN dejen de exponer el DNI completo, manteniendo el DNI completo en el detalle y sin afectar los procesos federativos que lo necesitan. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
+Objetivo: que los listados ADMIN dejen de exponer el DNI completo, manteniendo el DNI completo en el detalle y sin afectar los procesos federativos que lo necesitan. Estado: **CERRADA: validada remotamente y fusionada en `main` (PR #7, merge commit `d12afe970e1f39ae416e2f4659ef447a539c5c73`)**.
 Rama: `feat/temp-4-dni-enmascarado` (desde `main` = `da823be`). Entrega: `ask-on-risk`; sin push, merge ni migraciones. Runner: `./mvnw clean verify` y `./mvnw verify -Pdb-tests`.
 
 ## Specs
@@ -183,4 +183,21 @@ Esqueleto (sin lógica de enmascarado): `EnmascaradoDni.de` lanza `UnsupportedOp
 **Riesgos residuales:** el administrador no puede buscar tipeando los últimos 3 dígitos que ve (búsqueda por prefijo; sufijo como mejora futura); el enmascarado conserva el largo, así que revela si el DNI tiene 7, 8 o 9 dígitos; el DNI completo sigue visible para el ADMIN en el detalle y por búsqueda por prefijo (el objetivo es minimizar exposición, no ocultarlo a quien administra); cuando se construyan los procesos federativos hay que leer el DNI del servidor, no de `DeportistaResumen`/`TutorResumen` (regla y guardas documentadas); el CI remoto está pendiente (sin push).
 
 **Engram:** el plan se guardó con `project` explícito (observación 591) y esta evidencia se sincronizará con la misma vía, sin forzar conflictos históricos. Los espejos de `temp-1` y `temp-2` siguen sin sincronizar.
+
+### L15 — Validación remota y merge
+
+**PR [#7](https://github.com/gonzav104/banfield-patin/pull/7)** (`feat/temp-4-dni-enmascarado` → `main`), HEAD `4c8f313d2d59356a02a066a06c9282474cbefd6f`, base `main` = `da823be`, cuatro commits. Estado de merge: `BLOCKED` mientras los checks corrían; `OPEN` / `MERGEABLE` / `CLEAN` al terminar.
+
+| Run | Evento | Job | Tests | Fallos | Errores | Omitidos | Build |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `41371185021` | `push` | Suite normal | 885 | 0 | 0 | 0 | SUCCESS |
+| `41371185021` | `push` | Suite db (PostgreSQL 17) | 403 | 0 | 0 | 0 | SUCCESS |
+| `41371191641` | `pull_request` | Suite normal | 885 | 0 | 0 | 0 | SUCCESS |
+| `41371191641` | `pull_request` | Suite db (PostgreSQL 17) | 403 | 0 | 0 | 0 | SUCCESS |
+
+Los conteos remotos coinciden con los esperados por el usuario (885 y 403) y con los locales. Sin secretos ni Supabase.
+
+**Merge:** autorizado por el usuario ("Sí, merge commit para el PR #7"); se verificó que el HEAD seguía siendo `4c8f313`, y se fusionó con merge commit `d12afe970e1f39ae416e2f4659ef447a539c5c73` el 2026-11-02 01:14Z. `main` local quedó en `d12afe9` (igual a `origin/main`), sin cambios sin preservar. `assess` del rango: riesgo medio, `review_due: false`; no se inició revisión (`Risk: none`).
+
+**Engram:** observaciones 593 (PR #7 con checks verdes) y 594 (merge), ambas con una revisión de conflictos histórica pendiente que no se resolvió.
 
