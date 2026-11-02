@@ -43,5 +43,5 @@ test('sin diálogo de confirmación y con el formulario vacío, está limpio (no
 test('sin diálogo de confirmación pero con respuestas cargadas, NO da por limpio el borrador', async () => {
   const BORRAR = '- button "Siguiente" [ref=b1]\n- button "Borrar formulario" [ref=b2]';
   const c = conControles([BORRAR], lleno); const ses = new SesionFormulario(c, contrato('apto'));
-  assert.equal(await ses.limpiarBorrador('https://x'), false); assert.match(ses.bitacora.at(-1).motivo, /hay respuestas/);
+  assert.equal(await ses.limpiarBorrador('https://x'), false); assert.deepEqual(ses.bitacora.at(-1), { accion: 'limpiar', ok: false });
 });

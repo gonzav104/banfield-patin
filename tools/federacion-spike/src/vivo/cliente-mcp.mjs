@@ -4,6 +4,11 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 export const COMANDO_WINDOWS = ['cmd.exe', '/c', 'cd /d %USERPROFILE% && npx -y @playwright/mcp@0.0.84 --extension'];
+const HERRAMIENTAS_PERMITIDAS = new Set(['browser_tabs', 'browser_navigate', 'browser_wait_for', 'browser_snapshot', 'browser_click', 'browser_evaluate']);
+
+export function exigirHerramientaPermitida(nombre) {
+  if (!HERRAMIENTAS_PERMITIDAS.has(nombre)) throw new Error('Herramienta MCP no permitida en este experimento');
+}
 
 export class ClienteMcp {
   #proc; #siguiente = 0; #pendientes = new Map();
@@ -13,7 +18,7 @@ export class ClienteMcp {
       if (!linea.trim().startsWith('{')) return;
       let msg; try { msg = JSON.parse(linea); } catch { return; }
       const p = this.#pendientes.get(msg.id); if (!p) return;
-      this.#pendientes.delete(msg.id); clearTimeout(p.timer); msg.error ? p.reject(new Error(JSON.stringify(msg.error))) : p.resolve(msg.result);
+      this.#pendientes.delete(msg.id); clearTimeout(p.timer); msg.error ? p.reject(new Error('La herramienta MCP falló; se omitió el detalle para proteger los datos')) : p.resolve(msg.result);
     });
     proc.on('exit', () => { for (const p of this.#pendientes.values()) p.reject(new Error('El servidor MCP terminó')); this.#pendientes.clear(); });
   }
@@ -33,6 +38,7 @@ export class ClienteMcp {
     });
   }
   async herramienta(nombre, argumentos = {}, { timeoutMs = 300000 } = {}) {
+    exigirHerramientaPermitida(nombre);
     const r = await this.#pedir('tools/call', { name: nombre, arguments: argumentos }, timeoutMs);
     return (r.content ?? []).map((c) => c.text ?? '').join('\n');
   }

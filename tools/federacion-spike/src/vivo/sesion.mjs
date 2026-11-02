@@ -2,21 +2,18 @@
 import { LEER_CONTROLES } from './leer-controles.mjs';
 import { botonesDe, dialogoBorrador, refCasillaCorreo, refConfirmarBorrado, refDe, refRadio, resultadoDe } from './instantanea.mjs';
 import { decidirAvance, seleccionesDe } from './guarda-navegacion.mjs';
+import { sanitizarBitacora } from './diagnosticos.mjs';
 
 const ALERTAS = `() => [...document.querySelectorAll('[role=alert]')].map((a) => ({ texto: (a.innerText || '').replace(/\\s+/g, ' ').trim(), cerca: ((a.closest('[role=listitem]')?.querySelector('[role=heading]') ?? a.parentElement?.querySelector('[role=heading]'))?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 45) })).filter((x) => x.texto)`;
 const ESQUEMA = '() => { const r = window.FB_PUBLIC_LOAD_DATA_; return { titulo: r?.[3] ?? null, descripcion: r?.[1]?.[0] ?? null, items: r?.[1]?.[1] ?? null, config: r?.[1]?.[10] ?? null }; }';
 
-// Resumen de lo que hay en pantalla (diálogos, botones, encabezados de pregunta), sin correos, para diagnosticar fallas.
-const vista = (instantanea) => instantanea.split('\n').filter((l) => /dialog|button|heading "¿/.test(l)).map((l) => l.replace(/[\w.+-]+@[\w.-]+/g, '<correo>').trim().slice(0, 120)).slice(-12);
-
 export class SesionFormulario {
   constructor(cliente, contrato) { this.c = cliente; this.contrato = contrato; this.bitacora = []; }
-  #anotar(accion, detalle) { this.bitacora.push({ accion, ...detalle }); }
+  #anotar(accion, detalle) { this.bitacora.push(...sanitizarBitacora([{ accion, ...detalle }])); }
   snapshot() { return this.c.herramienta('browser_snapshot'); }
 
-  // Google guarda un borrador de lo que se marca (en la cuenta de quien responde) y, al abrir otra vez, pregunta qué usar con retraso;
-  // el borrador anula la precarga. Se elige "Continuar" (la URL precompletada) y se espera a que la página esté lista (tenga botones)
-  // y sin diálogo antes de leer nada.
+  // Si aparece un diálogo de borrador, se elige "Continuar" y se espera a que la página quede lista.
+  // L2 no demostró si un radio ya marcado provenía de precarga o de un borrador previo.
   async abrir(url) {
     await this.c.herramienta('browser_navigate', { url });
     let titulo = null;
@@ -39,16 +36,16 @@ export class SesionFormulario {
     // El primer clic puede llegar antes de que la página termine de activarse: se reintenta con una referencia nueva.
     for (let intento = 0; intento < 3 && !confirmar; intento++) {
       const antes = await this.snapshot(); const ref = refDe(antes, /button "Borrar formulario"/);
-      if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario', vista: vista(antes) }); return false; }
+      if (!ref) { this.#anotar('limpiar', { ok: false }); return false; }
       const salida = await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
-      clics.push(salida.includes('### Error') ? `error: ${salida.slice(0, 120)}` : 'ok');
+      clics.push(salida.includes('### Error') ? 'error' : 'ok');
       for (let k = 0; k < 4 && !confirmar; k++) { await this.c.herramienta('browser_wait_for', { time: 1 }); despues = await this.snapshot(); confirmar = refConfirmarBorrado(despues); }
     }
     if (!confirmar) {
       // Google solo pide confirmar si hay respuestas que borrar: sin diálogo, el formulario debe estar realmente vacío.
       const c = await this.controles();
       const lleno = c.preguntas.some((q) => q.textos.some(Boolean) || q.fechas.some(Boolean) || q.radios.length || q.listas.length);
-      if (lleno) { this.#anotar('limpiar', { ok: false, motivo: 'hay respuestas y no apareció el diálogo de confirmación', clics, vista: vista(despues) }); return false; }
+      if (lleno) { this.#anotar('limpiar', { ok: false, clics }); return false; }
       this.#anotar('limpiar', { ok: true, nota: 'ya estaba vacío', clics }); return true;
     }
     await this.c.herramienta('browser_click', { element: 'confirmar borrado del borrador ficticio', target: confirmar });

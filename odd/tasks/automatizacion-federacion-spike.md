@@ -1,8 +1,8 @@
 # Fase 2 — Spike de automatización federativa (`automatizacion-federacion-spike`)
 
 Objetivo: determinar si Playwright puede completar los formularios reales de empadronamiento y aptos físicos de la federación (con adjuntos) sin duplicar la carga.
-Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `ask-on-risk`. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
-Estado: **FASE A COMPLETA; FASES B y D EN PAUSA POR ORDEN DEL USUARIO (2026-11-02): sin más ejecuciones en vivo ni reintentos automáticos hasta que se autorice la estrategia de §12.** Detector de cambios (D) validado offline y contra los formularios reales. Mediciones de precarga de la fase B: **no válidas** (ver §12.3). Sin fase C, sin push ni merge.
+Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `single-pr` por decisión explícita del usuario; cadena de commits en la rama actual y un único PR final hacia `main`, sin PRs intermedios. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
+Estado: **FASE A COMPLETA; L1 DE §12 CERRADA Y VALIDADA POR EL USUARIO; L2 NO CONCLUYENTE (§12.7); PRUEBAS EN VIVO DETENIDAS POR ORDEN DEL USUARIO (§12.8); AUDITORÍA INTEGRAL OFFLINE COMPLETA (§12.9); CORRECCIÓN DE PRIVACIDAD EN VERIFICACIÓN (§12.10).** Detector de cambios (D) validado offline y contra los formularios reales, sin diferencias en L1. Las mediciones anteriores de la fase B siguen siendo **no válidas** (§12.3); las métricas de solo lectura de L1 se conservan por separado (§12.6). Informe de cierre técnico en `docs/auditoria-federacion-spike.md`, pendiente de revisión del usuario; sin fase C, push ni merge.
 
 ## Specs
 
@@ -13,6 +13,11 @@ Estado: **FASE A COMPLETA; FASES B y D EN PAUSA POR ORDEN DEL USUARIO (2026-11-0
 - **S5.** "Proponé una arquitectura reutilizable para formularios de otros años, sin fijar los identificadores de Google Forms dentro de la lógica de negocio."
 - **S6.** "Diferenciá el formulario de presentación federativa de la ficha médica, cuyo contenido clínico corresponde al profesional."
 - **S7.** Criterios de éxito mínimos ya aprobados (REQUERIMIENTOS §7): padrón ≥ 90 % de los campos que no son archivos; apto 100 % de los que no son archivos; repetir con ≥ 3 deportistas sin errores de secciones/validaciones.
+- **S8 (auditoría, textual).** "El objetivo es completar la auditoría de seguridad y privacidad de `tools/federacion-spike/`, no repetir las pruebas de Google Forms." / "No abrir Playwright, modificar código, hacer push ni merge."
+- **S9 (corrección, textual).** "Modificá el generador para que únicamente permita incluir en URLs campos expresamente autorizados como no sensibles. DNI, CUIL, nombres, contactos y demás datos personales deben quedar excluidos por defecto." / "Incorporá pruebas que comprueben que ningún dato personal ficticio de los perfiles termina en el enlace generado."
+- **S10 (diagnósticos, textual).** "Establecé una política de redacción de diagnósticos, bitácoras y reportes que evite persistir valores sensibles o URLs completas." / "Mantené el ejecutor Playwright experimental aislado y deshabilitado para flujos de producción. No lo reescribas completamente en esta unidad."
+- **S11 (continuidad y cierre, textual).** "Conservá la detección de cambios de esquema y los componentes reutilizables." / "Documentá claramente qué funcionalidades están validadas, cuáles son experimentales y cuáles siguen pendientes." / "Ejecutá pruebas offline y revisión RDD." / "No ejecutar Playwright, no utilizar datos reales, no modificar Spring Boot ni Supabase y no hacer push ni merge."
+- **S12 (entrega, textual).** "cadena de commits sobre la rama de feature actual, con integración conjunta a `main` mediante un único PR" / "No abras PRs intermedios. No ejecutes Playwright ni hagas push o merge sin autorización." / "Si la revisión es satisfactoria, realizá el commit de las correcciones, con mensaje Conventional Commits en español."
 
 ## Tasks
 
@@ -24,6 +29,8 @@ Estado: **FASE A COMPLETA; FASES B y D EN PAUSA POR ORDEN DEL USUARIO (2026-11-0
 | D4 | — | Comparar con lo que guarda el backend | inline | **hecho** (§5) |
 | D5 | S4,S5,S7 | Arquitectura, diseño del spike y criterios | inline | **propuesta** (§6, §7) |
 | I1… | S3 | Implementación del spike | — | **no autorizada** |
+| A1 | S1,S2,S8 | Auditoría integral offline y cierre técnico | delegado (exploración) + inline (verificación e informe) | **hecho** (§12.9; 9/9 pruebas offline; sin código) |
+| C1 | S9,S10,S11 | Corrección de enlaces, redacción y aislamiento experimental con pruebas | inline (las capas comparten el contrato del ejecutor; riesgo 2: privacidad) | **en curso** (§12.10; RED/GREEN y revisión pendientes) |
 
 ## Log
 
@@ -309,12 +316,12 @@ claude mcp add playwright-extension --scope local -- cmd.exe /c "cd /d %USERPROF
 | Casilla obligatoria de correo verificado; padrón bloqueado en la sección 1 por el archivo obligatorio | **Sí** | Observado en pantalla (alertas) |
 | Con "No" el botón sigue diciendo "Siguiente" (el esquema dice que salta a enviar) | **Sí** | Releído 3 veces con espera, sin pulsar |
 | No se envió nada | **Sí** | Cero peticiones `formResponse`/POST registradas en la sesión de exploración; además el envío estaba bloqueado por la casilla de correo sin marcar. Las corridas del ejecutor no pueden pulsar "Enviar" (guarda + prueba) |
-| **¿Se precargan los radios con salto?** | **SIN RESOLVER** | Pruebas tempranas: no (lectura inmediata). Corrida final: sí, antes de tocar nada, tras ≥ 2 s. Hipótesis: se aplica con retraso. Un experimento aislado estaba listo y se detuvo |
+| **¿Se precargan los radios con salto?** | **L1: no se observó selección** | Las pruebas anteriores se contradijeron y no son métricas válidas. En L1, los dos radios permanecieron vacíos en los tres perfiles y en dos lecturas separadas por 3 s, sin interacción (§12.6). La causa no está demostrada. |
 | Corridas 1 a 3 del ejecutor (borradores viejos, página sin cargar) | **No** | Datos de borradores ajenos o página vacía |
 | Corrida final: "100 %" del padrón y del apto, "avanzó" | **No** | Ver causa 4; el borrado del borrador no está verificado en forma independiente |
-| Porcentajes de precarga por formulario | **No hay ninguno válido todavía** | Hasta una medición de solo lectura (12.4) |
+| Porcentajes de precarga por formulario | **L1 válida solo para la primera sección visible** | Los porcentajes anteriores siguen descartados. Denominadores y límites de L1 en §12.6. |
 
-### 12.4 Solución determinista propuesta (no implementada)
+### 12.4 Solución determinista (L1 ejecutada; L2 pendiente)
 
 1. **Medir sin crear borradores.** Un borrador solo nace al *editar*. Toda la medición de precarga (texto, lista, fecha **y radios**) se hace **solo navegando y leyendo**: 6 enlaces, sin clics. Sin clics no hay borrador y no hace falta borrar nada. Es el 90 % del valor de la fase B.
 2. **Una sola sesión de conexión por lote, con un plan fijo.** Una conexión, un plan declarado de antemano, un archivo de evidencia, **fail-fast sin reintentos**: ante cualquier anomalía aborta e informa, sin limpiezas automáticas ni "reintentar con otro arreglo". Idealmente desde una sesión interactiva de Claude Code que ya tenga cargadas las herramientas `playwright-extension` (una aprobación para toda la sesión), en vez de un servidor nuevo por corrida.
@@ -326,6 +333,205 @@ claude mcp add playwright-extension --scope local -- cmd.exe /c "cd /d %USERPROF
 6. **Eliminar de la ruta crítica** `limpiarBorrador`, los reintentos de clic y el modo "una conexión por corrida". El código existente se conserva como referencia (no se borra) hasta que el usuario decida.
 7. **Decisión de producto independiente de todo esto.** El camino principal recomendado (§11) es el enlace precompletado que abre **el propio navegador de la persona**; Playwright queda para verificar y detectar cambios de esquema. Eso ya está respaldado por la evidencia válida (detector y precarga de texto/listas/fechas). Una fase B perfecta no cambia esa recomendación; lo que falta medir es solo el comportamiento de los radios.
 
-### 12.5 Pendiente de autorización del usuario
+### 12.5 Estado de autorización
 
-Aprobar (o ajustar) el presupuesto de 2 ejecuciones y el plan L1/L2; elegir si L1 se corre desde una sesión interactiva con las herramientas `playwright-extension` cargadas. Hasta entonces: sin conexiones, sin código nuevo, sin push ni merge.
+El usuario autorizó L1 desde Codex y luego validó y cerró sus resultados. Posteriormente autorizó una L2 acotada exclusivamente a los dos radios, que se detuvo antes del primer clic por un preestado inesperado (§12.7). Hasta una nueva decisión: sin más conexiones, pruebas en vivo, código nuevo, push ni merge.
+
+### 12.6 L1 validada y diagnóstico offline de radios (2026-11-02)
+
+**Instrucción posterior del usuario (textual):**
+
+> L1 queda validada y cerrada. Los resultados son confiables y la Fase D no detectó diferencias.
+>
+> Antes de autorizar L2, quiero un diagnóstico acotado y exclusivamente offline de los dos radios que no se precargan.
+>
+> 1. Revisá los esquemas reales, sus identificadores `entry.*`, las opciones exactas y los enlaces generados.
+> 2. Comprobá si el problema está en nuestro generador, el mapeo, la codificación de parámetros o en una limitación del comportamiento de Google Forms.
+> 3. No afirmes que Google Forms impide precargar preguntas de salto sin evidencia suficiente.
+> 4. No modifiques el generador por hipótesis. Si encontrás un defecto demostrable, presentá la corrección propuesta y sus pruebas.
+> 5. Conservá las métricas válidas de L1, sin recalcularlas usando resultados de otras ejecuciones.
+> 6. Evaluá como alternativa una interacción asistida que seleccione exclusivamente los radios faltantes, sin enviar el formulario.
+> 7. Registrá la conclusión en ODD.
+>
+> No abras conexiones nuevas de Playwright, no ejecutes pruebas en vivo ni L2, no hagas push ni merge.
+>
+> Quiero una recomendación concreta: corregir el generador, aceptar una selección manual/asistida o descartar esa vía de automatización.
+
+**Resultado válido de L1, sin recalcular:** en los perfiles `menor`, `mayor` y `condicional`, Padrón registró respectivamente 17/18 (94,4 %), 16/17 (94,1 %) y 17/18 (94,4 %) de campos correctos entre los verificables de la primera sección; Apto registró 4/5 (80 %) en cada perfil. `apto.tiene` (Padrón) y `deportista.empadronado` (Apto) estaban vacíos en las dos lecturas separadas por 3 s. Las secciones posteriores, los archivos y los campos sin dato no integran esos denominadores. Fase D: cero diferencias y misma huella de contrato duro en ambos formularios. Estos resultados no se mezclan con las corridas anteriores de la fase B.
+
+**Comprobación offline del enlace y el contrato:**
+
+| Formulario / clave | `itemId` | `entry` en perfil = esquema real = contrato | Opciones y salto del esquema | Parámetro en los tres enlaces |
+| --- | ---: | ---: | --- | --- |
+| Padrón / `apto.tiene` | `13000283` | `1747068347` | `Sí` → sección `2837880`; `No` → sección `642911103` | `entry.1747068347`: `Sí`, `Sí`, `No` |
+| Apto / `deportista.empadronado` | `1983536038` | `1942851838` | `Sí` → siguiente; `No` → enviar | `entry.1942851838`: `Sí`, `Sí`, `No` |
+
+En cada enlace, el parámetro correspondiente aparece **una sola vez**. El generador usa el rótulo exacto del perfil (`SI`/`NO` → `Sí`/`No`) y `encodeURIComponent`: `Sí` queda como `S%C3%AD`, que se decodifica de nuevo a `Sí`; `No` permanece `No`. Las opciones y los `entry` coinciden con los esquemas reales conservados en `fixtures/` y con `contratos/`. Las tres pruebas offline existentes de enlaces, perfil-contrato y comparación pasaron (3/3). Las seis instantáneas archivadas de L1 tampoco muestran un radio marcado al abrir las URLs; el lector de controles no encontró ningún `[role="radio"][aria-checked="true"]` en las dos lecturas de cada caso.
+
+**Conclusión y límite de evidencia:** no se demostró un defecto del generador, mapeo ni codificación. Tampoco se demostró que Google Forms **impida** precargar preguntas con salto: falta una referencia independiente del enlace precompletado generado por el propio formulario o una comprobación equivalente, que no se obtiene exclusivamente offline. Sigue abierta, además, la posibilidad de que el lector no reconozca alguna representación del estado seleccionado; no se modifica por hipótesis. No hay corrección de código ni pruebas nuevas justificadas ahora.
+
+**Recomendación del diagnóstico offline:** conservar los enlaces para los campos que L1 sí verificó y aceptar **selección manual de los dos radios** como comportamiento seguro por defecto, sin descartar la vía de precarga. La variante asistida requería autorización separada: seleccionar únicamente el radio faltante, verificar `aria-checked=true` y detenerse antes de avanzar o enviar. Ventaja: evita volver a cargar el resto; costo: editar puede crear un borrador y exige revisión humana y limpieza manual. La autorización y el resultado posterior constan en §12.7; no se ejecutó ninguna prueba en vivo durante este diagnóstico.
+
+### 12.7 L2 acotada: detenida antes del primer clic (2026-11-02)
+
+**Autorización posterior del usuario (textual):**
+
+> Apruebo el diagnóstico del §12.6 del plan ODD.
+>
+> Conservamos el generador de enlaces sin modificaciones. No hay evidencia suficiente para atribuirle el problema.
+>
+> **Autorizo L2, exclusivamente para validar la selección asistida de los dos radios faltantes.**
+>
+> Condiciones:
+>
+> 1. Reutilizá Playwright Extension y la conexión existente en Codex.
+> 2. Utilizá únicamente datos ficticios.
+> 3. En el formulario de Padrón, seleccioná mediante Playwright el radio `apto.tiene`.
+> 4. En el formulario de Aptos, seleccioná mediante Playwright el radio `deportista.empadronado`.
+> 5. Verificá antes y después que el radio correspondiente cambia realmente de estado.
+> 6. Realizá como máximo una prueba de selección por formulario.
+> 7. No avances de sección, no adjuntes documentos y no envíes respuestas.
+> 8. Si Google guarda un borrador, registralo. No intentes borrarlo automáticamente.
+> 9. Si aparece un error, detené la ejecución sin reintentos.
+> 10. No modifiques código durante las pruebas en vivo.
+>
+> **Quiero determinar:**
+> - Si Playwright puede identificar y seleccionar ambos radios de forma confiable.
+> - Si la selección se refleja correctamente en Google Forms.
+> - Si hay diferencias entre los dos formularios.
+> - Si podemos incorporar esa interacción como paso automatizado del futuro flujo federativo.
+>
+> Al finalizar, registrá los resultados en ODD y presentá una conclusión técnica.
+>
+> No hacer push ni merge. No continuar con más experimentos sin autorización.
+
+**Observación y parada:** `browser_tabs(list)` del cliente MCP actual devolvió solamente la página de conexión de la extensión. Se navegó esa misma pestaña, sin crear otra ni iniciar un cliente adicional, al enlace precompletado de Padrón para el perfil ficticio `menor`. El formulario `AG_Padron_2026` cargó con `readyState=complete`, esquema presente, 21 preguntas visibles y sin diálogo. Tras esperar 3 s, el radio `apto.tiene` ya tenía `Sí` con `aria-checked=true` y `No` con `aria-checked=false` **antes de cualquier clic**. El valor coincide con el enlace, pero esta única observación no permite distinguir entre precarga y borrador previo; tampoco modifica ni invalida las métricas cerradas de L1.
+
+La condición de medir un cambio de estado de un **radio faltante** no se cumplió. Se detuvo la ejecución sin seleccionar ningún radio, sin abrir Aptos, sin avanzar, adjuntar, enviar ni borrar borradores. No apareció un diálogo de borrador; no se puede afirmar si Google guardó o reutilizó uno. **Resultado de L2: no verificable; cero selecciones de las dos previstas.** No atribuir este preestado al generador, a Google Forms ni al lector sin evidencia adicional. No hay autorización para repetir o extender la prueba automáticamente.
+
+### 12.8 Consolidación de Fase 2: cierre pendiente (2026-11-02)
+
+**Instrucción posterior del usuario (textual):**
+
+> Apruebo detener definitivamente las pruebas en vivo del spike por ahora.
+>
+> No autorizo nuevas ejecuciones L1 o L2.
+>
+> Vamos a consolidar los resultados de la Fase 2 antes de continuar con el desarrollo.
+>
+> 1. Actualizá el plan ODD con los resultados válidos de L1 y el resultado no concluyente de L2.
+> 2. Separá claramente funcionalidades verificadas, limitaciones observadas y comportamientos no demostrados.
+> 3. No atribuyas el radio seleccionado a un borrador ni a la precarga sin evidencia.
+> 4. Revisá `tools/federacion-spike/` para distinguir código reproducible, pruebas y herramientas experimentales. Identificá código innecesario o frágil, sin eliminarlo todavía.
+> 5. Revisá la seguridad de los enlaces precompletados, especialmente la exposición de DNI, CUIL y otros datos personales en URLs.
+> 6. Proponé una arquitectura híbrida para el MVP: datos preparados por el backend, revisión humana, campos faltantes y adjuntos manuales.
+> 7. Definí cómo actualizar los mapeos cuando la Federación cambie los formularios.
+> 8. Prepará un informe de cierre técnico con criterios cumplidos, pendientes y riesgos aceptados.
+> 9. Ejecutá las pruebas offline correspondientes y el assess RDD.
+>
+> No abrir conexiones Playwright, modificar Spring Boot, tocar Supabase, hacer push ni merge.
+>
+> Quiero revisar el informe final y el alcance real de los cambios antes de autorizar la publicación de esta unidad.
+
+**Estado de esta consolidación:** L1 y L2 permanecen según §§12.6–12.7, sin atribuir el radio ya seleccionado a precarga ni a borrador. No se realizaron pruebas en vivo. Las 9 suites offline de `tools/federacion-spike/test/*.test.mjs` pasaron (9/9) mediante `node --test test/*.test.mjs`; estas pruebas no demuestran interacción real con Google Forms. El assess RDD de ese cambio documental devolvió `risk=passive`, `review_due=false`, `review_due_reason=passive`. La auditoría completa de `tools/federacion-spike/`, el análisis de exposición de datos en URL y el informe final siguen **pendientes**. Inicialmente, el agente de exploración no pudo iniciar porque `gpt-6.1-luna` no estaba disponible. El usuario autorizó sustituirlo por `gpt-6-luna`, pero el agente iniciado no efectuó la auditoría: constató que esta sesión expone `spawn_agent` y `wait_agent`, pero no `list_agents`, requerido por el protocolo local de delegación. Esta falta de herramienta se comprobó también en el orquestador. No se sustituyó la auditoría por conclusiones no verificadas. No se inició una revisión RDD adicional.
+
+**Autorización posterior del usuario (textual):**
+
+> Autorizo reemplazar `gpt-6.1-luna` por `gpt-6-luna` para completar la auditoría pendiente de `automatizacion-federacion-spike`.
+>
+> **Alcance autorizado:**
+>
+> 1. Auditar completamente `tools/federacion-spike/`, identificando código reutilizable, experimental, duplicado, frágil o innecesario.
+> 2. Revisar seguridad y privacidad, especialmente DNI, CUIL y otros datos personales incluidos en URLs precompletadas, logs, historiales, archivos y evidencias.
+> 3. Evaluar los riesgos de autenticación, sesiones persistentes y Playwright Extension.
+> 4. Distinguir evidencia validada de L1, resultados no concluyentes de L2 y funcionalidades todavía no probadas.
+> 5. Proponer una arquitectura de automatización federativa con revisión humana, indicando qué componentes se pueden reutilizar.
+> 6. Preparar el informe de cierre técnico y actualizar el plan ODD.
+> 7. Clasificar los hallazgos en bloqueantes, mejoras recomendadas y deuda técnica aceptable.
+> 8. Ejecutar las pruebas offline necesarias y el protocolo RDD correspondiente.
+>
+> **Restricciones:**
+>
+> - No ejecutar nuevas pruebas contra Google Forms.
+> - No abrir Playwright ni modificar formularios.
+> - No implementar funcionalidades nuevas.
+> - No modificar Spring Boot, migraciones ni Supabase.
+> - No exponer datos personales, credenciales ni tokens.
+> - No hacer push ni merge.
+>
+> Utilizá `gpt-6-luna` para la revisión delegada y verificá sus conclusiones contra el código real. No des por cumplida la auditoría únicamente porque el agente la declare aprobada.
+>
+> Al finalizar, presentá el informe, hallazgos, riesgos residuales y recomendación sobre si el spike está listo para publicar.
+
+### 12.9 Auditoría integral offline y cierre técnico (2026-11-02)
+
+**Instrucción actual del usuario (textual):**
+
+> Necesito completar la auditoría integral pendiente de `automatizacion-federacion-spike`.
+>
+> El bloqueo anterior fue que la sesión exponía `spawn_agent` y `wait_agent`, pero no `list_agents`, requerido por nuestro protocolo ODD para la delegación.
+>
+> Antes de realizar cualquier trabajo:
+>
+> 1. Comprobá qué herramientas de colaboración multiagente están disponibles en esta nueva sesión.
+> 2. Verificá específicamente `spawn_agent`, `wait_agent` y `list_agents`.
+> 3. Si las tres están disponibles, recuperá el contexto de AGENTS.md y del plan ODD y continuá con la auditoría integral delegada.
+> 4. Si falta alguna, detenete e informá el bloqueo. No intentes omitir las reglas de ODD ni cambiar de modelo repetidamente.
+>
+> No abrir Playwright, modificar código, hacer push ni merge.
+>
+> El objetivo es completar la auditoría de seguridad y privacidad de `tools/federacion-spike/`, no repetir las pruebas de Google Forms.
+
+La sesión actual expuso `spawn_agent`, `wait_agent` y `list_agents`; `list_agents` respondió antes del trabajo. Se recuperaron `AGENTS.md`, `docs/REQUERIMIENTOS.md`, el plan ODD y su espejo Engram. La auditoría de lectura se delegó una sola vez al modelo `gpt-6-luna`, autorizado previamente, y sus conclusiones principales se contrastaron directamente con `src/precompletado/enlace.mjs`, `src/vivo/`, los perfiles, las pruebas y el estado de archivos ignorados. No se abrió Playwright ni se ejecutaron pruebas contra Google Forms.
+
+**Resultado:** `docs/auditoria-federacion-spike.md` contiene el informe de cierre, la clasificación de bloqueantes, mejoras y deuda de prototipo, la arquitectura híbrida recomendada y el procedimiento para cambios de mapeo. La precarga con sensibilidad `alta` por defecto y la falta de una frontera integral de redacción impiden usar el spike con datos reales. El ejecutor con Chrome autenticado queda experimental. L1 conserva su alcance validado; L2 sigue no concluyente y los criterios de adjuntos/envío/robustez no están demostrados. No se atribuye causalidad al radio observado.
+
+**Verificación:** `node --test test/*.test.mjs` pasó 9/9 (offline). `git diff --check` pasó y el diff no modificó archivos de código. El assess RDD del informe y plan, declarando explícitamente el archivo nuevo, devolvió `risk=passive`, `review_due=false`, `review_due_reason=passive`; no corresponde iniciar una revisión RDD. Los comentarios de `test/enlace.test.mjs:77–82` y `src/vivo/sesion.mjs:17–19` contienen afirmaciones causales más fuertes que la evidencia de §12.7; se documentan para corrección posterior, sin modificar código. La salida local no válida está ignorada por Git; un escaneo acotado no detectó patrones de URL, correo ni identificador numérico de 7–14 dígitos, sin certificar ausencia de datos personales. El usuario debe revisar informe y diff antes de cualquier publicación. Sin push ni merge.
+
+### 12.10 Unidad de corrección de privacidad para publicación experimental (2026-11-02)
+
+**Instrucción posterior del usuario (textual):**
+
+> La auditoría integral de la Fase 2 está completada.
+>
+> Autorizo comenzar una unidad de corrección de los hallazgos bloqueantes, respetando ODD y RDD.
+>
+> Objetivo: dejar `tools/federacion-spike/` en condiciones de publicarse como prototipo experimental seguro, no como automatización lista para producción.
+>
+> 1. Revisá el informe `docs/auditoria-federacion-spike.md` y el plan ODD.
+> 2. Modificá el generador para que únicamente permita incluir en URLs campos expresamente autorizados como no sensibles. DNI, CUIL, nombres, contactos y demás datos personales deben quedar excluidos por defecto.
+> 3. Incorporá pruebas que comprueben que ningún dato personal ficticio de los perfiles termina en el enlace generado.
+> 4. Establecé una política de redacción de diagnósticos, bitácoras y reportes que evite persistir valores sensibles o URLs completas.
+> 5. Mantené el ejecutor Playwright experimental aislado y deshabilitado para flujos de producción. No lo reescribas completamente en esta unidad.
+> 6. Conservá la detección de cambios de esquema y los componentes reutilizables.
+> 7. Documentá claramente qué funcionalidades están validadas, cuáles son experimentales y cuáles siguen pendientes.
+> 8. Ejecutá pruebas offline y revisión RDD.
+>
+> No ejecutar Playwright, no utilizar datos reales, no modificar Spring Boot ni Supabase y no hacer push ni merge.
+>
+> Al finalizar, presentá los cambios concretos, resultados de pruebas y riesgos residuales. No declares el spike listo para producción.
+
+**Diseño de esta unidad:** una lista permitida cerrada en código autorizará sólo metadatos públicos de la escuela, no datos de deportistas, tutores, profesionales ni estados médicos/deportivos. La salida por defecto no incluirá valores personales. El ejecutor experimental deberá requerir activación explícita y rechazar entornos de producción; sus reportes y bitácoras conservarán sólo estados y códigos, no respuestas crudas ni URLs. Se mantiene la comparación de esquemas existente. Ruta inline: la política de enlace y la de redacción comparten el contrato del ejecutor; no hay dos unidades independientes para escrituras paralelas. Riesgo: ítem 2 (datos personales de menores).
+
+**Evidencia RED → GREEN:** las nuevas pruebas de política de enlace, sanitización y entorno fallaron inicialmente ante el generador permisivo o los módulos aún inexistentes. El caso de inyección mediante rótulo público alterado y el caso de ejecución con entorno indefinido también fallaron antes de sus respectivas correcciones. Tras la implementación, `node --test test/*.test.mjs` pasó 13/13 y `node --check` pasó en ejecutor, generador y sanitizador. Las pruebas no abrieron Playwright ni usaron datos reales. El ejecutor no se comparó dinámicamente contra el commit base porque hacerlo iniciaría Playwright y está prohibido; la comparación de esquemas conserva sus pruebas offline previas. La verificación independiente pasó S9–S11 offline en copia temporal y no reprodujo bloqueantes causados por el cambio. Señaló como advertencia que la validación de `formId` y `entry` comprueba sintaxis, no procedencia; el caso fue reproducible en el baseline con perfiles arbitrariamente alterados. RDD y decisión de estrategia de entrega: pendientes.
+
+### 12.11 Estrategia de entrega y cierre RDD (2026-11-02)
+
+**Decisión posterior del usuario (textual):**
+
+> Definimos la estrategia de entrega: **cadena de commits sobre la rama de feature actual, con integración conjunta a `main` mediante un único PR**.
+>
+> Continuá respetando ODD y RDD.
+>
+> 1. Registrá esta decisión en el plan ODD.
+> 2. Ejecutá la revisión RDD pendiente según corresponda.
+> 3. Si la revisión es satisfactoria, realizá el commit de las correcciones, con mensaje Conventional Commits en español.
+> 4. Conservá la trazabilidad de los commits existentes.
+> 5. Verificá que el conjunto completo de cambios sea coherente y que las pruebas offline sigan pasando.
+> 6. Prepará un resumen del diff acumulado respecto de `main`, indicando riesgos residuales y limitaciones del spike.
+>
+> No abras PRs intermedios. No ejecutes Playwright ni hagas push o merge sin autorización.
+>
+> Al finalizar, indicá si la rama está lista para solicitar el PR final como prueba de concepto experimental, sin presentarla como automatización de producción.
+
+**Estrategia registrada:** los commits existentes permanecen intactos; la corrección de privacidad forma el siguiente commit coherente en esta rama. Se preparará un solo PR final hacia `main` cuando el usuario lo autorice, sin PRs intermedios ni tracker. La rama supera ampliamente el presupuesto orientativo de 400 líneas; la opción de PR único es una decisión explícita y debe señalarse como excepción de tamaño al solicitar revisión, no ocultarse mediante cambios cosméticos. RDD y commit: pendientes.
