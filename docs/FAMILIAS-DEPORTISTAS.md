@@ -197,9 +197,9 @@ en 32 rutas). RNF-14 pide documentación OpenAPI coherente con los endpoints y u
 
 ## 9. Límites abiertos conocidos
 
-- **Sin bloqueo optimista:** una edición (`PUT`) concurrente sobre el mismo registro gana la última escritura. Los vínculos sí se serializan por el bloqueo del deportista.
+- **Sin bloqueo optimista:** una edición (`PUT`) concurrente sobre el mismo registro gana la última escritura. Los vínculos sí se serializan por el bloqueo del deportista; los datos deportivos anuales, por el bloqueo de su fila (con la misma limitación: un `PUT` con datos viejos pisa un cambio posterior, ver TEMPORADAS.md sección 8).
 - **Sin `unaccent`:** la búsqueda distingue acentos (no mayúsculas).
-- **`deportista_temporada` fuera de alcance:** el cambio mapea solo los datos permanentes del deportista; licencias, temporadas y datos de temporada llegan después.
+- **Datos de temporada fuera de este documento:** este documento cubre los datos permanentes del deportista, las familias, los tutores y los vínculos. Las temporadas, los datos deportivos anuales (`deportista_temporada`) y su lectura por FAMILIA se documentan en [TEMPORADAS.md](TEMPORADAS.md) (Fase 1, implementada); las licencias llegan en la Fase 5.
 - **RF-06 (completitud de los datos del deportista) diferido:** el alta exige solo DNI, nombre y apellido; la validación de completitud para federar queda para el módulo de exportación.
 - **Sin documentos, aptos físicos, competencias ni frontend** en este cambio.
 

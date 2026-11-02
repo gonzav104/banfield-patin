@@ -135,10 +135,14 @@ El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPO
   cualquier controlador, es más estricta (usuario, escuela y familia activos, rol y familia coherentes) y no tiene cache. Una familia inactiva, un usuario
   desactivado o un vínculo revocado rigen desde la siguiente solicitud con el mismo token (matriz de JWT viejo en `FamiliaPortalHttpDbTest`). `f.activa = true` se
   conserva en la consulta como defensa en profundidad y se prueba a nivel de repositorio.
-- **Espera de bloqueos acotada solo en vínculos.** Las transacciones de vínculos que toman `FOR UPDATE` (vincular, revocar, cambiar principal) ejecutan
-  `SET LOCAL lock_timeout` (`banfield.vinculos.lock-timeout`, por defecto `PT3S`): el límite vale solo hasta el fin de esa transacción, no se filtra a otras ni al
-  pool y no existe un límite global. Al vencer, o ante un *deadlock*, se responde `409 CONFLICTO_CONCURRENCIA` con mensaje fijo (sin SQL, ids ni trazas), una
-  sola línea `WARN` con la operación y la clase de la excepción, y la transacción se revierte sin escribir ni auditar.
+- **Espera de bloqueos acotada en cada transacción que toma un bloqueo de fila; no hay límite global.** Hay dos casos, con el mismo mecanismo
+  (`LockTimeoutTransaccion`, que ejecuta `SET LOCAL lock_timeout` dentro de la transacción en curso): las transacciones de **vínculos** que toman
+  `FOR UPDATE` sobre el deportista (vincular, revocar, cambiar principal; `banfield.vinculos.lock-timeout`) y las de **temporadas** que toman
+  `FOR NO KEY UPDATE` (activar una temporada bloquea la fila de la escuela; editar los datos deportivos bloquea la fila de `deportista_temporada`;
+  `banfield.temporadas.lock-timeout`). Ambas propiedades valen por defecto `PT3S`, entre 100 ms y 30 s (fuera de rango la aplicación no arranca). El límite
+  vale solo hasta el fin de esa transacción, no se filtra a otras ni al pool y ninguna otra operación lo usa. Al vencer, o ante un *deadlock*, se responde
+  `409 CONFLICTO_CONCURRENCIA` con un mensaje fijo propio de cada módulo (sin SQL, ids ni trazas), una sola línea `WARN` con la operación y la clase de la
+  excepción, y la transacción se revierte sin escribir ni auditar. Detalle de temporadas en [TEMPORADAS.md](TEMPORADAS.md) secciones 3 y 8.
 - **DNI enmascarado en los listados ADMIN (O8).** Los listados de deportistas y los tutores anidados en el detalle de familia exponen `dniEnmascarado` (últimos 3 dígitos, resto `•`, mismo largo); el DNI completo solo viaja en los detalles individuales autorizados y, en el portal, en el detalle del propio deportista. Detalle y guardas en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md) sección 11.
 - **Logs sin DNI ni CUIL aunque el nivel raíz sea DEBUG.** `application.yml` apaga el logger JDBC de Hibernate (`org.hibernate.orm.jdbc.error: OFF`, que de otro modo
   registra el mensaje de PostgreSQL con los valores de la clave) y fija en `INFO` los resolutores MVC `ExceptionHandlerExceptionResolver` y
