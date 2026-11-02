@@ -36,6 +36,8 @@ try {
 
     for (const nombre of Object.keys(PERFILES)) {
       const valores = valoresDe(nombre); const p = { enlace: null, seccion1: null, avance: null, seccion2: null, final: null };
+      p.limpio = await ses.limpiarBorrador(`https://docs.google.com/forms/d/e/${perfil.formId}/viewform`);
+      if (!p.limpio) throw new Error('No se pudo limpiar el borrador: los resultados no serían confiables');
       const enlace = construirEnlace({ perfil, valores }); p.enlace = { parametros: enlace.incluidos.length, largo: enlace.url.length, omitidos: enlace.omitidos.length };
       p.apertura = await ses.abrir(enlace.url);
       const filas1 = verificarPrecarga({ controles: await ses.controles(), perfil, valores, contrato: base });

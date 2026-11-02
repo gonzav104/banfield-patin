@@ -21,3 +21,11 @@ export function dialogoBorrador(instantanea) {
 
 export const refCasillaCorreo = (instantanea) => refDe(instantanea, /checkbox "Registrar .* como el correo/);
 export const resultadoDe = (texto) => { const m = /### Result\s*\n([\s\S]*?)(?:\n### |$)/.exec(texto); return m ? JSON.parse(m[1]) : null; };
+
+// Botón de confirmación del diálogo de "Borrar formulario" (dentro del alertdialog; nunca "Cancelar").
+export function refConfirmarBorrado(instantanea) {
+  const segmento = instantanea.split('alertdialog')[1];
+  if (!segmento) return null;
+  for (const linea of segmento.split('\n')) if (/button "[^"]*(Borrar|Eliminar)[^"]*"/.test(linea)) return /\[ref=([^\]\s]+)\]/.exec(linea)?.[1] ?? null;
+  return null;
+}

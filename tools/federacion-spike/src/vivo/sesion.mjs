@@ -1,6 +1,6 @@
 // Sesión de prueba sobre la pestaña compartida: abre, lee, elige opciones y avanza SOLO si la guarda lo permite. Nunca envía ni adjunta.
 import { LEER_CONTROLES } from './leer-controles.mjs';
-import { botonesDe, dialogoBorrador, refCasillaCorreo, refDe, refRadio, resultadoDe } from './instantanea.mjs';
+import { botonesDe, dialogoBorrador, refCasillaCorreo, refConfirmarBorrado, refDe, refRadio, resultadoDe } from './instantanea.mjs';
 import { decidirAvance, seleccionesDe } from './guarda-navegacion.mjs';
 
 const ALERTAS = `() => [...document.querySelectorAll('[role=alert]')].map((a) => ({ texto: (a.innerText || '').replace(/\\s+/g, ' ').trim(), cerca: ((a.closest('[role=listitem]')?.querySelector('[role=heading]') ?? a.parentElement?.querySelector('[role=heading]'))?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 45) })).filter((x) => x.texto)`;
@@ -11,19 +11,36 @@ export class SesionFormulario {
   #anotar(accion, detalle) { this.bitacora.push({ accion, ...detalle }); }
   snapshot() { return this.c.herramienta('browser_snapshot'); }
 
-  // Si hay un borrador guardado, Google pregunta qué usar (con retraso) y el borrador anula la precarga: se elige "Continuar"
-  // (la URL precompletada) y se exige que el diálogo haya desaparecido antes de leer nada.
+  // Google guarda un borrador de lo que se marca (en la cuenta de quien responde) y, al abrir otra vez, pregunta qué usar con retraso;
+  // el borrador anula la precarga. Se elige "Continuar" (la URL precompletada) y se espera a que la página esté lista (tenga botones)
+  // y sin diálogo antes de leer nada.
   async abrir(url) {
     await this.c.herramienta('browser_navigate', { url });
     let titulo = null;
-    for (let intento = 0; intento < 4; intento++) {
+    for (let intento = 0; intento < 10; intento++) {
       await this.c.herramienta('browser_wait_for', { time: 2 });
-      const d = dialogoBorrador(await this.snapshot());
-      if (!d) { this.#anotar('abrir', { dialogoBorrador: titulo !== null, intentos: intento + 1 }); return { dialogoBorrador: titulo }; }
-      titulo = d.titulo;
-      if (d.refContinuar) await this.c.herramienta('browser_click', { element: 'enlace Continuar del diálogo de borrador', target: d.refContinuar });
+      const s = await this.snapshot(); const d = dialogoBorrador(s);
+      if (d) {
+        titulo = d.titulo;
+        if (d.refContinuar) await this.c.herramienta('browser_click', { element: 'enlace Continuar del diálogo de borrador', target: d.refContinuar });
+        continue;
+      }
+      if (botonesDe(s).length > 0) { this.#anotar('abrir', { dialogoBorrador: titulo !== null, intentos: intento + 1 }); return { dialogoBorrador: titulo }; }
     }
-    throw new Error('El diálogo de borrador no se pudo resolver: no se lee ni se rellena nada');
+    throw new Error('El formulario no quedó listo (con botones y sin diálogo de borrador): no se lee ni se rellena nada');
+  }
+  // Borra el borrador de prueba (datos ficticios) para que no contamine la precarga siguiente. No envía nada.
+  async limpiarBorrador(urlBase) {
+    await this.abrir(urlBase);
+    const ref = refDe(await this.snapshot(), /button "Borrar formulario"/);
+    if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario' }); return false; }
+    await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
+    await this.c.herramienta('browser_wait_for', { time: 1 });
+    const confirmar = refConfirmarBorrado(await this.snapshot());
+    if (!confirmar) { this.#anotar('limpiar', { ok: false, motivo: 'sin diálogo de confirmación' }); return false; }
+    await this.c.herramienta('browser_click', { element: 'confirmar borrado del borrador ficticio', target: confirmar });
+    await this.c.herramienta('browser_wait_for', { time: 2 });
+    this.#anotar('limpiar', { ok: true }); return true;
   }
   async esquemaVivo() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: ESQUEMA })); }
   async controles() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: LEER_CONTROLES })); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { refDe, refRadio, botonesDe, dialogoBorrador, refCasillaCorreo, resultadoDe } from '../src/vivo/instantanea.mjs';
+import { refDe, refRadio, botonesDe, dialogoBorrador, refCasillaCorreo, resultadoDe, refConfirmarBorrado } from '../src/vivo/instantanea.mjs';
 
 const SNAP = `
         - radiogroup "Atleta empadronado? Pregunta obligatoria" [ref=f1e143]:
@@ -33,4 +33,9 @@ test('detecta el diálogo de borrador y la referencia de "Continuar", y nada si 
 });
 test('extrae el resultado JSON de browser_evaluate', () => {
   assert.deepEqual(resultadoDe('### Result\n{"a":[1,2]}\n### Ran Playwright code\n```js\n```'), { a: [1, 2] }); assert.equal(resultadoDe('### Error\nx'), null);
+});
+
+test('la confirmación del borrado es el botón "Borrar" del diálogo, no "Cancelar"', () => {
+  assert.equal(refConfirmarBorrado('- button "Borrar formulario" [ref=b2]\n- alertdialog [ref=a1]:\n  - button "Cancelar" [ref=a2]\n  - button "Borrar formulario" [ref=a3]'), 'a3');
+  assert.equal(refConfirmarBorrado('- button "Borrar formulario" [ref=b2]'), null);
 });
