@@ -6,6 +6,9 @@ import { decidirAvance, seleccionesDe } from './guarda-navegacion.mjs';
 const ALERTAS = `() => [...document.querySelectorAll('[role=alert]')].map((a) => ({ texto: (a.innerText || '').replace(/\\s+/g, ' ').trim(), cerca: ((a.closest('[role=listitem]')?.querySelector('[role=heading]') ?? a.parentElement?.querySelector('[role=heading]'))?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 45) })).filter((x) => x.texto)`;
 const ESQUEMA = '() => { const r = window.FB_PUBLIC_LOAD_DATA_; return { titulo: r?.[3] ?? null, descripcion: r?.[1]?.[0] ?? null, items: r?.[1]?.[1] ?? null, config: r?.[1]?.[10] ?? null }; }';
 
+// Resumen de lo que hay en pantalla (diálogos, botones, encabezados de pregunta), sin correos, para diagnosticar fallas.
+const vista = (instantanea) => instantanea.split('\n').filter((l) => /dialog|button|heading "¿/.test(l)).map((l) => l.replace(/[\w.+-]+@[\w.-]+/g, '<correo>').trim().slice(0, 120)).slice(-12);
+
 export class SesionFormulario {
   constructor(cliente, contrato) { this.c = cliente; this.contrato = contrato; this.bitacora = []; }
   #anotar(accion, detalle) { this.bitacora.push({ accion, ...detalle }); }
@@ -32,12 +35,12 @@ export class SesionFormulario {
   // Borra el borrador de prueba (datos ficticios) para que no contamine la precarga siguiente. No envía nada.
   async limpiarBorrador(urlBase) {
     await this.abrir(urlBase);
-    const ref = refDe(await this.snapshot(), /button "Borrar formulario"/);
-    if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario' }); return false; }
+    const antes = await this.snapshot(); const ref = refDe(antes, /button "Borrar formulario"/);
+    if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario', vista: vista(antes) }); return false; }
     await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
-    await this.c.herramienta('browser_wait_for', { time: 1 });
-    const confirmar = refConfirmarBorrado(await this.snapshot());
-    if (!confirmar) { this.#anotar('limpiar', { ok: false, motivo: 'sin diálogo de confirmación' }); return false; }
+    let confirmar = null; let despues = '';
+    for (let intento = 0; intento < 5 && !confirmar; intento++) { await this.c.herramienta('browser_wait_for', { time: 1 }); despues = await this.snapshot(); confirmar = refConfirmarBorrado(despues); }
+    if (!confirmar) { this.#anotar('limpiar', { ok: false, motivo: 'sin diálogo de confirmación', vista: vista(despues) }); return false; }
     await this.c.herramienta('browser_click', { element: 'confirmar borrado del borrador ficticio', target: confirmar });
     await this.c.herramienta('browser_wait_for', { time: 2 });
     this.#anotar('limpiar', { ok: true }); return true;
