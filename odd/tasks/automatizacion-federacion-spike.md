@@ -2,7 +2,7 @@
 
 Objetivo: determinar si Playwright puede completar los formularios reales de empadronamiento y aptos físicos de la federación (con adjuntos) sin duplicar la carga.
 Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `ask-on-risk`. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
-Estado: **DESCUBRIMIENTO PARCIAL — mapeo real pendiente; la conexión a un Chrome ya autenticado está definida y a la espera de que el usuario instale la extensión y recargue la sesión (V6–V8, §10).** Sin implementación, sin push ni merge.
+Estado: **FASE A COMPLETA (mapeo real de ambos formularios, solo lectura).** Sin implementación de las fases B, C ni D, sin push ni merge. Pendiente de decisión del usuario: §11.
 
 ## Specs
 
@@ -20,8 +20,8 @@ Estado: **DESCUBRIMIENTO PARCIAL — mapeo real pendiente; la conexión a un Chr
 | --- | --- | --- | --- | --- |
 | D1 | S1 | Verificar accesibilidad anónima de ambos formularios | inline | **hecho** (V1) |
 | D2 | S6 | Leer ficha médica, nota CAP y Reglamento Nacional 2026 | inline | **hecho** (V2–V4) |
-| D3 | S1,S2 | Mapear campos, obligatoriedad, opciones, validaciones, secciones y subida de archivos | inline | **pendiente: necesita un Chrome autenticado al que conectarse** (§10) |
-| D4 | — | Comparar con lo que guarda el backend | inline | **preliminar** (§5); se completa con D3 |
+| D3 | S1,S2 | Mapear campos, obligatoriedad, opciones, validaciones, secciones y subida de archivos | inline | **hecho** (§3; extracción por la extensión de Playwright, V9) |
+| D4 | — | Comparar con lo que guarda el backend | inline | **hecho** (§5) |
 | D5 | S4,S5,S7 | Arquitectura, diseño del spike y criterios | inline | **propuesta** (§6, §7) |
 | I1… | S3 | Implementación del spike | — | **no autorizada** |
 
@@ -66,20 +66,92 @@ IDs de formulario resueltos (identifican el formulario, no son secretos; viven s
 
 **V8 — WSL2 ↔ Windows (verificado).** Red de WSL2 en modo **NAT** (`wslinfo --networking-mode` = `nat`, sin `.wslconfig`): un servidor en Linux no alcanza el `localhost` de Windows ni al revés de forma garantizada, y un servidor MCP en Linux lanzaría el Chrome de Linux, que no tiene la extensión ni la sesión. Hay interop con Windows (`cmd.exe`), Node 20.19.5 y Chrome en `C:\Program Files\Google\Chrome\Application\chrome.exe`. **Prueba:** `cmd.exe /c "npx -y @playwright/mcp@0.0.84 --extension"` desde WSL por stdio respondió `initialize` y devolvió 25 herramientas (incluida `browser_evaluate`), sin abrir Chrome. Es decir, el servidor corre en Windows (relé y Chrome en el mismo `localhost`) y Claude Code en WSL lo usa por stdio. `cmd.exe` imprime un aviso por el directorio UNC y vuelve a `C:\Windows`; es inofensivo.
 
+**V9 — Extracción por la extensión (verificado, 2026-11-02).** Con Chrome de Windows ya autenticado por la persona y la extensión "Playwright Extension" instalada, el servidor MCP en Windows (V8) se conectó y Playwright leyó el esquema de ambos formularios **sin interacción humana más allá de aprobar la conexión**. Se usó `browser_navigate` (sobre la pestaña compartida) y `browser_evaluate` con una función que devuelve solo `titulo`, `descripcion`, `items` y `config` de `FB_PUBLIC_LOAD_DATA_`; no se leyeron cookies, almacenamiento, respuestas ni otras páginas, y no se completó, adjuntó ni envió nada. Observaciones: (a) las herramientas `mcp__playwright-extension__*` **no se cargaron** en la sesión en segundo plano reanudada, por lo que se habló con el mismo servidor por stdio desde un cliente mínimo (scratch, fuera del repo); (b) la primera lectura devolvió datos válidos pero mi intérprete de la respuesta falló y se repitió; (c) una segunda conexión tardó ~12 min hasta que la persona la aprobó. Tiempos de extracción una vez conectado: 5 s (padrón) y 3 s (apto). **El esquema extraído no contiene datos personales** (es la estructura pública del formulario). Se conserva en un directorio temporal fuera del repo; el contenido relevante está en §3.
+
 ## 2. Hallazgo que corrige una premisa de la ficha
 
 La ficha dice "validez por un año"; el Reglamento dice **año calendario de la temporada, sin importar la emisión**. La regla federativa manda. Hoy `apto_fisico` guarda `fecha_emision` y `documento.fecha_vencimiento`. **Recomendación (decisión del usuario en la Fase 4, no ahora):** derivar el vencimiento como el 31/12 del año de la temporada y no como emisión + 1 año.
 
-## 3. Mapeo de los formularios — **PENDIENTE de sesión (D3)**
+## 3. Mapeo real de los formularios (D3, verificado)
 
-No se pudo mapear ningún campo real. Lo siguiente es **hipótesis no verificada**, tomada de REQUERIMIENTOS §7 y del Reglamento:
+Quién los publica: **Asociación Gaucha de Patinaje** (consultas a `info@patinajegaucha.org`), no la CAP. Ambos exigen sesión de Google. El esquema se leyó de `FB_PUBLIC_LOAD_DATA_`; el `entry.<id>` de cada pregunta es el primer valor de su definición (no el id del ítem). Obligatoria: `*`. "Num." = validación de respuesta "Número: es número"; "Email" = validación de correo (interpretación de los códigos `[1,9]` y `[2,102]`: inferida del contexto, a confirmar en la prueba de relleno). Las fechas piden día, mes y año, sin hora.
 
-| Formulario | Campos que se espera (hipótesis) | Archivos esperados (hipótesis) |
-| --- | --- | --- |
-| Padrón 2026 (`AG_Padron_2026`) | DNI, apellido y nombre, fecha de nacimiento, categoría, club, datos de contacto/domicilio, datos del tutor | DNI frente y dorso del deportista (y del tutor), ficha médica |
-| Apto 2026 (`AG_AptosFisicos2026`) | DNI, nombre, club, "empadronado", fecha, médico y matrícula | Escaneo del apto |
+### 3.1 Padrón 2026 — `AG_Padron_2026` (42 ítems: 28 preguntas sin archivo, 9 de archivo, 5 secciones)
 
-Para cerrar D3 hace falta, por formulario: lista y orden de preguntas, tipo, obligatoriedad, opciones exactas (texto), validaciones (texto, número, regex, longitud), secciones y saltos condicionales, y por cada pregunta de archivo: tipos permitidos, cantidad máxima, tamaño máximo y destino. Todo eso está en `FB_PUBLIC_LOAD_DATA_` y se lee **sin interactuar ni enviar** una vez que hay sesión.
+| # | Pregunta | Tipo | `entry` | Obl. | Validación / opciones |
+| --- | --- | --- | --- | --- | --- |
+| 0 | CLUB | lista | 1551725616 | * | 28 opciones (§3.3); si no figura, "Asociación Gaucha" |
+| 1 | FUNCION | lista | 905774763 | * | Atleta, Técnico, Juez, Dirigente |
+| 2 | TIPO LICENCIA | lista | 1603123285 | * | Solo Seguro, Regional, Federativa, Promocional, Nacional |
+| 3 | CERTIFICADO DE SOLICITUD DE LICENCIA (archivo) | archivo | 1371472553 | no | Solo atletas con licencia Federativa, Promocional o Nacional |
+| 4 | APELLIDOS | texto | 2038527210 | * | "Tal como se visualiza en el DNI" |
+| 5 | NOMBRES | texto | 373714051 | * | |
+| 6 | DNI | texto | 1245518198 | * | Num. |
+| 7 | CUIL | texto | 1125203474 | * | "Tal como se visualiza en el dorso del DNI" (sin validación) |
+| 8 | FOTO FRENTE DEL DNI (archivo) | archivo | 1533392906 | * | 1 archivo, PDF o imagen |
+| 9 | FOTO DORSO DNI (archivo) | archivo | 1530094292 | * | 1 archivo, PDF o imagen |
+| 10 | FECHA DE NACIMIENTO | fecha | 1615450528 | * | con año, sin hora |
+| 11 | NACIONALIDAD | texto | 687468341 | * | |
+| 12 | DOMICILIO | texto | 1485601769 | * | "Calle y Altura" |
+| 13 | OTROS DATOS DEL DOMICILIO | párrafo | 559537710 | no | piso, depto, barrio, etc. |
+| 14 | LOCALIDAD | texto | 1110676023 | * | |
+| 15 | PARTIDO | texto | 936022093 | * | |
+| 16 | CODIGO POSTAL | texto | 733384249 | * | |
+| 17 | CORREO ELECTRONICO | texto | 2088867511 | * | Email; "uno por persona" (hermanos sin correo propio: uno el del padre, otro el de la madre) |
+| 18 | TELEFONO DE CONTACTO | texto | 776294012 | * | Num.; con código de área, solo números |
+| 19 | DEPORTE | lista | 2033930699 | * | Artístico, Velocidad, Hockey, Otro |
+| 20 | TIENE CERTIFICADO MEDICO? | opción | 1747068347 | * | **Sí → sección "Certificado Medico"; No → salta a "Certificado WADA"** |
+| 21 | *Sección* "Certificado Medico" | — | — | — | enlaces a la planilla (artístico y velocidad) |
+| 22 | FECHA EMISION CERTIFICADO MEDICO | fecha | 1754245199 | * | |
+| 23 | APELLIDO Y NOMBRE DEL MEDICO | texto | 325538294 | * | |
+| 24 | NUMERO DE MATRICULA DEL MEDICO | texto | 890114021 | * | **Num.** |
+| 25 | CERTIFICADO MEDICO (archivo) | archivo | 592837963 | * | "Adjuntar la planilla (Apto médico) vigente" |
+| 26 | *Sección* "Certificado WADA" | — | — | — | "mayores de 16 años y WS, Técnicos, Jueces y Delegados" |
+| 27 | TIENE CERTIFICADO WADA? | opción | 577509160 | * | **Sí → "Subir certificado WADA"; No → salta a "Menores de Edad"** |
+| 28 | *Sección* "Subir certificado WADA" | — | — | — | |
+| 29 | FECHA EMISION CERTIFICADO WADA | fecha | 1408231423 | * | |
+| 30 | CERTIFICADO WADA (archivo) | archivo | 195438215 | * | |
+| 31 | *Sección* "Menores de Edad" | — | — | — | "hasta los 17 años", lo completan los padres |
+| 32 | Es menor? | opción | 1572893979 | * | **Sí → "Datos Padres"; No → ENVIAR el formulario** |
+| 33 | *Sección* "Datos Padres" | — | — | — | |
+| 34 | Apellido y Nombre de la Madre | texto | 971793754 | * | |
+| 35 | Número de DNI de la Madre | texto | 100113650 | * | Num.; "solo números, sin puntos" |
+| 36 | Foto frente DNI de la Madre (archivo) | archivo | 811314206 | * | 1 archivo |
+| 37 | Foto dorso DNI de la Madre (archivo) | archivo | 721456363 | * | 1 archivo |
+| 38 | Apellido y Nombre del Padre | texto | 175571160 | * | |
+| 39 | Número de DNI del Padre | texto | 983267618 | * | Num. |
+| 40 | Foto frente DNI del Padre (archivo) | archivo | 2031360264 | * | 1 archivo |
+| 41 | Foto dorso DNI del Padre (archivo) | archivo | 1178893024 | * | 1 archivo |
+
+### 3.2 Aptos físicos 2026 — `AG_AptosFisicos2026` (10 ítems: 8 preguntas sin archivo, 1 de archivo, 1 sección)
+
+| # | Pregunta | Tipo | `entry` | Obl. | Validación / opciones |
+| --- | --- | --- | --- | --- | --- |
+| 0 | DNI | texto | 2011177755 | * | Num.; "el mismo que se registró en el padrón" |
+| 1 | APELLIDOS | texto | 1262704907 | * | "tal y como se registró en el padrón" |
+| 2 | NOMBRES | texto | 949077727 | * | ídem |
+| 3 | Club | lista | 1397501273 | * | 27 opciones (§3.3) |
+| 4 | Atleta empadronado? | opción | 1942851838 | * | **Sí → continúa; No → ENVIAR el formulario** (el texto remite al padrón) |
+| 5 | *Sección* "Registrado en el padrón" | — | — | — | |
+| 6 | CERTIFICADO MEDICO (archivo) | archivo | 314532520 | * | planilla vigente (enlaces artístico/carrera) |
+| 7 | FECHA EMISION CERTIFICADO MEDICO | fecha | 2098635769 | * | |
+| 8 | APELLIDO Y NOMBRE DEL MEDICO | texto | 1070253322 | * | |
+| 9 | NUMERO DE MATRICULA DEL MEDICO | texto | 647391604 | * | **Num.** |
+
+### 3.3 Listas con diferencias entre formularios
+
+La lista de clubes **no es la misma** en los dos formularios (28 vs 27 opciones) y el rótulo cambia: padrón "Asociación Gaucha" / apto "Asociación Gaucha de Patinaje"; "Club Atlético y Social Dudignac" / "… (CASD)"; "Loop Escuela de Patín Artístico" / "… (Rojas)". Solo en el padrón: Patiencantos, Patín Carrera Junín, Sociedad de Fomento 12 de Octubre, Sprint Junín. Solo en el apto: Club Municipal Chacabuco, Club San Martín, Club Vélez Sarsfield de Martínez. **El rótulo de nuestra escuela, "Club Social y Deportivo Banfield San Pedro", coincide con `escuela.nombre_federativo` y existe en ambos.** Consecuencia: el mapa `valorInterno → rótulo` debe ser **por formulario**.
+
+### 3.4 Archivos
+
+- El padrón tiene **9** preguntas de archivo: solicitud de licencia (opcional), DNI frente y dorso del deportista, certificado médico, certificado WADA, y DNI frente y dorso de madre y de padre.
+- **Restricciones leídas del DOM visible, sin abrir el selector:** "Sube 1 archivo compatible: PDF o image. El tamaño máximo es de 100 MB." (verificado para DNI frente y dorso del deportista, que son las únicas preguntas de archivo de la primera sección). Las preguntas de las secciones siguientes no se renderizan hasta avanzar y no se verificaron; se espera la misma configuración (el texto de ayuda dice "Un solo archivo (imagen o PDF)"). **El esquema no expone las restricciones de archivo** (solo `entry` y obligatoriedad).
+- El apto tiene **1** pregunta de archivo, en la sección 2 (no renderizada: sin verificar).
+- Cómo se adjunta (selector "Agregar archivo", `aria-label` "Agregar archivo" / "Archivos seleccionados") **no se pudo observar sin abrirlo**; queda para la fase C, en la copia de prueba.
+
+### 3.5 Lógica condicional (saltos)
+
+Padrón: `¿Tiene certificado médico?` Sí → [Certificado médico] → [WADA]; No → [WADA]. `¿Tiene WADA?` Sí → [Subir WADA] → [Menores]; No → [Menores]. `¿Es menor?` Sí → [Datos Padres]; **No → fin**. Apto: `¿Empadronado?` Sí → [datos y archivo del certificado]; **No → fin sin datos** (callejón sin salida: hay que haber hecho el padrón primero).
 
 ## 4. Enlaces precompletados: evaluación
 
@@ -88,25 +160,31 @@ Estado: **conocimiento general, a verificar en el formulario real.**
 - Sirven como complemento (no sustituto) de Playwright: cubren los campos que no son archivos sin automatizar el navegador, y no necesitan guardar sesión. Playwright queda solo para lo que el enlace no cubre (secciones condicionales, verificación de lo precargado, archivos).
 - **Riesgo de seguridad propio:** el enlace lleva DNI y datos de un menor en la URL (historial del navegador, registros de Google, `Referer`). Mitigación: generarlo solo por una acción explícita del ADMIN, no registrarlo ni persistirlo, abrirlo con `rel="noopener noreferrer"` y `Referrer-Policy: no-referrer`.
 - Los identificadores `entry.*` cambian si se recrea el formulario (por ejemplo, el de 2027), por eso **no pueden estar en la lógica de negocio** (AGENTS.md ya lo exige).
+- **Verificado con el esquema real (§3):** los `entry` existen y se pueden leer; hay 28 preguntas sin archivo en el padrón y 8 en el apto, todas precompletables en principio (texto, lista, opción y fecha); las 9 + 1 preguntas de archivo **no** se precompletan. Las listas y opciones exigen el **rótulo exacto** (Sí, No, rótulos de club distintos por formulario). **Sin verificar en el formulario real:** formato de la fecha en el enlace, comportamiento con valores en secciones condicionales, y largo máximo de URL.
+- **Cobertura teórica del criterio S7:** padrón 28/28 y apto 8/8 de las preguntas sin archivo (100 %) tienen un dato fuente identificado (§5); el 100 % depende de módulos futuros (apto, licencia, documentos) y de los puntos abiertos de §5.
 
-## 5. Comparación preliminar con lo que guarda el backend
+## 5. Comparación con lo que guarda el backend (verificada contra el esquema real)
 
-| Dato federativo (ficha, Reglamento) | ¿Lo guardamos? | Dónde |
+**Corrección:** las brechas de la v1 de este plan (provincia, domicilio del tutor, n.º de deportista federativo, obra social, grupo sanguíneo) venían de la ficha médica y del Reglamento de la CAP. **Estos formularios no las piden.** No se necesitan para esta automatización.
+
+| Pregunta del formulario | Dato fuente | Estado |
 | --- | --- | --- |
-| Apellido, nombre, DNI, fecha de nacimiento | Sí | `deportista` |
-| Domicilio, localidad, partido, código postal, teléfono, CUIL, nacionalidad | Sí | `deportista` |
-| **Provincia** | **No** | falta (`localidad` y `partido` sí) |
-| Categoría, rama, divisional, n.º de corredor | Sí | `deportista_temporada` |
-| Tutor: nombre, apellido, DNI, teléfono, parentesco | Sí | `tutor` |
-| **Domicilio del tutor** | **No** | falta |
-| Club | Sí | `escuela.nombre_federativo` |
-| N.º de licencia y tipo | Esquema sí, módulo no | `licencia` (Fase 5) |
-| **N.º de deportista federativo** (DATASKATE) | **No** | decisión pendiente: ¿es el n.º de corredor? |
-| Fecha de emisión, médico, matrícula del apto | Esquema sí, módulo no | `apto_fisico` (Fase 4) |
-| Archivos (DNI, apto, ficha) | Esquema sí, módulo no | `documento` (Fase 3) |
-| **Obra social, n.º de afiliado, grupo sanguíneo y factor** | **No** | **no incorporar sin decisión**: son datos de salud, sensibles |
+| APELLIDOS, NOMBRES, DNI, CUIL, FECHA DE NACIMIENTO, NACIONALIDAD | `deportista` | Existe |
+| DOMICILIO, OTROS DATOS, LOCALIDAD, PARTIDO, CÓDIGO POSTAL, TELÉFONO | `deportista` (`domicilio`, `otros_datos_domicilio`, `localidad`, `partido`, `codigo_postal`, `telefono_contacto`) | Existe; el teléfono debe normalizarse a solo números con código de área |
+| CORREO ELECTRONICO | `deportista.email_federativo` | Existe ("uno por persona") |
+| CLUB | `escuela.nombre_federativo` + mapa de rótulos por formulario | Existe; **mapa por formulario** (§3.3) |
+| FUNCION, DEPORTE | Constantes de configuración de la escuela ("Atleta", "Velocidad") | **Falta** (configuración, no esquema) |
+| TIPO LICENCIA | `licencia.tipo` (REGIONAL, FEDERATIVA, PROMOCIONAL, NACIONAL) | **Brecha: falta "Solo Seguro"** (obligatorio en el formulario) |
+| TIENE CERTIFICADO MEDICO?, FECHA EMISION, MEDICO, MATRÍCULA, archivo | `apto_fisico` + `documento` | Esquema existe; módulo en la Fase 4. **La matrícula debe ser numérica** y `medico_matricula` es `varchar(50)` libre: normalizar o validar |
+| TIENE CERTIFICADO WADA?, FECHA EMISION WADA, archivo | `documento` tipo `CERTIFICADO_WADA` | **Brecha: no hay fecha de emisión** (solo `fecha_vencimiento`); obligatorio si el atleta tiene WADA |
+| Es menor? | Derivado de `fecha_nacimiento` (hasta 17 años) | Calculable |
+| Madre / Padre: apellido y nombre, DNI, fotos del DNI | `tutor` + `documento` (`DNI_TUTOR_FRENTE/DORSO`) | Existe; **hace falta distinguir madre y padre** (`parentesco` es texto libre) |
+| Solicitud de licencia (archivo) | `documento` tipo `SOLICITUD_LICENCIA` | Existe |
+| DNI frente/dorso del deportista | `documento` tipo `DNI_DEPORTISTA_FRENTE/DORSO` | Existe |
 
-Sin migración en esta fase: son solo hallazgos para `ROADMAP`.
+**Puntos abiertos de producto:** (1) el formulario **exige madre y padre** para menores (ambos obligatorios, sin opción "no aplica"): un deportista con un solo tutor, tutor legal u otro parentesco **no puede completarlo tal cual**; (2) "Solo Seguro" no existe en nuestro modelo de licencia; (3) la fecha de emisión del WADA no se guarda; (4) la matrícula alfanumérica no pasa la validación; (5) el apto exige estar empadronado primero (coincide con nuestra regla de estados, pero obliga a ordenar el flujo).
+
+Sin migración en esta fase: son hallazgos para las Fases 3 a 5.
 
 ## 6. Propuesta de arquitectura reutilizable (S5)
 
@@ -157,6 +235,10 @@ Ubicación propuesta: `tools/federacion-spike/` (directorio nuevo, independiente
 | R6 | Envío accidental | El spike no contiene ninguna acción de "Enviar"; una prueba verifica que el código no hace clic en él |
 | R7 | Términos de uso de Google / volumen | Se usa con la cuenta autorizada, supervisado y sin repetición masiva |
 | R8 | El formulario de 2026 puede cerrarse o reemplazarse | Perfiles por año |
+| R9 | Las listas de clubes difieren entre formularios y cambian año a año | Mapa de rótulos por formulario y por año; la huella de esquema detecta el cambio |
+| R10 | Un envío "No" del apto o "No es menor" del padrón **termina el formulario**; un salto mal calculado enviaría datos incompletos | Calcular la ruta de secciones desde nuestros datos antes de completar y comparar con el esquema; el spike nunca envía |
+| R11 | La conexión por la extensión requiere aprobación manual y tarda (~12 min en un caso); las herramientas MCP no se cargaron en la sesión reanudada | Cliente stdio propio como alternativa; la extracción de esquema no necesita ser interactiva si hay una sesión de Chrome abierta |
+| R12 | La extensión da acceso al navegador real de la persona | Compartir solo la pestaña del formulario; leer solo `FB_PUBLIC_LOAD_DATA_`; perfil de Chrome dedicado recomendado |
 | E1 | **Cuenta de Google autorizada y su sesión manual** | Dependencia del usuario |
 | E2 | **Copia de prueba de ambos formularios en la cuenta autorizada** (si no tenemos permiso de edición sobre los originales, hay que recrear su estructura a partir del mapeo) | Dependencia del usuario; requiere la fase A |
 | E3 | Decisión sobre n.º de deportista federativo, provincia y domicilio del tutor | Producto, después de la fase A |
@@ -165,7 +247,7 @@ Ubicación propuesta: `tools/federacion-spike/` (directorio nuevo, independiente
 
 Para cerrar D3: iniciar sesión **a mano** en un Chromium visible lanzado por el spike, con el perfil fuera del repo. No hace falta compartir credenciales. Después, un script de solo lectura extrae el esquema de ambos formularios; el resultado (sin datos personales) se incorpora a este plan.
 
-## 10. Conexión a un Chrome ya autenticado (a la espera del usuario)
+## 10. Conexión a un Chrome ya autenticado (verificada, ver V9)
 
 **Configuración propuesta (sin tocar el servidor `playwright` existente, que es global y sin `--extension`).** Un servidor con otro nombre, en alcance local (queda en `~/.claude.json`, no en el repo, sin `.mcp.json` nuevo):
 
@@ -182,3 +264,15 @@ claude mcp add playwright-extension --scope local -- cmd.exe /c "cd /d %USERPROF
 **Riesgo de privilegios.** La extensión da acceso al navegador real: con `browser_evaluate` se podría leer más que el formulario. Mitigaciones: compartir **solo** la pestaña del formulario; recomendado un perfil de Chrome dedicado con solo la cuenta institucional (flag `--profile-dir-name`); la extracción lee únicamente los cuatro campos del esquema de `FB_PUBLIC_LOAD_DATA_`, sin `document.cookie`, almacenamiento ni otras páginas.
 
 **Alternativas si falla:** (1) fragmento de consola en Chrome normal que descarga `padron.esquema.json` y `apto.esquema.json` (ya entregado, sin dependencias); (2) `--cdp-endpoint` a un Chrome de Windows: exige red `mirrored` en `.wslconfig` y un reinicio de WSL, no recomendado.
+
+## 11. Estrategia recomendada y decisión pendiente
+
+**Recomendación (a decidir por el usuario antes de cualquier implementación):**
+
+1. **Camino principal: enlace precompletado** ("Abrir formulario precargado") generado por el backend desde un **perfil por año y formulario**. Cubre las 28 + 8 preguntas sin archivo sin automatizar el navegador ni guardar sesión. Riesgos: datos de un menor en la URL (§4) y verificación pendiente de la fecha y las secciones.
+2. **Archivos: manuales con apoyo.** Las 10 preguntas de archivo no se precompletan. La app prepara y descarga los archivos con nombres normalizados (RF-13) y la persona los selecciona. Playwright sobre el selector de archivos solo si la fase C lo demuestra fiable; es la parte frágil y la menos valiosa.
+3. **Playwright con navegador visible y humano en el circuito** para (a) verificar de vuelta lo precompletado, (b) detectar cambios de esquema y (c) en la fase C, probar la subida en una copia. No como envío automático.
+4. **Detección de cambios de esquema** como entregable independiente y barato: ya está probado que se puede extraer el esquema (V9) y compararlo con un perfil.
+5. **Antes del producto:** resolver los 5 puntos abiertos de §5 (madre/padre, "Solo Seguro", fecha WADA, matrícula numérica, orden padrón → apto).
+
+**Siguiente paso si el usuario lo autoriza:** fase B (relleno sin envío, datos ficticios, formulario oficial) y fase D (detección de cambios). La fase C requiere una copia de prueba de los formularios (E2). Nada de esto está autorizado todavía.
