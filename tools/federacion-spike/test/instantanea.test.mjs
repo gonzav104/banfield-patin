@@ -39,3 +39,9 @@ test('la confirmación del borrado es el botón "Borrar" del diálogo, no "Cance
   assert.equal(refConfirmarBorrado('- button "Borrar formulario" [ref=b2]\n- alertdialog [ref=a1]:\n  - button "Cancelar" [ref=a2]\n  - button "Borrar formulario" [ref=a3]'), 'a3');
   assert.equal(refConfirmarBorrado('- button "Borrar formulario" [ref=b2]'), null);
 });
+
+test('la confirmación del borrado funciona con la estructura real: dialog "¿Quieres borrar el formulario?"', () => {
+  const real = '- button "Siguiente" [ref=f1e439]\n- button "Borrar formulario" [ref=f1e440] [cursor=pointer]\n- dialog [ref=f1e558]:\n  - heading "¿Quieres borrar el formulario?" [level=1] [ref=f1e560]\n  - button "Cancelar" [ref=f1e563] [cursor=pointer]\n  - button "Borrar formulario" [ref=f1e567] [cursor=pointer]';
+  assert.equal(refConfirmarBorrado(real), 'f1e567');
+  assert.equal(dialogoBorrador(real), null, 'el diálogo de borrado no es el de borrador');
+});

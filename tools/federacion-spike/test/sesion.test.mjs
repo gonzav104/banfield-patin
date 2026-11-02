@@ -27,7 +27,7 @@ test('espera a que aparezcan los botones antes de devolver el control (la primer
 });
 test('limpiar el borrador: pulsa "Borrar formulario" y su confirmación, nunca un botón de envío', async () => {
   const BORRAR = '- button "Siguiente" [ref=b1]\n- button "Borrar formulario" [ref=b2]';
-  const CONFIRMA = '- alertdialog [ref=a1]:\n  - button "Cancelar" [ref=a2]\n  - button "Borrar formulario" [ref=a3]';
+  const CONFIRMA = '- dialog [ref=a1]:\n  - heading "¿Quieres borrar el formulario?"\n  - button "Cancelar" [ref=a2]\n  - button "Borrar formulario" [ref=a3]';
   const c = falso([BORRAR, BORRAR, CONFIRMA, BORRAR]); assert.equal(await new SesionFormulario(c, contrato('apto')).limpiarBorrador('https://x'), true);
   assert.deepEqual(c.llamadas.filter(([n]) => n === 'browser_click').map(([, t]) => t), ['b2', 'a3']);
 });
