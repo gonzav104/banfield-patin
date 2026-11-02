@@ -31,7 +31,17 @@ test('limpiar el borrador: pulsa "Borrar formulario" y su confirmación, nunca u
   const c = falso([BORRAR, BORRAR, CONFIRMA, BORRAR]); assert.equal(await new SesionFormulario(c, contrato('apto')).limpiarBorrador('https://x'), true);
   assert.deepEqual(c.llamadas.filter(([n]) => n === 'browser_click').map(([, t]) => t), ['b2', 'a3']);
 });
-test('si no hay diálogo de confirmación, no da por limpio el borrador', async () => {
+const respuesta = (obj) => `### Result\n${JSON.stringify(obj)}\n### Ran Playwright code`;
+const vacio = { preguntas: [{ titulo: 'DNI', textos: [''], fechas: [], radios: [], listas: [], archivo: false, alertas: [] }], botones: [] };
+const lleno = { preguntas: [{ titulo: 'DNI', textos: ['90000001'], fechas: [], radios: [], listas: [], archivo: false, alertas: [] }], botones: [] };
+const conControles = (instantaneas, controles) => { const c = falso(instantaneas); const base = c.herramienta; c.herramienta = async (n, a) => (n === 'browser_evaluate' ? respuesta(controles) : base(n, a)); return c; };
+
+test('sin diálogo de confirmación y con el formulario vacío, está limpio (no había nada que borrar)', async () => {
   const BORRAR = '- button "Siguiente" [ref=b1]\n- button "Borrar formulario" [ref=b2]';
-  assert.equal(await new SesionFormulario(falso([BORRAR]), contrato('apto')).limpiarBorrador('https://x'), false);
+  assert.equal(await new SesionFormulario(conControles([BORRAR], vacio), contrato('apto')).limpiarBorrador('https://x'), true);
+});
+test('sin diálogo de confirmación pero con respuestas cargadas, NO da por limpio el borrador', async () => {
+  const BORRAR = '- button "Siguiente" [ref=b1]\n- button "Borrar formulario" [ref=b2]';
+  const c = conControles([BORRAR], lleno); const ses = new SesionFormulario(c, contrato('apto'));
+  assert.equal(await ses.limpiarBorrador('https://x'), false); assert.match(ses.bitacora.at(-1).motivo, /hay respuestas/);
 });

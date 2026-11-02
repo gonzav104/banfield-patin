@@ -40,7 +40,13 @@ export class SesionFormulario {
     await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
     let confirmar = null; let despues = '';
     for (let intento = 0; intento < 5 && !confirmar; intento++) { await this.c.herramienta('browser_wait_for', { time: 1 }); despues = await this.snapshot(); confirmar = refConfirmarBorrado(despues); }
-    if (!confirmar) { this.#anotar('limpiar', { ok: false, motivo: 'sin diálogo de confirmación', vista: vista(despues) }); return false; }
+    if (!confirmar) {
+      // Google solo pide confirmar si hay respuestas que borrar: sin diálogo, el formulario debe estar realmente vacío.
+      const c = await this.controles();
+      const lleno = c.preguntas.some((q) => q.textos.some(Boolean) || q.fechas.some(Boolean) || q.radios.length || q.listas.length);
+      if (lleno) { this.#anotar('limpiar', { ok: false, motivo: 'hay respuestas y no apareció el diálogo de confirmación', vista: vista(despues) }); return false; }
+      this.#anotar('limpiar', { ok: true, nota: 'ya estaba vacío' }); return true;
+    }
     await this.c.herramienta('browser_click', { element: 'confirmar borrado del borrador ficticio', target: confirmar });
     await this.c.herramienta('browser_wait_for', { time: 2 });
     this.#anotar('limpiar', { ok: true }); return true;
