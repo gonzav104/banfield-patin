@@ -2,7 +2,7 @@
 
 Objetivo: determinar si Playwright puede completar los formularios reales de empadronamiento y aptos físicos de la federación (con adjuntos) sin duplicar la carga.
 Rama: `feat/automatizacion-federacion-spike` (desde `main` `d367137`). Estrategia de entrega: `ask-on-risk`. Runner: Node.js 24 + Playwright 1.64 (aún no instalado en el repo).
-Estado: **FASE A COMPLETA (mapeo real de ambos formularios, solo lectura).** Sin implementación de las fases B, C ni D, sin push ni merge. Pendiente de decisión del usuario: §11.
+Estado: **FASE A COMPLETA; FASES B y D EN PAUSA POR ORDEN DEL USUARIO (2026-11-02): sin más ejecuciones en vivo ni reintentos automáticos hasta que se autorice la estrategia de §12.** Detector de cambios (D) validado offline y contra los formularios reales. Mediciones de precarga de la fase B: **no válidas** (ver §12.3). Sin fase C, sin push ni merge.
 
 ## Specs
 
@@ -276,3 +276,56 @@ claude mcp add playwright-extension --scope local -- cmd.exe /c "cd /d %USERPROF
 5. **Antes del producto:** resolver los 5 puntos abiertos de §5 (madre/padre, "Solo Seguro", fecha WADA, matrícula numérica, orden padrón → apto).
 
 **Siguiente paso si el usuario lo autoriza:** fase B (relleno sin envío, datos ficticios, formulario oficial) y fase D (detección de cambios). La fase C requiere una copia de prueba de los formularios (E2). Nada de esto está autorizado todavía.
+
+## 12. Diagnóstico del ciclo de reintentos (2026-11-02)
+
+**Orden del usuario (textual, resumen):** "DETENÉ la ejecución actual del spike… No autorizo más reintentos automáticos… No vuelvas a solicitar conexiones de Playwright Extension por ahora… No modifiques más código intentando resolver el problema mediante prueba y error sobre Google Forms… marcá las mediciones contaminadas por borradores como no válidas… No ejecutes nuevas pruebas en vivo sin mi autorización."
+
+### 12.1 Estado
+
+- **Procesos:** ninguno del spike en ejecución. Se detuvo el experimento en segundo plano (`beknx0wiq`); los ejecutores anteriores ya habían terminado; el demonio de exploración se cerró antes. Quedan vivos, **ajenos al spike y sin tocar**: la instancia `claude` del usuario y su servidor `playwright-extension` (Windows, desde las 00:15), `context7` y el `playwright` global. Chrome no se tocó.
+- **Cambios locales:** árbol limpio; 12 commits del spike más 3 de documentación sobre `main` (`d367137`), sin push. 73 pruebas offline en verde. Los resultados crudos de las corridas están en `tools/federacion-spike/salida/` (ignorada por git); el último informe se renombró `fase-b.corrida-final.NO-VALIDA.json` con un `LEEME.txt`.
+- **Costo del ciclo:** 7 commits `fix(spike)` consecutivos y ≥ 9 aprobaciones de conexión, cada fix corregía el síntoma de la corrida anterior.
+
+### 12.2 Causa raíz
+
+1. **Diseño circular.** Para medir la precarga necesito *interactuar* (marcar la casilla de correo, elegir el radio, pulsar "Siguiente"); esas interacciones hacen que Google **guarde un borrador en la cuenta**; el borrador anula o mezcla la precarga de la corrida siguiente; para evitarlo agregué automatizar la UI de "Borrar formulario", que tiene las mismas fragilidades que se querían medir. El problema que se intentaba resolver lo creaba el propio método.
+2. **Sincronización no determinista.** "Página lista" se decidía con esperas fijas y sondeos de la instantánea ("hay botones"), que no garantizan que la página haya terminado de activarse. Efectos observados: lecturas antes de que cargue, un primer clic que expira (`Timeout 5000ms` en la bitácora) sin que nadie lo vea, el diálogo de borrador que aparece con retraso, y que **las conclusiones sobre los radios cambien según cuándo se lee** (sin resolver, ver 12.3).
+3. **Las pruebas offline no cubren a Google.** Los 73 tests verifican *mi* código contra instantáneas que yo escribí con mis supuestos (cliente simulado con respuestas guionadas). Los supuestos eran falsos y solo se descubrieron en vivo: el diálogo de borrado es `dialog` (no `alertdialog`), no aparece si el formulario está vacío, el botón sigue diciendo "Siguiente" con "No" (salto a enviar), existe una casilla obligatoria de correo que no está en los ítems. Pruebas verdes + corrida en vivo roja es consecuencia de no haber grabado páginas reales como fixtures.
+4. **Métricas defectuosas.** `unir()` combinaba la lectura previa y la posterior a mis clics, por lo que un radio que yo marqué contaba como "precargado"; y `avanzo` significaba "se hizo clic", no "cambió la sección" (el padrón figuraba como avanzado estando bloqueado por el archivo obligatorio). Los "100 %" del padrón son un artefacto.
+5. **Modelo de conexión.** Cada corrida lanza un servidor MCP nuevo y exige una aprobación humana (con latencias de segundos a ~12 minutos y dos expiraciones). Iterar en vivo con ese costo convierte cada hipótesis en una espera, y empuja a "probar un arreglo más".
+6. **Elementos ocultos del contrato** descubiertos de a uno en vivo (casilla de correo verificado en la configuración del formulario, saltos a "enviar" con etiqueta engañosa, borradores). El detector ya cubre la configuración y los saltos; la guarda anti-envío ya consulta el contrato.
+
+### 12.3 Validez de la evidencia
+
+| Evidencia | Válida | Motivo |
+| --- | --- | --- |
+| Esquema real de ambos formularios (Fase A), contratos y perfiles | **Sí** | Leído por la extensión; reproducible; es estructura pública sin datos personales |
+| Detector contra los formularios reales: 0 diferencias, misma huella, perfil válido | **Sí** | Independiente de borradores y de clics |
+| 73 pruebas offline y 14 mutaciones detectadas | **Sí** (solo de mi código) | No prueban el comportamiento de Google |
+| Precarga de texto, desplegables y fechas en la sección 1, primera lectura en estado limpio (sin borrador previo) | **Sí, con reserva** | Los valores coincidían con cada perfil (no pudieron venir de un borrador) |
+| Precarga en la sección 2 del apto (fecha, médico, matrícula) tras elegir "Sí" y avanzar | **Sí, con reserva** | Valores distintos por perfil; hubo diálogo de borrador y se eligió "Continuar" |
+| El diálogo "¿Quieres continuar con el borrador actual?" y que el borrador anula la precarga | **Sí** | Observado en pantalla |
+| Casilla obligatoria de correo verificado; padrón bloqueado en la sección 1 por el archivo obligatorio | **Sí** | Observado en pantalla (alertas) |
+| Con "No" el botón sigue diciendo "Siguiente" (el esquema dice que salta a enviar) | **Sí** | Releído 3 veces con espera, sin pulsar |
+| No se envió nada | **Sí** | Cero peticiones `formResponse`/POST registradas en la sesión de exploración; además el envío estaba bloqueado por la casilla de correo sin marcar. Las corridas del ejecutor no pueden pulsar "Enviar" (guarda + prueba) |
+| **¿Se precargan los radios con salto?** | **SIN RESOLVER** | Pruebas tempranas: no (lectura inmediata). Corrida final: sí, antes de tocar nada, tras ≥ 2 s. Hipótesis: se aplica con retraso. Un experimento aislado estaba listo y se detuvo |
+| Corridas 1 a 3 del ejecutor (borradores viejos, página sin cargar) | **No** | Datos de borradores ajenos o página vacía |
+| Corrida final: "100 %" del padrón y del apto, "avanzó" | **No** | Ver causa 4; el borrado del borrador no está verificado en forma independiente |
+| Porcentajes de precarga por formulario | **No hay ninguno válido todavía** | Hasta una medición de solo lectura (12.4) |
+
+### 12.4 Solución determinista propuesta (no implementada)
+
+1. **Medir sin crear borradores.** Un borrador solo nace al *editar*. Toda la medición de precarga (texto, lista, fecha **y radios**) se hace **solo navegando y leyendo**: 6 enlaces, sin clics. Sin clics no hay borrador y no hace falta borrar nada. Es el 90 % del valor de la fase B.
+2. **Una sola sesión de conexión por lote, con un plan fijo.** Una conexión, un plan declarado de antemano, un archivo de evidencia, **fail-fast sin reintentos**: ante cualquier anomalía aborta e informa, sin limpiezas automáticas ni "reintentar con otro arreglo". Idealmente desde una sesión interactiva de Claude Code que ya tenga cargadas las herramientas `playwright-extension` (una aprobación para toda la sesión), en vez de un servidor nuevo por corrida.
+3. **Presupuesto limitado: 2 ejecuciones en vivo en total.**
+   - **L1 (solo lectura, sin clics):** esquema vivo + detector (2 formularios) y las 6 URLs precompletadas, leyendo cada una con un *predicado de página lista evaluado dentro de la página* (`FB_PUBLIC_LOAD_DATA_` presente, `readyState=complete`, cantidad esperada de `listitem`, sin diálogo) y **dos lecturas separadas por 3 s** para resolver de una vez la duda de los radios (si difieren, el tiempo importa y queda medido). Sin borradores, sin casilla, sin "Siguiente".
+   - **L2 (interactiva, opcional y mínima):** un solo perfil por formulario: apto `menor` ("Sí" + casilla + "Siguiente" → leer la sección 2) y padrón `menor` (hasta el bloqueo por el archivo). Cada clic con **postcondición verificada** (radio `aria-checked=true`, casilla marcada, cambió el conjunto de preguntas visibles). **Sin automatizar el borrado:** al terminar, el usuario pulsa "Borrar formulario" a mano una vez, o se deja el borrador ficticio (inocuo).
+4. **Medir mejor:** informar por separado *precarga* (lectura previa a cualquier clic) e *interacción* (posterior); nunca unirlas. "Avanzó" = cambió el conjunto de preguntas visibles. Un porcentaje sin su denominador explícito no se informa.
+5. **Pruebas offline con páginas reales.** Guardar como fixtures las instantáneas reales ya capturadas en esta sesión (con correos redactados): formulario con diálogo de borrador, diálogo de borrado (`dialog`), apto sección 2, padrón con alerta de archivo, apto con "No" + "Siguiente". Las pruebas del analizador y de la guarda leen esos archivos; así un cambio de la página rompe una prueba offline, no una corrida en vivo.
+6. **Eliminar de la ruta crítica** `limpiarBorrador`, los reintentos de clic y el modo "una conexión por corrida". El código existente se conserva como referencia (no se borra) hasta que el usuario decida.
+7. **Decisión de producto independiente de todo esto.** El camino principal recomendado (§11) es el enlace precompletado que abre **el propio navegador de la persona**; Playwright queda para verificar y detectar cambios de esquema. Eso ya está respaldado por la evidencia válida (detector y precarga de texto/listas/fechas). Una fase B perfecta no cambia esa recomendación; lo que falta medir es solo el comportamiento de los radios.
+
+### 12.5 Pendiente de autorización del usuario
+
+Aprobar (o ajustar) el presupuesto de 2 ejecuciones y el plan L1/L2; elegir si L1 se corre desde una sesión interactiva con las herramientas `playwright-extension` cargadas. Hasta entonces: sin conexiones, sin código nuevo, sin push ni merge.
