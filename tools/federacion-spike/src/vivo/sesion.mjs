@@ -35,22 +35,27 @@ export class SesionFormulario {
   // Borra el borrador de prueba (datos ficticios) para que no contamine la precarga siguiente. No envía nada.
   async limpiarBorrador(urlBase) {
     await this.abrir(urlBase);
-    const antes = await this.snapshot(); const ref = refDe(antes, /button "Borrar formulario"/);
-    if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario', vista: vista(antes) }); return false; }
-    await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
-    let confirmar = null; let despues = '';
-    for (let intento = 0; intento < 5 && !confirmar; intento++) { await this.c.herramienta('browser_wait_for', { time: 1 }); despues = await this.snapshot(); confirmar = refConfirmarBorrado(despues); }
+    let confirmar = null; let despues = ''; const clics = [];
+    // El primer clic puede llegar antes de que la página termine de activarse: se reintenta con una referencia nueva.
+    for (let intento = 0; intento < 3 && !confirmar; intento++) {
+      const antes = await this.snapshot(); const ref = refDe(antes, /button "Borrar formulario"/);
+      if (!ref) { this.#anotar('limpiar', { ok: false, motivo: 'sin botón Borrar formulario', vista: vista(antes) }); return false; }
+      const salida = await this.c.herramienta('browser_click', { element: 'botón Borrar formulario (borra el borrador ficticio)', target: ref });
+      clics.push(salida.includes('### Error') ? `error: ${salida.slice(0, 120)}` : 'ok');
+      for (let k = 0; k < 4 && !confirmar; k++) { await this.c.herramienta('browser_wait_for', { time: 1 }); despues = await this.snapshot(); confirmar = refConfirmarBorrado(despues); }
+    }
     if (!confirmar) {
       // Google solo pide confirmar si hay respuestas que borrar: sin diálogo, el formulario debe estar realmente vacío.
       const c = await this.controles();
       const lleno = c.preguntas.some((q) => q.textos.some(Boolean) || q.fechas.some(Boolean) || q.radios.length || q.listas.length);
-      if (lleno) { this.#anotar('limpiar', { ok: false, motivo: 'hay respuestas y no apareció el diálogo de confirmación', vista: vista(despues) }); return false; }
-      this.#anotar('limpiar', { ok: true, nota: 'ya estaba vacío' }); return true;
+      if (lleno) { this.#anotar('limpiar', { ok: false, motivo: 'hay respuestas y no apareció el diálogo de confirmación', clics, vista: vista(despues) }); return false; }
+      this.#anotar('limpiar', { ok: true, nota: 'ya estaba vacío', clics }); return true;
     }
     await this.c.herramienta('browser_click', { element: 'confirmar borrado del borrador ficticio', target: confirmar });
     await this.c.herramienta('browser_wait_for', { time: 2 });
-    this.#anotar('limpiar', { ok: true }); return true;
+    this.#anotar('limpiar', { ok: true, clics }); return true;
   }
+
   async esquemaVivo() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: ESQUEMA })); }
   async controles() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: LEER_CONTROLES })); }
   async alertas() { return resultadoDe(await this.c.herramienta('browser_evaluate', { function: ALERTAS })) ?? []; }
