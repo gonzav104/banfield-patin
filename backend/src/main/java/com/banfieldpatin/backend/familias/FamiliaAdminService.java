@@ -23,7 +23,7 @@ import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
 import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
-import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorResumen;
 import com.banfieldpatin.backend.familias.vinculos.ConteoVinculos;
 import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -133,7 +133,7 @@ public class FamiliaAdminService {
 	}
 
 	private FamiliaDetalle detalle(Familia familia, UUID escuelaId) {
-		List<TutorRespuesta> lista = tutores.deFamilia(escuelaId, familia.getId()).stream().map(TutorRespuesta::de)
+		List<TutorResumen> lista = tutores.deFamilia(escuelaId, familia.getId()).stream().map(TutorResumen::de)
 				.toList();
 		return FamiliaDetalle.de(familia, lista);
 	}

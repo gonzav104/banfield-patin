@@ -98,6 +98,17 @@ class OpenApiSinDatosSensiblesTest extends BaseOpenApiWebMvc {
 		}
 		assertThat(esquemas.path("TutorDeFamilia").path("properties").propertyNames()).doesNotContain("dni", "activo");
 		assertThat(esquemas.path("DeportistaDeFamilia").path("properties").propertyNames()).contains("activo");
+		// DNI (O8): los listados y los tutores anidados exponen solo el enmascarado; los detalles autorizados, el completo.
+		assertThat(esquemas.path("DeportistaResumen").path("properties").propertyNames()).contains("dniEnmascarado")
+				.doesNotContain("dni");
+		assertThat(esquemas.path("TutorResumen").path("properties").propertyNames()).contains("dniEnmascarado")
+				.doesNotContain("dni");
+		assertThat(esquemas.path("FamiliaDetalle").path("properties").path("tutores").path("items").path("$ref").asString())
+				.isEqualTo("#/components/schemas/TutorResumen");
+		assertThat(esquemas.path("DeportistaDetalle").path("properties").propertyNames()).contains("dni")
+				.doesNotContain("dniEnmascarado");
+		assertThat(esquemas.path("TutorRespuesta").path("properties").propertyNames()).contains("dni")
+				.doesNotContain("dniEnmascarado");
 		// Datos deportivos anuales de FAMILIA: ni el id de la fila, ni el deportista, ni el estado global, ni el DNI.
 		assertThat(esquemas.path("TemporadaDeFamilia").path("properties").propertyNames()).containsExactlyInAnyOrder(
 				"temporadaId", "anio", "temporadaActiva", "categoria", "rama", "divisional", "numeroCorredor",

@@ -37,6 +37,8 @@ import com.banfieldpatin.backend.compartido.RelojConfig;
 import com.banfieldpatin.backend.compartido.error.ManejadorGlobalErrores;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.FiltroEstado;
+import com.banfieldpatin.backend.FixturesDominio;
+import com.banfieldpatin.backend.JsonDeContrato;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
@@ -273,11 +275,12 @@ class DeportistaAdminControllerWebMvcTest {
 	@Test
 	void listarPorDefectoFiltraActivosYDevuelveLaPaginaSinEscuela() throws Exception {
 		when(servicio.listar(any(), any(), any(), any())).thenReturn(new Pagina<>(
-				List.of(new DeportistaResumen(id, "Juan", "Perez", "30111222", LocalDate.of(2012, 5, 10), true)), 0, 20, 1));
+				List.of(new DeportistaResumen(id, "Juan", "Perez", "•••••222", LocalDate.of(2012, 5, 10), true)), 0, 20, 1));
 
 		mvc.perform(get(RUTA).cookie(admin())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.contenido[0].id").value(id.toString()))
-				.andExpect(jsonPath("$.contenido[0].dni").value("30111222"))
+				.andExpect(jsonPath("$.contenido[0].dniEnmascarado").value("•••••222"))
+				.andExpect(jsonPath("$.contenido[0].dni").doesNotExist())
 				.andExpect(jsonPath("$.contenido[0].activo").value(true))
 				.andExpect(jsonPath("$.contenido[0].escuelaId").doesNotExist())
 				.andExpect(jsonPath("$.contenido[0].cuil").doesNotExist())
@@ -286,6 +289,33 @@ class DeportistaAdminControllerWebMvcTest {
 		ArgumentCaptor<UsuarioAutenticado> actor = ArgumentCaptor.forClass(UsuarioAutenticado.class);
 		verify(servicio).listar(actor.capture(), eq(FiltroEstado.ACTIVOS), eq(""), any());
 		assertThat(actor.getValue().escuelaId()).isEqualTo(escuelaId);
+	}
+
+	@Test
+	void elJsonSerializadoDelListadoNuncaTraeElDniCompletoEnDnisDeDistintoLargo() throws Exception {
+		List<String> dnis = List.of("4412345", "30111222", "301113221");
+		List<DeportistaResumen> filas = dnis.stream().map(dni -> DeportistaResumen
+				.de(FixturesDominio.deportista(UUID.randomUUID(), escuelaId, dni, "Juan", "Perez", true))).toList();
+		when(servicio.listar(any(), any(), any(), any())).thenReturn(new Pagina<>(filas, 0, 20, 3));
+
+		String cuerpo = mvc.perform(get(RUTA).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.contenido[0].dniEnmascarado").value("••••345"))
+				.andExpect(jsonPath("$.contenido[1].dniEnmascarado").value("•••••222"))
+				.andExpect(jsonPath("$.contenido[2].dniEnmascarado").value("••••••221")).andReturn().getResponse()
+				.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+		tools.jackson.databind.JsonNode arbol = new tools.jackson.databind.json.JsonMapper().readTree(cuerpo);
+		assertThat(JsonDeContrato.claves(arbol)).contains("dniEnmascarado").doesNotContain("dni");
+		assertThat(JsonDeContrato.filtracionesDeDni(arbol, dnis)).isEmpty();
+	}
+
+	@Test
+	void elDetalleConservaElDniCompletoYNoTieneElCampoEnmascarado() throws Exception {
+		when(servicio.obtener(any(), eq(id))).thenReturn(DeportistaDetalle
+				.de(FixturesDominio.deportista(id, escuelaId, "30111222", "Juan", "Perez", true)));
+
+		mvc.perform(get(RUTA + "/" + id).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.dni").value("30111222")).andExpect(jsonPath("$.dniEnmascarado").doesNotExist());
 	}
 
 	@Test

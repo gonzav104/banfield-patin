@@ -34,14 +34,14 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/admin/familias` | ADMIN | `page`, `size`, `busqueda` | `200` `Pagina<FamiliaResumen>` (solo activas; **ruta heredada, sin cambios**) | — |
 | `GET /api/admin/familias/listado` | ADMIN | `estado` (por defecto `TODOS`), `busqueda`, `page`, `size` | `200` `Pagina<{id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos}>` | `400 SOLICITUD_INVALIDA` (estado desconocido) |
 | `POST /api/admin/familias` | ADMIN | `{nombreReferencia}` (1..150) | `201` `FamiliaDetalle` + `Location` | `400 VALIDACION` |
-| `GET /api/admin/familias/{id}` | ADMIN | — | `200` `{id, nombreReferencia, activa, tutores}` (también de una familia inactiva) | `404 FAMILIA_NO_ENCONTRADA` |
+| `GET /api/admin/familias/{id}` | ADMIN | — | `200` `{id, nombreReferencia, activa, tutores}` con el DNI de cada tutor **enmascarado** (`dniEnmascarado`; también de una familia inactiva) | `404 FAMILIA_NO_ENCONTRADA` |
 | `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `404 FAMILIA_NO_ENCONTRADA` |
 | `POST /api/admin/familias/{id}/activar` | ADMIN | — | `200` `FamiliaDetalle` (idempotente) | `404 FAMILIA_NO_ENCONTRADA` |
 | `POST /api/admin/familias/{id}/desactivar` | ADMIN | — | `200` `FamiliaDetalle` (idempotente; sin cascada) | `404 FAMILIA_NO_ENCONTRADA` |
 | `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA` |
 | `GET /api/admin/tutores/{id}` | ADMIN | — | `200` `TutorRespuesta` (también de una familia inactiva) | `404 TUTOR_NO_ENCONTRADO` |
 | `PUT /api/admin/tutores/{id}` | ADMIN | igual que el alta (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA` |
-| `GET /api/admin/deportistas` | ADMIN | `estado` (por defecto `ACTIVOS`), `busqueda` (apellido, nombre, ambos órdenes o prefijo de DNI), `page`, `size` | `200` `Pagina<{id, nombre, apellido, dni, fechaNacimiento, activo}>` | `400 SOLICITUD_INVALIDA` |
+| `GET /api/admin/deportistas` | ADMIN | `estado` (por defecto `ACTIVOS`), `busqueda` (apellido, nombre, ambos órdenes o prefijo de DNI), `page`, `size` | `200` `Pagina<{id, nombre, apellido, dniEnmascarado, fechaNacimiento, activo}>` (el DNI completo **no** viaja en el listado; ver sección 11) | `400 SOLICITUD_INVALIDA` |
 | `POST /api/admin/deportistas` | ADMIN | `{dni, nombre, apellido, cuil?, fechaNacimiento?, nacionalidad?, domicilio?, otrosDatosDomicilio?, localidad?, partido?, codigoPostal?, telefonoContacto?, emailFederativo?}` | `201` `DeportistaDetalle` + `Location` | `400 VALIDACION`, `409 DNI_DUPLICADO`, `409 DNI_RESERVADO_POR_INACTIVO`, `409 CUIL_DUPLICADO` |
 | `GET /api/admin/deportistas/{id}` | ADMIN | — | `200` `DeportistaDetalle` (datos permanentes y `activo`) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` |
 | `PUT /api/admin/deportistas/{id}` | ADMIN | igual que el alta (reemplazo completo) | `200` `DeportistaDetalle` | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409` (los tres de arriba) |
@@ -202,6 +202,27 @@ en 32 rutas). RNF-14 pide documentación OpenAPI coherente con los endpoints y u
 - **`deportista_temporada` fuera de alcance:** el cambio mapea solo los datos permanentes del deportista; licencias, temporadas y datos de temporada llegan después.
 - **RF-06 (completitud de los datos del deportista) diferido:** el alta exige solo DNI, nombre y apellido; la validación de completitud para federar queda para el módulo de exportación.
 - **Sin documentos, aptos físicos, competencias ni frontend** en este cambio.
+
+## 11. DNI enmascarado en los listados (O8, `temp-4`)
+
+El DNI completo solo viaja en los **detalles individuales** autorizados; los listados y los tutores anidados lo exponen **enmascarado**.
+
+| Respuesta | Campo | Valor |
+| --- | --- | --- |
+| `GET /api/admin/deportistas` (`DeportistaResumen`) | `dniEnmascarado` | enmascarado |
+| `tutores[]` dentro de `GET /api/admin/familias/{id}` y de las demás respuestas `FamiliaDetalle` (`TutorResumen`) | `dniEnmascarado` (`null` si el tutor no tiene DNI) | enmascarado |
+| `GET/POST/PUT /api/admin/deportistas/{id}`, `…/activar`, `…/desactivar` (`DeportistaDetalle`) | `dni` | **completo** |
+| `GET/POST/PUT /api/admin/tutores…` (`TutorRespuesta`) | `dni` | **completo** |
+| Portal FAMILIA, detalle de **su** deportista (`DeportistaDeFamiliaDetalle`) | `dni` | **completo** (sin cambios) |
+| Plantel, historial, vínculos, datos deportivos | — | no llevan DNI |
+
+**Formato:** se muestran los **últimos tres dígitos** y el resto se reemplaza por `•` (U+2022), conservando el largo (`30111322` → `•••••322`; 7 dígitos → `••••322`; 9 dígitos → `••••••322`). Un valor de tres caracteres o menos se enmascara completo y `null` sigue siendo `null`. Nunca conviven `dni` y `dniEnmascarado` en un mismo objeto.
+
+**No cambia:** la entidad `Deportista`, el almacenamiento (el DNI se guarda completo y normalizado), las validaciones (`DocumentoIdentidad`), la unicidad (`DNI_DUPLICADO`, `DNI_RESERVADO_POR_INACTIVO`) ni la **búsqueda**: un `busqueda` de solo dígitos (con o sin puntos) sigue resolviéndose por **prefijo** del DNI completo, también con el DNI entero.
+
+**Límite conocido y mejora futura:** como lo que se ve son los últimos tres dígitos y la búsqueda es por prefijo, el administrador no puede buscar tipeando lo que ve (`322` no encuentra `30111322`). Una **búsqueda por sufijo** queda documentada como mejora futura; no se implementó (costo de índice y fuera del alcance de esta unidad).
+
+**Regla para los procesos federativos (Fases 2, 3, 5 y 7: spike, documentos, empadronamiento, LBF):** necesitan el DNI completo y lo **leen en el servidor** desde la entidad `Deportista` o el repositorio, **nunca** desde un DTO de listado ni desde una respuesta HTTP al navegador. `DeportistaResumen` y `TutorResumen` existen para mostrar listas, no para alimentar procesos. Guardas: `ContratoDniTest` (solo una lista cerrada de DTO puede tener un componente `dni`; ningún `*Resumen` lo tiene; ningún DTO tiene `dni` y `dniEnmascarado` a la vez), las pruebas del JSON serializado (`JsonDeContrato`: sin clave `dni` y sin valor de texto que contenga el DNI completo, salvo UUID) y el esquema OpenAPI.
 
 ## 10. Smoke manual contra Supabase
 

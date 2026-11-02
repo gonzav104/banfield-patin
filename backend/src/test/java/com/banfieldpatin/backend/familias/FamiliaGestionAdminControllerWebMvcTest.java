@@ -342,4 +342,29 @@ class FamiliaGestionAdminControllerWebMvcTest {
 				.andExpect(jsonPath("$.codigo").value("METODO_NO_PERMITIDO"));
 		verifyNoInteractions(servicio);
 	}
+
+	// ---------- DNI de los tutores anidados (O8) ----------
+
+	@Test
+	void elDetalleDeFamiliaEnmascaraElDniDeSusTutoresYNoTraeElCompleto() throws Exception {
+		UUID escuela = UUID.randomUUID();
+		var conDni = com.banfieldpatin.backend.familias.tutores.Tutor.crear(escuela, familiaId, "Ana", "Gomez", "27123456",
+				null, null, "Madre");
+		var sinDni = com.banfieldpatin.backend.familias.tutores.Tutor.crear(escuela, familiaId, "Luis", "Gomez", null, null,
+				null, null);
+		when(servicio.obtener(any(), eq(familiaId))).thenReturn(new FamiliaDetalle(familiaId, "Gomez", true,
+				List.of(com.banfieldpatin.backend.familias.tutores.dto.TutorResumen.de(conDni),
+						com.banfieldpatin.backend.familias.tutores.dto.TutorResumen.de(sinDni))));
+
+		String cuerpo = mvc.perform(get("/api/admin/familias/" + familiaId).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.tutores[0].dniEnmascarado").value("•••••456"))
+				.andExpect(jsonPath("$.tutores[0].dni").doesNotExist())
+				.andExpect(jsonPath("$.tutores[1].dniEnmascarado").value(org.hamcrest.Matchers.nullValue()))
+				.andExpect(jsonPath("$.tutores[1].dni").doesNotExist()).andReturn().getResponse()
+				.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+		tools.jackson.databind.JsonNode arbol = new tools.jackson.databind.json.JsonMapper().readTree(cuerpo);
+		assertThat(com.banfieldpatin.backend.JsonDeContrato.claves(arbol)).doesNotContain("dni");
+		assertThat(com.banfieldpatin.backend.JsonDeContrato.filtracionesDeDni(arbol, List.of("27123456"))).isEmpty();
+	}
 }
