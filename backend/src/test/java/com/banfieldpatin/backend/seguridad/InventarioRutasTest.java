@@ -162,7 +162,7 @@ class InventarioRutasTest {
 		assertThat(mutantes.stream().filter(r -> r.contains("/tutores"))).containsExactlyInAnyOrder(
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
-				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}");
+				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -177,7 +177,7 @@ class InventarioRutasTest {
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas", "POST /api/admin/deportistas",
 				"GET /api/admin/deportistas/{id}",
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
-				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias");
+				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias", "GET /api/admin/deportistas/{id}/documentos");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -226,11 +226,11 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void elPortalDeFamiliaTieneExactamenteCincoRutasYTodasSonGet() throws Exception {
+	void elPortalDeFamiliaTieneExactamenteSieteRutasYTodasSonGet() throws Exception {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
-				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}",
+				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/tutores/{id}/documentos",
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
 				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}");

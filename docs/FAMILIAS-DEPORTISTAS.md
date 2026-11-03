@@ -31,6 +31,10 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 
 | Ruta | Rol | Solicitud | Respuesta | Errores |
 |---|---|---|---|---|
+| `GET /api/admin/deportistas/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/admin/tutores/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 TUTOR_NO_ENCONTRADO` |
+| `GET /api/familia/deportistas/{id}/documentos` | FAMILIA | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/familia/tutores/{id}/documentos` | FAMILIA | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 TUTOR_NO_ENCONTRADO` |
 | `GET /api/admin/familias` | ADMIN | `page`, `size`, `busqueda` | `200` `Pagina<FamiliaResumen>` (solo activas; **ruta heredada, sin cambios**) | — |
 | `GET /api/admin/familias/listado` | ADMIN | `estado` (por defecto `TODOS`), `busqueda`, `page`, `size` | `200` `Pagina<{id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos}>` | `400 SOLICITUD_INVALIDA` (estado desconocido) |
 | `POST /api/admin/familias` | ADMIN | `{nombreReferencia}` (1..150) | `201` `FamiliaDetalle` + `Location` | `400 VALIDACION` |

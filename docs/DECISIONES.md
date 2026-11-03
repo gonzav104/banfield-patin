@@ -1,6 +1,6 @@
 # Decisiones del proyecto
 
-Estado actualizado el 2026-11-02. Las decisiones cerradas ya fueron aprobadas por el usuario. Las abiertas **no** están decididas: incluyen recomendación, pero requieren confirmación. **Ya aprobadas e implementadas** (se conservan abajo con su opción y su evidencia): O8 (`temp-4`), O10 (`temp-1`…`temp-3`) y O13 (`ci-1`…`ci-3`).
+Estado actualizado el 2026-11-03. O1-A y O2-A aprobadas como diseño de Fase 3; esta aprobación no habilita todavía integración Storage ni operaciones de archivos. Las decisiones cerradas ya fueron aprobadas por el usuario. Las abiertas **no** están decididas: incluyen recomendación, pero requieren confirmación. **Ya aprobadas e implementadas** (se conservan abajo con su opción y su evidencia): O8 (`temp-4`), O10 (`temp-1`…`temp-3`) y O13 (`ci-1`…`ci-3`).
 
 ## 1. Decisiones cerradas
 
@@ -31,9 +31,11 @@ Estado actualizado el 2026-11-02. Las decisiones cerradas ya fueron aprobadas po
 | Rifa | `BORRADOR`, `ACTIVA`, `CERRADA`, `SORTEADA`, `CANCELADA` | `V1` 553 |
 | Número de rifa | `DISPONIBLE`, `ASIGNADO`, `VENDIDO` | `V1` 574 |
 
-## 3. Decisiones abiertas — requieren aprobación
+## 3. Registro de opciones — abiertas salvo aprobación explícita
 
 ### O1 — ¿FAMILIA puede cargar documentos de tutores?
+
+**Estado: APROBADA opción A (2026-11-03).** FAMILIA puede gestionar documentos de tutores pertenecientes a su familia autorizada. La primera unidad implementa sólo consulta de metadatos; no habilita cargas ni descargas. Escuela y familia proceden de la identidad autenticada; no confundir propietario con usuario de carga.
 
 - **A. Sí, solo de tutores de su propia familia.** RF-09 lo pide explícitamente y el tutor es quien firma la solicitud de licencia.
 - **B. Solo documentos del deportista.** Menos superficie de escritura, pero obliga al ADMIN a cargar DNI de tutores.
@@ -43,6 +45,8 @@ Recomendación: **A**, con alcance derivado del vínculo activo y auditoría de 
 Fase: 3.
 
 ### O2 — ¿Cómo se integra Supabase Storage?
+
+**Estado: APROBADA opción A (2026-11-03), concretada como `RestClient` encapsulado en `AlmacenDocumentos`.** Sin SDK ni acceso directo del frontend; credenciales sólo backend. La integración Storage está fuera de la primera unidad: su aprobación de diseño no equivale a implementación autorizada.
 
 - **A. REST con `WebClient`/`RestClient` y URLs firmadas.** Sin SDK extra, control total del contrato.
 - **B. SDK oficial de Supabase.** Menos código de integración, pero suma dependencia y acopla versiones.
@@ -185,3 +189,7 @@ Reglas:
 - Si la segunda cuenta ya existe, no se "recrea": se usa el reinicio de MFA ya implementado.
 - La contraseña temporal se cambia en el primer ingreso.
 - La ventana entre el alta y el enrolamiento queda sin segundo factor: minimizarla.
+
+## Fase 3 — límites de la aprobación inicial (2026-11-03)
+
+Estados y reemplazos aceptados sólo como base conceptual; transiciones y restricciones definitivas deben verificarse antes de sus migraciones. Permanecen pendientes la vigencia anual de WADA, retención, escaneo antimalware y límites operativos. La unidad inicial es consulta autorizada de metadatos, sin cambios de esquema, Storage, cargas, descargas o reemplazos. Plan: `odd/tasks/documentos-privados.md`.
