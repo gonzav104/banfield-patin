@@ -1,6 +1,6 @@
 # Fase 3 — Gestión privada de documentos
-Objetivo: consolidar diseño y decisiones antes de implementar. Base: `main` `8a132ee`; estado: D1 AUTORIZADA (consulta de metadatos de deportistas y tutores); O1-A/O2-A aprobadas. Resto de decisiones específicas según L4.
-Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este documento. Entrega D1: `exception-ok`, aprobada exclusivamente para el candidato de 22 archivos y 952 líneas más su registro documental (L7); no se hereda a otras unidades ni de Fase 2. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). Commit bloqueado hasta completar RDD sin bloqueantes.
+Objetivo: implementar integridad documental acotada D2 sobre D1 cerrada localmente en `b077021`. Base de Fase 3: `main` `8a132ee`; O1-A/O2-A y D2 aprobadas según L4/L8; decisiones diferidas conservadas.
+Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este documento. Entrega D2: `exception-ok`, autorizada exclusivamente para los 7 archivos/619 líneas aprobados más este registro documental (L13). Entrega D1: `exception-ok`, aprobada exclusivamente para el candidato de 22 archivos y 952 líneas más su registro documental (L7); no se hereda a otras unidades ni de Fase 2. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). Commit bloqueado hasta completar RDD sin bloqueantes.
 
 ## Specs
 
@@ -18,6 +18,8 @@ Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este doc
 - **S11 (autorización vigente).** "Autorizo comenzar la primera unidad ODD: consulta autorizada de metadatos documentales." / "FAMILIA consulta únicamente documentos de deportistas vinculados de forma activa y tutores de su familia autorizada." / "No integrar Supabase Storage, implementar cargas, descargas, reemplazos ni modificar migraciones en esta unidad." / "No hacer push ni merge sin autorización."
 - **S10.** "Tratálas como propuestas pendientes de aprobación formal, no como decisiones ya registradas." / "No modificar código de producción, migraciones ni Supabase todavía. Respetar ODD y RDD. No hacer push ni merge."
 - **S12 (entrega D1, autorización L7).** "Autorizo la excepción de tamaño exclusivamente para la unidad D1 de Fase 3: 22 archivos y 952 líneas del candidato actual." / "Conservá juntos comportamiento, pruebas y documentación, sin ampliar el alcance funcional." / "No realices el commit hasta completar satisfactoriamente RDD y resolver cualquier bloqueante."
+- **S13 (D2, L8).** "Objetivo: reforzar la integridad de `gestion_patin.documento` mediante una nueva migración Flyway, sin implementar todavía reemplazos ni integración con Storage." Las decisiones y condiciones exactas de L8 sustituyen B3 sólo para D2. No editar V1–V4 ni adaptar D1 a escritura.
+- **S14 (excepción operativa D2, L9).** "utilizar `spawn_agent` y `wait_agent` sin `list_agents`" / "Conservá una verificación independiente real, realizada por un agente distinto del implementador." / "No hacer commit antes de completar satisfactoriamente las verificaciones y RDD." No se extiende a D3.
 
 Las tablas siguientes conservan propuestas para unidades posteriores. O1-A/O2-A y D1 están aprobadas según L4; no se aprueban por arrastre WADA anual, retención, escaneo, límites operativos ni transiciones/restricciones definitivas. Registro formal de O1/O2 en `docs/DECISIONES.md`.
 
@@ -143,13 +145,22 @@ Contrato DTO propuesto: id, tipo, estado, temporadaId, creadoEn, vigente, fechaV
 
 Pruebas previstas: JUnit servicio/DTO, WebMvc (rol/sesión/errores/contrato), Testcontainers PostgreSQL 17 con al menos dos escuelas y dos familias y pruebas del SQL real (aislamiento/total/paginación/revocación); capturar logs con marcadores ficticios. RED observado antes de implementar cada regla aplicable; GREEN y regresión de endpoints existentes que comparten alcance. Diferencial contra baseline para rutas afectadas, stdout/HTTP y estado persistido, en scratch externo al workspace. Coste de Docker se anuncia antes de lanzar suite db. Risk previsto D1: ítem 2 (acceso a metadatos sensibles); verificador independiente antes de RDD si corresponde. No declarar PASS anticipadamente.
 
+### D2 — alcance aprobado de integridad (prevalece sobre propuestas B1/B3)
+
+- DNI frente/dorso de deportista o tutor: propietario compatible, sin temporada, una fila vigente por propietario/tipo. OTRO admite múltiples series, una vigente por serie. SOLICITUD_LICENCIA/WADA: sólo unicidad por serie; no anualidad ni cardinalidad por temporada. APTO_FISICO conserva las reglas existentes, sin restricciones específicas de Fase 4.
+- Toda cadena mantiene escuela, propietario, tipo, temporada y serie. Sin autorreferencias, ciclos, bifurcaciones ni cambio de contexto histórico. Prevalidación de V4 antes de DDL/backfill; conflictos abortan, sin reparar o elegir ganadores. Serie de una cadena = ID de su raíz, conservado por todos sus descendientes.
+- Soporte `version` SQL no negativo con valor inicial 0; el CAS futuro será responsabilidad del mutador autorizado. D1 sigue inmutable, sin exponer nuevas columnas en DTO.
+- V5 confirmada disponible sobre baseline `b077021`. Ruta inline: una unidad de migración/tests/docs; no hay escritores paralelos. Verificación independiente obligatoria por Risk: ítems 1/2/4. Excepción de tamaño D1 no heredada; cualquier tamaño D2 se evalúa antes de commit.
+- Excepción operativa autorizada por el usuario exclusivamente para D2: usar spawn_agent/wait_agent sin list_agents **no constituye cumplimiento literal del protocolo habitual**. Identificador, tarea, resultado terminal de wait_agent y conclusión se registrarán en el Log. Si no se obtiene conclusión terminal, detener D2. RDD nativo sin excepción.
+- Verificación: RED de invariantes antes de V5; PostgreSQL 17/Testcontainers local descartable (incluidas dos conexiones concurrentes, no sleeps); regresión D1 y suites `./mvnw -o clean verify`, `./mvnw -o verify -Pdb-tests`. Sin Supabase, Storage, datos reales ni mutadores. Pruebas de migración reutilizan PostgresDescartable/DatosDb y no alteran la BD compartida de pruebas.
+
 ## Tasks
 
 | ID | Specs | Unidad propuesta | Ruta | Estado / evidencia / commit |
 | --- | --- | --- | --- | --- |
 | D0 | S1–S11 | Consolidar este borrador y decisiones pendientes | inline: una unidad documental comprendida | O1/O2 registradas y alcance D1 autorizado; evidencia de implementación pendiente |
-| D1 | S2,S5,S7,S9,S11,S12 | Consulta autorizada de metadatos de deportista y tutor, B6 | inline; verificación independiente por ítem 2 | VERIFICADA funcionalmente; normal 903/903 y DB 415/415; verificador sin bloqueantes tras recheck; excepción de tamaño aprobada L7; PENDIENTE RDD nativo/commit |
-| D2 | S3–S5 | Invariantes B3 y modelo de series, con migración/pruebas PostgreSQL | inline; verificar ítems 1/2/4 | NO AUTORIZADA; requiere P3–P6 |
+| D1 | S2,S5,S7,S9,S11,S12 | Consulta autorizada de metadatos de deportista y tutor, B6 | inline; verificación independiente por ítem 2 | CERRADA LOCALMENTE en b077021; RDD nativo cuatro lentes sin hallazgos, reconocido; normal 903/903 y DB 415/415; no reabrir revisión de contenido idéntico |
+| D2 | S3–S5,S13,S14 | Integridad acotada aprobada en L8, V5 y pruebas PostgreSQL/concurrencia | inline; verificador independiente con excepción operativa D2 | VERIFICADA funcionalmente: 903 normales/440 DB, recheck independiente satisfactorio y spot-check padre 20/20; PENDIENTE consentimiento/RDD y tamaño antes de commit |
 | D3 | S5,S6,S8 | Carga privada síncrona completa con compensación, B5 | inline; verificar ítems 1/2/4/5 | NO AUTORIZADA; depende D2 y P2/P7/P9; dividir sólo en comportamientos seguros con tests/docs propios |
 | D4 | S4,S5 | Revisión y reemplazo sin sobrescritura | inline; verificar ítems 1/2/4 | NO AUTORIZADA; depende D3 y P4 |
 | D5 | S5,S7 | Gestión documental de tutores con alcance familiar | inline; verificar ítem 2 | NO AUTORIZADA para escritura; consulta de tutor incluida en D1; depende D4 |
@@ -296,3 +307,104 @@ Assess RDD nativo del candidato: high por ítem 2; revisión nativa/consentimien
 **Decisión y justificación:** excepción `exception-ok` sólo para D1; el candidato inicial se verificó como 22 archivos, +943/−9 = 952 líneas respecto de `8a132ee`. Se mantienen juntas las cuatro consultas y su matriz de autorización, paginación, regresión y documentación; dividir sólo por capas separaría comportamiento de sus pruebas. El registro de esta autorización agrega únicamente documentación en el mismo archivo ODD, no nuevas rutas ni funcionalidad. Otras unidades conservan su evaluación de tamaño independiente.
 
 **Preparación:** se conservan íntegros los resultados L5–L6: suite normal 903/903, PostgreSQL 415/415, focalizada DB 7/7, diferencial 35/35 por versión y spot-check de servicio 4/4. En esta continuación no cambió el código funcional; no se repiten suites por una anotación documental. Los logs temporales antiguos ya no están disponibles; la evidencia conservada es el registro ODD y su espejo, no una nueva ejecución. Normalización: no hay formateador mutante configurado en `backend/pom.xml`; comprobación de whitespace con `git diff --check` y `git diff --cached --check` antes de congelar. Revisión nativa pendiente de su consentimiento específico; no se autoriza a inferirlo de la excepción de tamaño. Foco de revisión: autorización/aislamiento, revocación, DTO sin metadatos Storage, fallos de auditoría, paginación y consultas acotadas. Risk: ítem 2. No commit, push ni merge.
+
+### L8 — Implementación D2 autorizada (2026-11-03), textual
+
+Apruebo las decisiones acotadas de D2 y autorizo su implementación.
+
+**Objetivo:** reforzar la integridad de `gestion_patin.documento` mediante una nueva migración Flyway, sin implementar todavía reemplazos ni integración con Storage.
+
+Decisiones:
+- DNI frente/dorso: como máximo uno vigente por propietario y tipo, sin temporada.
+- OTRO: múltiples series independientes, con máximo un vigente por serie.
+- SOLICITUD_LICENCIA y CERTIFICADO_WADA: unicidad por serie; no imponer anualidad ni cardinalidad por temporada todavía.
+- APTO_FISICO: no agregar reglas específicas de Fase 4.
+- Historial: garantizar que el predecesor pertenezca a la misma escuela, propietario, tipo, temporada y serie.
+- Control optimista: incorporar soporte SQL, sin adaptar todavía D1 a escritura.
+
+Implementación:
+
+1. Actualizá el plan ODD con las decisiones aprobadas y las diferidas.
+2. Confirmá que `V5__reforzar_integridad_documental.sql` esté disponible.
+3. Implementá una migración que prevalidate los registros existentes, conserve las cadenas históricas válidas y rechace inconsistencias sin realizar reparaciones automáticas.
+4. Agregá `serie_id`, la versión y las restricciones necesarias. Asigná una misma serie a todas las versiones de una cadena existente.
+5. Priorizá CHECK, FK e índices únicos. Utilizá un trigger acotado únicamente para las invariantes entre versiones que no puedan expresarse declarativamente.
+6. Garantizá que no existan autorreferencias, ciclos, bifurcaciones, modificaciones indebidas del contexto histórico ni múltiples documentos vigentes en una misma serie.
+7. Comprobá que los mecanismos de integridad funcionan bajo concurrencia real, no solamente en pruebas secuenciales.
+8. Implementá pruebas PostgreSQL 17/Testcontainers: migración limpia, actualización desde V4, datos históricos inconsistentes, versiones cruzadas, cardinalidad y concurrencia.
+9. Ejecutá la regresión completa de D1 y verificá que los endpoints de consulta mantengan su contrato y autorización.
+10. Realizá verificación independiente y seguí el protocolo RDD.
+
+No editar V1–V4, implementar mutadores documentales, integrar Supabase Storage ni ampliar el alcance a Fase 4.
+
+No hacer push ni merge.
+
+Al finalizar, informá los archivos modificados, pruebas ejecutadas, riesgos residuales y si D2 está preparada para revisión y commit. Solicitá consentimiento RDD si corresponde.
+
+### L9 — Excepción operativa exclusiva D2 (2026-11-03), textual
+
+Autorizo una excepción operativa **únicamente para D2**: utilizar `spawn_agent` y `wait_agent` sin `list_agents`.
+
+Condiciones obligatorias:
+
+1. Registrá explícitamente la excepción en el plan ODD, indicando que fue autorizada por el usuario y que no constituye cumplimiento literal del protocolo habitual.
+2. Conservá una verificación independiente real, realizada por un agente distinto del implementador.
+3. Registrá el identificador del agente delegado, su tarea, el resultado obtenido mediante `wait_agent` y su conclusión.
+4. No simules herramientas faltantes ni declares completada una revisión que no se ejecutó.
+5. Si no podés verificar que el agente terminó y entregó resultados, detené D2.
+6. Implementá D2 según el alcance y las restricciones previamente aprobadas.
+7. Ejecutá las pruebas PostgreSQL/Testcontainers, las regresiones de D1 y la verificación independiente.
+8. Aplicá posteriormente el RDD nativo completo, sin excepciones adicionales.
+9. Si RDD requiere consentimiento, solicitá autorización específica.
+
+Esta excepción no se extiende a D3 ni a futuras unidades.
+
+No hacer commit antes de completar satisfactoriamente las verificaciones y RDD. No hacer push ni merge.
+
+Al finalizar, presentá las pruebas realizadas, los hallazgos de la verificación independiente, los riesgos residuales y el estado de D2.
+
+
+### L10 — Implementación D2 y checks propios (2026-11-03)
+
+V5 libre confirmada. Se implementaron prechecks transaccionales bajo lock exclusivo y backfill de cadena con raíz estable, preservando columnas/timestamps V4. CHECK para DNI/propietario/temporada y versión; dos FK compuestas por rama de propietario garantizan escuela/tipo/serie sin tratar NULL como igualdad; índices únicos para serie vigente, sucesor y posición DNI. Trigger limitado a derivación de serie, temporada nullable e inmutabilidad del contexto. Sin reglas nuevas de estados, anualidad WADA, APTO Fase 4 ni mutadores. Ningún Java productivo cambió.
+
+RED observado: `./mvnw -o test -Pdb-tests -Dtest=V5IntegridadDocumentalDbTest#propietarioYCardinalidadDni`, 1 fallo de aserción real en V4 (aceptaba propietario incompatible), 0 errores. No se afirma RED separado de cada caso posterior. GREEN final focalizado: V5 21/21 y DocumentosConsultaDbTest 7/7, total 28/28. Cuatro carreras usan dos conexiones y verifican el bloqueo PostgreSQL mediante `pg_blocking_pids`, sin sleeps: alta DNI duplicada, sucesores aunque no vigentes, activaciones en la misma serie y CAS con versión obsoleta. Rechazos verifican SQLSTATE de integridad y snapshot de Documento sin cambios; migraciones inválidas conservan V4, sin columnas nuevas parciales. Pruebas sólo contra PostgreSQL 17.11/Testcontainers local. Logs externos `/tmp/d2-red.log` y `/tmp/d2-focused-final.log`.
+
+Pendiente: suites completas normal/DB y verificación independiente en copia scratch externa, registro terminal del agente mediante wait_agent, spot-check del padre y RDD nativo con consentimiento. El candidato puede superar 400 líneas; no se hereda la excepción de D1 ni se hace commit sin resolver tamaño y RDD. Risk: ítems 1/2/4. Sin Supabase, push ni merge.
+
+### L11 — Verificador independiente D2 y corrección acotada (2026-11-03)
+
+Agente distinto del implementador: `01a1a27d-a6da-7643-8435-9f7bbd2ff519` (tarea `d2_integridad_verify`, gpt-6.1-sol/medium). `wait_agent` devolvió estado terminal `completed` con informe PARTIAL y `skill_resolution=paths-injected`; no se simuló list_agents. Scratch externo `/tmp/d2-integridad-verify.0FdLz4`, baseline b077021. Resultado: suite normal 903 (1 fallo de inventario), DB 436 (1 inventario y 1 advisory previo), V5 21/21, D1 DB 7/7 y contratos/servicio D1 12/12 en ambas versiones. Probes adicionales 4/4: tutor/series múltiples, rollback de sentencia masiva, ciclo por INSERT masivo y no nuevas reglas APTO. No reprodujo defecto SQL productivo en lo examinado; no prueba ausencia absoluta de riesgos.
+
+Dos bloqueantes del candidato: inventario V2MigracionEstaticaTest limitado a V1–V4 e historial V4ConstraintsDbTest limitado a 1–4; ambos pasan en baseline. Único lote correctivo: actualizar inventarios a V5 (sin tocar migraciones V1–V4) y conservar los probes como V5CasosLimiteDbTest. No se cambia SQL ni Java productivo. Advisory previo: DeportistaTemporadaEdicionDbTest busca `009` en el JSON completo y puede coincidir en un UUID, misma aserción en baseline; no se corrige fuera de alcance. Recheck independiente limitado a los dos bloqueantes pendiente; regresiones funcionales finales pendientes. Sin commit ni RDD ejecutado todavía.
+
+### L12 — Recheck independiente y estado previo a RDD (2026-11-03)
+
+Mismo agente `01a1a27d-a6da-7643-8435-9f7bbd2ff519`, tarea `d2_integridad_verify`. Retorno terminal de wait_agent: `completed`, conclusión «Recheck D2 satisfactorio», skill_resolution paths-injected. Recheck limitado a los dos bloqueantes: inventario estático 7/7 e historial Flyway 20/20; probes conservados equivalentes 4/4. Sin nuevo barrido. Regresión funcional del candidato corregido en nueva copia externa desde b077021: `./mvnw -o clean verify` 903/903 y `./mvnw -o verify -Pdb-tests` 440/440, cero fallos/errores/omitidos; incluye V5 21/21 y D1 DB 7/7. Advisory previo UUID intacto, sin fallo ni reintentos en esta corrida. Spot-check del padre: `./mvnw -o test -Pdb-tests -Dtest=V4ConstraintsDbTest` 20/20. V1–V4 y todo Java productivo sin diferencias contra b077021.
+
+Los logs y reportes de ambas copias externas se preservan en `/tmp/d2-verificacion-evidencia/`; scratches originales retirados después de preservar evidencia. No se afirma cumplimiento literal de list_agents: se usó la excepción D2 autorizada. No se amplía a D3. La revisión independiente verificó S13 (integridad/regresión) y su retorno terminal permite cerrar la condición independiente de S14; RDD nativo aún pendiente de consentimiento. No se repite revisión D1. Whitespace check-only conforme; no normalizador mutante configurado. No commit: tamaño D2 >400 requiere decisión propia antes de commit; excepción D1 no heredada.
+
+Riesgos residuales: lock exclusivo durante migración requiere ventana operativa; historia inválida exige resolución humana, no reparación automática; `version` sólo ofrece soporte SQL, no workflow optimista de D1; los permisos administrativos capaces de desactivar restricciones están fuera de la garantía. No retención/borrado, anualidad WADA, Storage ni nuevas reglas de Fase 4.
+
+### L13 — Excepción de tamaño y cierre local D2 (2026-11-03)
+
+**Autorización del usuario, textual:**
+
+Autorizo la excepción de tamaño exclusivamente para D2: 7 archivos y 619 líneas como una única unidad.
+
+Continuá con el cierre local:
+
+1. Registrá la excepción y su justificación en ODD.
+2. Verificá que el contenido ejecutable coincida con el candidato aprobado por RDD: `sha256:d020d19e1f21434e677effc1db5b7001258bd7b9e452abca642476e20c767c62`.
+3. Si registrar la excepción modifica el candidato, aplicá el protocolo ODD/RDD correspondiente; no supongas que una aprobación anterior cubre automáticamente los nuevos bytes.
+4. Confirmá que las verificaciones funcionales e independientes siguen siendo aplicables.
+5. Realizá el commit local con mensaje Conventional Commits en español:
+   `feat(documentos): reforzar integridad documental en PostgreSQL`
+6. Verificá el SHA del commit y que el árbol de trabajo quede limpio.
+7. Informá el estado final de D2 y los riesgos residuales.
+
+No implementar D3 ni modificar Supabase.
+
+**No hacer push, abrir PR ni merge todavía.**
+
+**Justificación:** la migración, las pruebas de integridad/concurrencia y la documentación forman una única unidad coherente; se acepta su tamaño sólo para D2, sin heredar ni extender excepciones. El candidato original (árbol `02d91cbadd0a67781c36685107e7e32a5c58f705`) recibió RDD nativo de cuatro lentes sin hallazgos, reconocido en `review-496f961de3ae3901`. Este registro agrega bytes documentales: no se considera automáticamente cubierto por aquella aprobación. Antes del commit se evaluará el nuevo candidato conforme al protocolo nativo. Las pruebas 903 normales/440 PostgreSQL, verificación independiente terminal y spot-check 20/20 siguen siendo aplicables al contenido ejecutable idéntico; no se afirma una nueva ejecución. Riesgos residuales L12 sin cambios. Commit todavía pendiente.

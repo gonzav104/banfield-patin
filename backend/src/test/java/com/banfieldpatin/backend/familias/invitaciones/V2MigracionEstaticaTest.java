@@ -42,11 +42,12 @@ class V2MigracionEstaticaTest {
 	}
 
 	@Test
-	void elDirectorioSoloContieneDeV1AV4() throws Exception {
+	void elDirectorioSoloContieneDeV1AV5() throws Exception {
 		try (Stream<Path> archivos = Files.list(MIGRACIONES)) {
 			assertThat(archivos.map(p -> p.getFileName().toString()).sorted().toList())
 					.containsExactly("V1__crear_esquema_inicial.sql", "V2__crear_invitacion.sql",
-							"V3__crear_usuario_mfa.sql", "V4__restricciones_familia_deportista.sql");
+							"V3__crear_usuario_mfa.sql", "V4__restricciones_familia_deportista.sql",
+							"V5__reforzar_integridad_documental.sql");
 		}
 	}
 
