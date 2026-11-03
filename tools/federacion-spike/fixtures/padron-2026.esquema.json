@@ -1,0 +1,1360 @@
+{
+ "titulo": "AG_Padron_2026",
+ "descripcion": "Cualquier consulta remitirla a info@patinajegaucha.org",
+ "items": [
+  [
+   425296573,
+   "CLUB",
+   "Si su club  no se encuentra en el listado seleccione \"Asociación Gaucha\" y luego informe esta situación a info@patinajegaucha.org",
+   3,
+   [
+    [
+     1551725616,
+     [
+      [
+       "Alianza Colón"
+      ],
+      [
+       "Asociación Civil Campana Sobre Ruedas"
+      ],
+      [
+       "Asociación Gaucha"
+      ],
+      [
+       "Campana sobre Ruedas"
+      ],
+      [
+       "Cebras de Pergamino"
+      ],
+      [
+       "Club Atlético 9 de Julio"
+      ],
+      [
+       "Club Atlético Argentino Rojas"
+      ],
+      [
+       "Club Atlético El Fortín"
+      ],
+      [
+       "Club Atlético Jorge Newbery"
+      ],
+      [
+       "Club Atlético Porteño de Chacabuco"
+      ],
+      [
+       "Club Atlético y Social Dudignac"
+      ],
+      [
+       "Club Deportivo Argentino"
+      ],
+      [
+       "Club Social y Deportivo Banfield San Pedro"
+      ],
+      [
+       "Club Social y Deportivo Independiente de Mones Cazón"
+      ],
+      [
+       "Escuela de Rollers Baradero"
+      ],
+      [
+       "Huincaló de San Pedro"
+      ],
+      [
+       "Juventud de Belgrano"
+      ],
+      [
+       "Loop Escuela de Patín Artístico"
+      ],
+      [
+       "Mercedes B"
+      ],
+      [
+       "Paraná FC San Pedro"
+      ],
+      [
+       "Patiencantos"
+      ],
+      [
+       "Patín Artístico Bragado"
+      ],
+      [
+       "Patín Carrera Junín"
+      ],
+      [
+       "Patín Visión"
+      ],
+      [
+       "Sociedad de Fomento 12 de Octubre"
+      ],
+      [
+       "Sprint Junín"
+      ],
+      [
+       "Viamonte Fútbol Club"
+      ],
+      [
+       "Villa Dalmine"
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CLUB"
+   ],
+   [
+    null,
+    "Si su club  no se encuentra en el listado seleccione \"Asociación Gaucha\" y luego informe esta situación a info@patinajegaucha.org"
+   ]
+  ],
+  [
+   342672130,
+   "FUNCION",
+   null,
+   3,
+   [
+    [
+     905774763,
+     [
+      [
+       "Atleta",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Técnico",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Juez",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Dirigente",
+       null,
+       null,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FUNCION"
+   ]
+  ],
+  [
+   192798947,
+   "TIPO LICENCIA",
+   null,
+   3,
+   [
+    [
+     1603123285,
+     [
+      [
+       "Solo Seguro",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Regional",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Federativa",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Promocional",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Nacional",
+       null,
+       null,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "TIPO LICENCIA"
+   ]
+  ],
+  [
+   1689381875,
+   "CERTIFICADO DE SOLICITUD DE LICENCIA - FEDERACION DE PATIN RIOPLATENSE",
+   "Lo deben subir únicamente los ATLETAS que solicitaron licencia: Federativa, Promocional ó Nacional.\nSi no dispone del mismo, puede descargarlo desde este link \nhttps://drive.google.com/file/d/18CaF8w_BDRGlR-kIl8-4N1ELi2wRVdxL/view?usp=sharing ",
+   13,
+   [
+    [
+     1371472553,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CERTIFICADO DE SOLICITUD DE LICENCIA - FEDERACION DE PATIN RIOPLATENSE"
+   ],
+   [
+    null,
+    "Lo deben subir únicamente los ATLETAS que solicitaron licencia: Federativa, Promocional ó Nacional.<br>Si no dispone del mismo, puede descargarlo desde este link <br><a href=\"https://drive.google.com/file/d/18CaF8w_BDRGlR-kIl8-4N1ELi2wRVdxL/view?usp=sharing\">https://drive.google.com/file/d/18CaF8w_BDRGlR-kIl8-4N1ELi2wRVdxL/view?usp=sharing</a> "
+   ]
+  ],
+  [
+   1158872914,
+   "APELLIDOS",
+   "Tal como se visualiza en el DNI",
+   0,
+   [
+    [
+     2038527210,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "APELLIDOS"
+   ],
+   [
+    null,
+    "Tal como se visualiza en el DNI"
+   ]
+  ],
+  [
+   1513568491,
+   "NOMBRES",
+   null,
+   0,
+   [
+    [
+     373714051,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "NOMBRES"
+   ]
+  ],
+  [
+   1792616973,
+   "DNI",
+   null,
+   0,
+   [
+    [
+     1245518198,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "DNI"
+   ]
+  ],
+  [
+   1376105594,
+   "CUIL",
+   "Tal como se visualiza en el dorso del DNI",
+   0,
+   [
+    [
+     1125203474,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CUIL"
+   ],
+   [
+    null,
+    "Tal como se visualiza en el dorso del DNI"
+   ]
+  ],
+  [
+   1171914331,
+   "FOTO FRENTE DEL DNI",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     1533392906,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FOTO FRENTE DEL DNI"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ],
+  [
+   1406190868,
+   "FOTO DORSO DNI",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     1530094292,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FOTO DORSO DNI"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ],
+  [
+   1873879615,
+   "FECHA DE NACIMIENTO",
+   null,
+   9,
+   [
+    [
+     1615450528,
+     null,
+     1,
+     null,
+     null,
+     null,
+     null,
+     [
+      0,
+      1
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FECHA DE NACIMIENTO"
+   ]
+  ],
+  [
+   1655509674,
+   "NACIONALIDAD",
+   null,
+   0,
+   [
+    [
+     687468341,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "NACIONALIDAD"
+   ]
+  ],
+  [
+   1671392580,
+   "DOMICILIO",
+   "Calle y Altura",
+   0,
+   [
+    [
+     1485601769,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "DOMICILIO"
+   ],
+   [
+    null,
+    "Calle y Altura"
+   ]
+  ],
+  [
+   158718735,
+   "OTROS DATOS DEL DOMICILIO",
+   "Piso, departamento, barrio, sección, circunscripción, KM, etc.",
+   1,
+   [
+    [
+     559537710,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "OTROS DATOS DEL DOMICILIO"
+   ],
+   [
+    null,
+    "Piso, departamento, barrio, sección, circunscripción, KM, etc."
+   ]
+  ],
+  [
+   1821348604,
+   "LOCALIDAD",
+   null,
+   0,
+   [
+    [
+     1110676023,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "LOCALIDAD"
+   ]
+  ],
+  [
+   936022093,
+   "PARTIDO",
+   null,
+   0,
+   [
+    [
+     1304122234,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "PARTIDO"
+   ]
+  ],
+  [
+   470082447,
+   "CODIGO POSTAL",
+   null,
+   0,
+   [
+    [
+     733384249,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CODIGO POSTAL"
+   ]
+  ],
+  [
+   673727184,
+   "CORREO ELECTRONICO",
+   "Uno por persona. Ejemplo: dos atletas menores que sean herman@s y no tengan dirección de correo propia, deben registrar uno el correo del padre y otr@ el correo de la madre.",
+   0,
+   [
+    [
+     2088867511,
+     null,
+     1,
+     null,
+     [
+      [
+       2,
+       102
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CORREO ELECTRONICO"
+   ],
+   [
+    null,
+    "Uno por persona. Ejemplo: dos atletas menores que sean herman@s y no tengan dirección de correo propia, deben registrar uno el correo del padre y otr@ el correo de la madre."
+   ]
+  ],
+  [
+   550705524,
+   "TELEFONO DE CONTACTO",
+   "Anteponer el código de área, consignar solo números.",
+   0,
+   [
+    [
+     776294012,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "TELEFONO DE CONTACTO"
+   ],
+   [
+    null,
+    "Anteponer el código de área, consignar solo números."
+   ]
+  ],
+  [
+   1789733306,
+   "DEPORTE",
+   null,
+   3,
+   [
+    [
+     2033930699,
+     [
+      [
+       "Artístico",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Velocidad",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Hockey",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Otro",
+       null,
+       null,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "DEPORTE"
+   ]
+  ],
+  [
+   13000283,
+   "TIENE CERTIFICADO MEDICO?",
+   null,
+   2,
+   [
+    [
+     1747068347,
+     [
+      [
+       "Sí",
+       null,
+       2837880,
+       null,
+       0
+      ],
+      [
+       "No",
+       null,
+       642911103,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "TIENE CERTIFICADO MEDICO?"
+   ]
+  ],
+  [
+   2837880,
+   "Certificado Medico",
+   "Formulario disponible para su descarga:\nARTISTICO => https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing \nVELOCIDAD   => https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing ",
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Certificado Medico<span></span>"
+   ],
+   [
+    null,
+    "Formulario disponible para su descarga:<br>ARTISTICO =&gt; <a href=\"https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing\">https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing</a> <br>VELOCIDAD   =&gt; <a href=\"https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing\">https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing</a> "
+   ]
+  ],
+  [
+   1904583670,
+   "FECHA EMISION CERTIFICADO MEDICO",
+   null,
+   9,
+   [
+    [
+     1754245199,
+     null,
+     1,
+     null,
+     null,
+     null,
+     null,
+     [
+      0,
+      1
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FECHA EMISION CERTIFICADO MEDICO"
+   ]
+  ],
+  [
+   434152322,
+   "APELLIDO Y NOMBRE DEL MEDICO",
+   null,
+   0,
+   [
+    [
+     325538294,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "APELLIDO Y NOMBRE DEL MEDICO"
+   ]
+  ],
+  [
+   1761280741,
+   "NUMERO DE MATRICULA DEL MEDICO",
+   null,
+   0,
+   [
+    [
+     890114021,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "NUMERO DE MATRICULA DEL MEDICO"
+   ]
+  ],
+  [
+   77327856,
+   "CERTIFICADO MEDICO",
+   "Si la posee, adjuntar la planilla (Apto médico) vigente",
+   13,
+   [
+    [
+     592837963,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CERTIFICADO MEDICO"
+   ],
+   [
+    null,
+    "Si la posee, adjuntar la planilla (Apto médico) vigente"
+   ]
+  ],
+  [
+   642911103,
+   "Certificado WADA",
+   "Patinadores mayores de 16 años y WS, Técnicos, Jueces y Delegados deben obtener el certificado WADA. Para realizarlo, acceder al siguiente link https://adel.wada-ama.org/learn/signin",
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Certificado WADA"
+   ],
+   [
+    null,
+    "<p dir=\"ltr\"><span>Patinadores mayores de 16 años y WS, Técnicos, Jueces y Delegados deben obtener el certificado WADA. Para realizarlo, acceder al siguiente link </span><a href=\"https://adel.wada-ama.org/learn/signin\" style=\"text-decoration-line:none\"><span style=\"text-decoration-line:underline\">https://adel.wada-ama.org/learn/signin</span></a></p>"
+   ]
+  ],
+  [
+   1115544486,
+   "TIENE CERTIFICADO WADA?",
+   null,
+   2,
+   [
+    [
+     577509160,
+     [
+      [
+       "Sí",
+       null,
+       519574604,
+       null,
+       0
+      ],
+      [
+       "No",
+       null,
+       119955917,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "TIENE CERTIFICADO WADA?"
+   ]
+  ],
+  [
+   519574604,
+   "Subir certificado WADA",
+   null,
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Subir certificado WADA"
+   ]
+  ],
+  [
+   1544229289,
+   "FECHA EMISION CERTIFICADO WADA",
+   null,
+   9,
+   [
+    [
+     1408231423,
+     null,
+     1,
+     null,
+     null,
+     null,
+     null,
+     [
+      0,
+      1
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FECHA EMISION CERTIFICADO WADA"
+   ]
+  ],
+  [
+   828742133,
+   "CERTIFICADO WADA",
+   "Si lo posee, adjuntarlo",
+   13,
+   [
+    [
+     195438215,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CERTIFICADO WADA"
+   ],
+   [
+    null,
+    "Si lo posee, adjuntarlo"
+   ]
+  ],
+  [
+   119955917,
+   "Menores de Edad",
+   "Este apartado lo completan únicamente los padres de menores de edad (hasta los 17 años)",
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Menores de Edad"
+   ],
+   [
+    null,
+    "Este apartado lo completan únicamente los padres de menores de edad (hasta los 17 años)"
+   ]
+  ],
+  [
+   1048297,
+   "Es menor?",
+   null,
+   2,
+   [
+    [
+     1572893979,
+     [
+      [
+       "Sí",
+       null,
+       1951630528,
+       null,
+       0
+      ],
+      [
+       "No",
+       null,
+       -3,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Es menor?"
+   ]
+  ],
+  [
+   1951630528,
+   "Datos Padres",
+   null,
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Datos Padres<span></span>"
+   ]
+  ],
+  [
+   1673856412,
+   "Apellido y Nombre de la Madre",
+   null,
+   0,
+   [
+    [
+     971793754,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Apellido y Nombre de la Madre"
+   ]
+  ],
+  [
+   559262066,
+   "Número de DNI de la Madre",
+   "Solo  números, sin puntos",
+   0,
+   [
+    [
+     100113650,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Número de DNI de la Madre"
+   ],
+   [
+    null,
+    "Solo  números, sin puntos"
+   ]
+  ],
+  [
+   801104838,
+   "Foto frente DNI de la Madre",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     811314206,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Foto frente DNI de la Madre"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ],
+  [
+   676702845,
+   "Foto dorso DNI de la Madre",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     721456363,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Foto dorso DNI de la Madre"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ],
+  [
+   1863275220,
+   "Apellido y Nombre del Padre",
+   null,
+   0,
+   [
+    [
+     175571160,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Apellido y Nombre del Padre"
+   ]
+  ],
+  [
+   1516255379,
+   "Número de DNI del Padre",
+   "Solo  números, sin puntos",
+   0,
+   [
+    [
+     983267618,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Número de DNI del Padre"
+   ],
+   [
+    null,
+    "Solo  números, sin puntos"
+   ]
+  ],
+  [
+   1246498842,
+   "Foto frente DNI del Padre",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     2031360264,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Foto frente DNI del Padre"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ],
+  [
+   517420443,
+   "Foto dorso DNI del Padre",
+   "Un solo archivo (imagen o PDF)",
+   13,
+   [
+    [
+     1178893024,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Foto dorso DNI del Padre"
+   ],
+   [
+    null,
+    "Un solo archivo (imagen o PDF)"
+   ]
+  ]
+ ],
+ "config": [
+  1,
+  null,
+  null,
+  1,
+  null,
+  null,
+  2
+ ]
+}

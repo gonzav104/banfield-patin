@@ -1,0 +1,506 @@
+{
+ "titulo": "AG_AptosFisicos2026",
+ "descripcion": "Cualquier consulta remitirla a info@patinajegaucha.org",
+ "items": [
+  [
+   859855460,
+   "DNI",
+   "El mismo que se registró en  el padrón",
+   0,
+   [
+    [
+     2011177755,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "DNI"
+   ],
+   [
+    null,
+    "El mismo que se registró en  el padrón"
+   ]
+  ],
+  [
+   1062010335,
+   "APELLIDOS",
+   "Tal y como que se registró en  el padrón",
+   0,
+   [
+    [
+     1262704907,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "APELLIDOS"
+   ],
+   [
+    null,
+    "Tal y como que se registró en  el padrón"
+   ]
+  ],
+  [
+   764603665,
+   "NOMBRES",
+   "Tal y como que se registró en el padrón",
+   0,
+   [
+    [
+     949077727,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "NOMBRES"
+   ],
+   [
+    null,
+    "Tal y como que se registró en el padrón"
+   ]
+  ],
+  [
+   2033320254,
+   "Club",
+   "Si su club no aparece en el listado seleccione \"Asociación Gaucha de Patinaje\" y dé aviso a  info@patinajegaucha.org",
+   3,
+   [
+    [
+     1397501273,
+     [
+      [
+       "Alianza Colón",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Asociación Civil Campana Sobre Ruedas",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Asociación Gaucha de Patinaje",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Campana sobre Ruedas",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Cebras de Pergamino",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético 9 de Julio",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético Argentino Rojas",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético El Fortín",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético Jorge Newbery",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético Porteño de Chacabuco",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Atlético y Social Dudignac (CASD)",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Deportivo Argentino",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Municipal Chacabuco",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club San Martín",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Social y Deportivo Banfield San Pedro",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Social y Deportivo Independiente de Mones Cazón",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Club Vélez Sarsfield de Martínez",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Escuela de Rollers Baradero",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Huincaló de San Pedro",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Juventud de Belgrano",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Loop Escuela de Patín Artístico (Rojas)",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Mercedes B",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Paraná FC San Pedro",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Patín Artístico Bragado",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Patín Visión",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Viamonte Fútbol Club",
+       null,
+       null,
+       null,
+       0
+      ],
+      [
+       "Villa Dalmine",
+       null,
+       null,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Club"
+   ],
+   [
+    null,
+    "Si su club no aparece en el listado seleccione \"Asociación Gaucha de Patinaje\" y dé aviso a \n\ninfo@patinajegaucha.org"
+   ]
+  ],
+  [
+   1983536038,
+   "Atleta empadronado?",
+   "Si todavía no se encuentra empadronado (ingresa en 2026 por primera vez), deberá completar el formulario del año en curso  https://forms.gle/D4t4b9c9VsdP3SUUA (cualquier duda, remitirla a info@patinajegaucha.org)",
+   2,
+   [
+    [
+     1942851838,
+     [
+      [
+       "Sí",
+       null,
+       -2,
+       null,
+       0
+      ],
+      [
+       "No",
+       null,
+       -3,
+       null,
+       0
+      ]
+     ],
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     0
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Atleta empadronado?"
+   ],
+   [
+    null,
+    "Si todavía no se encuentra empadronado (ingresa en 2026 por primera vez), deberá completar el formulario del año en curso  <a href=\"https://forms.gle/D4t4b9c9VsdP3SUUA\">https://forms.gle/D4t4b9c9VsdP3SUUA</a> (cualquier duda, remitirla a info@patinajegaucha.org)"
+   ]
+  ],
+  [
+   1307003404,
+   "Registrado en el padrón ",
+   "Si ya se encuentre empadronado, por favor completar los siguientes datos:",
+   8,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "Registrado en el padrón "
+   ],
+   [
+    null,
+    "Si ya se encuentre empadronado, por favor completar los siguientes datos:"
+   ]
+  ],
+  [
+   1075489655,
+   "CERTIFICADO MEDICO",
+   "Si la posee, adjuntar la planilla (Apto médico) vigente:\nARTISTICO => https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing \nCARRERA   => https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing ",
+   13,
+   [
+    [
+     314532520,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "CERTIFICADO MEDICO"
+   ],
+   [
+    null,
+    "Si la posee, adjuntar la planilla (Apto médico) vigente:<br>ARTISTICO =&gt; <a href=\"https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing\">https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing</a> <br>CARRERA   =&gt; <a href=\"https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing\">https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing</a> "
+   ]
+  ],
+  [
+   856842522,
+   "FECHA EMISION CERTIFICADO MEDICO",
+   null,
+   9,
+   [
+    [
+     2098635769,
+     null,
+     1,
+     null,
+     null,
+     null,
+     null,
+     [
+      0,
+      1
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "FECHA EMISION CERTIFICADO MEDICO"
+   ]
+  ],
+  [
+   1096332810,
+   "APELLIDO Y NOMBRE DEL MEDICO",
+   null,
+   0,
+   [
+    [
+     1070253322,
+     null,
+     1
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "APELLIDO Y NOMBRE DEL MEDICO"
+   ]
+  ],
+  [
+   1930729392,
+   "NUMERO DE MATRICULA DEL MEDICO",
+   null,
+   0,
+   [
+    [
+     647391604,
+     null,
+     1,
+     null,
+     [
+      [
+       1,
+       9
+      ]
+     ]
+    ]
+   ],
+   null,
+   null,
+   null,
+   null,
+   null,
+   null,
+   [
+    null,
+    "NUMERO DE MATRICULA DEL MEDICO"
+   ]
+  ]
+ ],
+ "config": [
+  null,
+  0,
+  null,
+  1,
+  null,
+  null,
+  2
+ ]
+}

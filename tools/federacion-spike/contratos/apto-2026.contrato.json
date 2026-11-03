@@ -1,0 +1,296 @@
+{
+  "configuracion": [
+    null,
+    0,
+    null,
+    1,
+    null,
+    null,
+    2
+  ],
+  "preguntas": {
+    "764603665": {
+      "ayuda": "Tal y como que se registró en el padrón",
+      "entry": 949077727,
+      "fecha": null,
+      "itemId": 764603665,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "NOMBRES",
+      "validacion": null
+    },
+    "856842522": {
+      "ayuda": "",
+      "entry": 2098635769,
+      "fecha": [
+        0,
+        1
+      ],
+      "itemId": 856842522,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "fecha",
+      "titulo": "FECHA EMISION CERTIFICADO MEDICO",
+      "validacion": null
+    },
+    "859855460": {
+      "ayuda": "El mismo que se registró en el padrón",
+      "entry": 2011177755,
+      "fecha": null,
+      "itemId": 859855460,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "DNI",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "1062010335": {
+      "ayuda": "Tal y como que se registró en el padrón",
+      "entry": 1262704907,
+      "fecha": null,
+      "itemId": 1062010335,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "APELLIDOS",
+      "validacion": null
+    },
+    "1075489655": {
+      "ayuda": "Si la posee, adjuntar la planilla (Apto médico) vigente: ARTISTICO => https://drive.google.com/file/d/1IfITk5XA67svp7pkhzubpK4pC4YrBVKt/view?usp=sharing CARRERA => https://drive.google.com/file/d/1spmxvA4i1y9QsTf-USX_3adojnpCpVsq/view?usp=sharing",
+      "entry": 314532520,
+      "fecha": null,
+      "itemId": 1075489655,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "archivo",
+      "titulo": "CERTIFICADO MEDICO",
+      "validacion": null
+    },
+    "1096332810": {
+      "ayuda": "",
+      "entry": 1070253322,
+      "fecha": null,
+      "itemId": 1096332810,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "APELLIDO Y NOMBRE DEL MEDICO",
+      "validacion": null
+    },
+    "1930729392": {
+      "ayuda": "",
+      "entry": 647391604,
+      "fecha": null,
+      "itemId": 1930729392,
+      "obligatoria": true,
+      "opciones": [],
+      "tipo": "texto",
+      "titulo": "NUMERO DE MATRICULA DEL MEDICO",
+      "validacion": [
+        [
+          1,
+          9
+        ]
+      ]
+    },
+    "1983536038": {
+      "ayuda": "Si todavía no se encuentra empadronado (ingresa en 2026 por primera vez), deberá completar el formulario del año en curso https://forms.gle/D4t4b9c9VsdP3SUUA (cualquier duda, remitirla a info@patinajegaucha.org)",
+      "entry": 1942851838,
+      "fecha": null,
+      "itemId": 1983536038,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Sí",
+          "salto": "siguiente"
+        },
+        {
+          "otro": false,
+          "rotulo": "No",
+          "salto": "enviar"
+        }
+      ],
+      "tipo": "opcion",
+      "titulo": "Atleta empadronado?",
+      "validacion": null
+    },
+    "2033320254": {
+      "ayuda": "Si su club no aparece en el listado seleccione \"Asociación Gaucha de Patinaje\" y dé aviso a info@patinajegaucha.org",
+      "entry": 1397501273,
+      "fecha": null,
+      "itemId": 2033320254,
+      "obligatoria": true,
+      "opciones": [
+        {
+          "otro": false,
+          "rotulo": "Alianza Colón",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Asociación Civil Campana Sobre Ruedas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Asociación Gaucha de Patinaje",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Campana sobre Ruedas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Cebras de Pergamino",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético 9 de Julio",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Argentino Rojas",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético El Fortín",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Jorge Newbery",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético Porteño de Chacabuco",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Atlético y Social Dudignac (CASD)",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Deportivo Argentino",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Municipal Chacabuco",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club San Martín",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Social y Deportivo Banfield San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Social y Deportivo Independiente de Mones Cazón",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Club Vélez Sarsfield de Martínez",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Escuela de Rollers Baradero",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Huincaló de San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Juventud de Belgrano",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Loop Escuela de Patín Artístico (Rojas)",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Mercedes B",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Paraná FC San Pedro",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patín Artístico Bragado",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Patín Visión",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Viamonte Fútbol Club",
+          "salto": null
+        },
+        {
+          "otro": false,
+          "rotulo": "Villa Dalmine",
+          "salto": null
+        }
+      ],
+      "tipo": "lista",
+      "titulo": "Club",
+      "validacion": null
+    }
+  },
+  "secciones": [
+    {
+      "id": null,
+      "preguntas": [
+        859855460,
+        1062010335,
+        764603665,
+        2033320254,
+        1983536038
+      ],
+      "titulo": "(inicio)"
+    },
+    {
+      "id": 1307003404,
+      "preguntas": [
+        1075489655,
+        856842522,
+        1096332810,
+        1930729392
+      ],
+      "titulo": "Registrado en el padrón"
+    }
+  ],
+  "titulo": "AG_AptosFisicos2026"
+}
