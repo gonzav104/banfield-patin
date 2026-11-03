@@ -1,6 +1,6 @@
 # Fase 3 — Gestión privada de documentos
-Objetivo: implementar integridad documental acotada D2 sobre D1 cerrada localmente en `b077021`. Base de Fase 3: `main` `8a132ee`; O1-A/O2-A y D2 aprobadas según L4/L8; decisiones diferidas conservadas.
-Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este documento. Entrega D2: `exception-ok`, autorizada exclusivamente para los 7 archivos/619 líneas aprobados más este registro documental (L13). Entrega D1: `exception-ok`, aprobada exclusivamente para el candidato de 22 archivos y 952 líneas más su registro documental (L7); no se hereda a otras unidades ni de Fase 2. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). Commit bloqueado hasta completar RDD sin bloqueantes.
+Objetivo: integrar D1 (`b077021`) y D2 (`82ff948`), cerradas localmente, en un único Draft PR; D3 no autorizada. Base de Fase 3: `main` `8a132ee`; O1-A/O2-A y D2 aprobadas según L4/L8; decisiones diferidas conservadas.
+Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este documento. Entrega D2: `exception-ok`, autorizada exclusivamente para los 7 archivos/619 líneas aprobados más este registro documental (L13). Entrega D1: `exception-ok`, aprobada exclusivamente para el candidato de 22 archivos y 952 líneas más su registro documental (L7); no se hereda a otras unidades ni de Fase 2. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). D1/D2 con RDD completado; PR conjunto `single-pr`/`exception-ok` autorizado en L14, sin permiso de merge ni despliegue.
 
 ## Specs
 
@@ -158,9 +158,9 @@ Pruebas previstas: JUnit servicio/DTO, WebMvc (rol/sesión/errores/contrato), Te
 
 | ID | Specs | Unidad propuesta | Ruta | Estado / evidencia / commit |
 | --- | --- | --- | --- | --- |
-| D0 | S1–S11 | Consolidar este borrador y decisiones pendientes | inline: una unidad documental comprendida | O1/O2 registradas y alcance D1 autorizado; evidencia de implementación pendiente |
+| D0 | S1–S11 | Consolidar este borrador y decisiones pendientes | inline: una unidad documental comprendida | O1/O2 registradas; diseño consolidado y D1/D2 cerradas según L14 |
 | D1 | S2,S5,S7,S9,S11,S12 | Consulta autorizada de metadatos de deportista y tutor, B6 | inline; verificación independiente por ítem 2 | CERRADA LOCALMENTE en b077021; RDD nativo cuatro lentes sin hallazgos, reconocido; normal 903/903 y DB 415/415; no reabrir revisión de contenido idéntico |
-| D2 | S3–S5,S13,S14 | Integridad acotada aprobada en L8, V5 y pruebas PostgreSQL/concurrencia | inline; verificador independiente con excepción operativa D2 | VERIFICADA funcionalmente: 903 normales/440 DB, recheck independiente satisfactorio y spot-check padre 20/20; PENDIENTE consentimiento/RDD y tamaño antes de commit |
+| D2 | S3–S5,S13,S14 | Integridad acotada aprobada en L8, V5 y pruebas PostgreSQL/concurrencia | inline; verificador independiente con excepción operativa D2 | CERRADA LOCALMENTE en 82ff948; 903 normales/440 DB, verificación independiente y spot-check 20/20; RDD reconocido y delta documental evaluado; tamaños autorizados L13/L14 |
 | D3 | S5,S6,S8 | Carga privada síncrona completa con compensación, B5 | inline; verificar ítems 1/2/4/5 | NO AUTORIZADA; depende D2 y P2/P7/P9; dividir sólo en comportamientos seguros con tests/docs propios |
 | D4 | S4,S5 | Revisión y reemplazo sin sobrescritura | inline; verificar ítems 1/2/4 | NO AUTORIZADA; depende D3 y P4 |
 | D5 | S5,S7 | Gestión documental de tutores con alcance familiar | inline; verificar ítem 2 | NO AUTORIZADA para escritura; consulta de tutor incluida en D1; depende D4 |
@@ -408,3 +408,41 @@ No implementar D3 ni modificar Supabase.
 **No hacer push, abrir PR ni merge todavía.**
 
 **Justificación:** la migración, las pruebas de integridad/concurrencia y la documentación forman una única unidad coherente; se acepta su tamaño sólo para D2, sin heredar ni extender excepciones. El candidato original (árbol `02d91cbadd0a67781c36685107e7e32a5c58f705`) recibió RDD nativo de cuatro lentes sin hallazgos, reconocido en `review-496f961de3ae3901`. Este registro agrega bytes documentales: no se considera automáticamente cubierto por aquella aprobación. Antes del commit se evaluará el nuevo candidato conforme al protocolo nativo. Las pruebas 903 normales/440 PostgreSQL, verificación independiente terminal y spot-check 20/20 siguen siendo aplicables al contenido ejecutable idéntico; no se afirma una nueva ejecución. Riesgos residuales L12 sin cambios. Commit todavía pendiente.
+
+### L14 — Cierres consolidados y Draft PR conjunto autorizado (2026-11-03)
+
+Las entradas anteriores conservan su carácter histórico: los estados «pendiente» de L5–L13 describen cada instante, no el estado actual. D1 cerró en `b077021ebf5b2513c7f97143a70f3ce646036e57`, con RDD `review-1740248c823dbef7`, cuatro lentes sin hallazgos y reconocimiento confirmado. D2 cerró en `82ff948dc6b794cfb5fbb9534e9650e76ead50af`, con RDD `review-496f961de3ae3901`, cuatro lentes sin hallazgos y reconocimiento confirmado. Los bytes ejecutables D2 coinciden con su candidato aprobado; el delta posterior exclusivamente documental recibió assess `medium`, `review_due=false`, `under_budget`, sin atribuirle cobertura automática de la revisión anterior. Los mensajes de commit conservan esta trazabilidad.
+
+**Autorización del usuario, textual:**
+
+Apruebo la integración propuesta de D1 y D2 de Fase 3 en un único Draft PR.
+
+Autorizo la excepción de tamaño acumulada: 27 archivos y 1.615 líneas, más los ajustes documentales mínimos necesarios en el mismo archivo ODD.
+
+Procedé de la siguiente manera:
+
+1. Actualizá `odd/tasks/documentos-privados.md` para reflejar los cierres reales de D1 y D2, conservando la trazabilidad histórica.
+2. Registrá la excepción de tamaño del PR conjunto y su justificación.
+3. Ejecutá el assess RDD para el ajuste documental. No repitas revisiones aprobadas sobre código idéntico.
+4. Si corresponde, creá un commit documental Conventional Commits en español.
+5. Verificá que el diff acumulado contra `main` siga limitado a D1, D2, migración V5, pruebas y documentación.
+6. Confirmá árbol limpio, trazabilidad de commits y ausencia de secretos.
+7. Verificá el remoto y la autenticación de GitHub.
+8. Si no hay bloqueantes, hacé push sin force y abrí un único Draft PR contra `main`.
+9. Incluí la excepción de tamaño, resultados 903/440, verificación independiente y RDD.
+10. Documentá expresamente los riesgos operativos de V5: bloqueo durante la migración, posibles datos históricos incompatibles, necesidad de respaldo y recuperación, y ausencia de validación sobre bases compartidas.
+11. Verificá los checks de GitHub Actions y presentá su estado.
+
+No ejecutar migraciones en bases compartidas ni desplegar.
+
+No implementar D3, cargas o descargas ni modificar Supabase.
+
+**No marcar el PR como listo para revisión final ni hacer merge sin nueva autorización.**
+
+Si aparece un cambio funcional inesperado o un bloqueo de CI, detenete e informalo.
+
+**Excepción y justificación:** el usuario acepta expresamente un único Draft PR hacia main con D1/D2, 27 archivos/1.615 líneas más este ajuste ODD. Se conservan juntas las consultas autorizadas, la migración de integridad y sus pruebas/documentación; no se elimina evidencia ni se divide por capas para reducir el tamaño. Esta excepción acumulada es propia y no se deduce de las individuales. La excepción operativa spawn/wait sin list_agents sigue limitada a D2 y no se extiende a D3.
+
+**Verificación aplicable y operación:** últimas suites locales 903 normales/440 PostgreSQL sin fallos/errores/omitidos; incluye regresión D1, V5 y concurrencia real. Verificación independiente D2: agente `01a1a27d-a6da-7643-8435-9f7bbd2ff519`, retorno terminal comprobado con wait_agent, dos inventarios corregidos y recheck satisfactorio; no hay bloqueantes pendientes reproducidos de D1/D2. El ajuste actual sólo modifica este documento; se evaluará por assess antes del commit, sin repetir revisiones de código idéntico. CI disponible: Suite normal y Suite db (PostgreSQL 17), sin despliegue ni Supabase. El estado remoto de esos checks se informará después de crear el Draft, no se presupone aprobado.
+
+**Riesgos de despliegue, no autorización para ejecutar:** V5 toma ACCESS EXCLUSIVE y puede esperar/bloquear lecturas y escrituras. Antes de un despliegue se necesita ventana operativa, presupuesto de espera/ejecución, respaldo verificable y procedimiento de recuperación ensayado. Historia incompatible aborta sin reparación automática; exige resolución humana autorizada. No se inspeccionó ni validó una base compartida ni se ejecutó allí la migración. Revertir el commit no deshace una V5 aplicada; recuperación de base requiere un plan aprobado independiente. Version es sólo soporte SQL, no mutadores optimistas; no se aprueban anualidad WADA, reglas nuevas de Fase 4, retención, escaneo o Storage.
