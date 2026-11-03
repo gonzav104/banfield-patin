@@ -4,7 +4,6 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -78,9 +77,18 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
  }
  @Test void noHayOperacionesDeArchivos() throws Exception {
   clearInvocations(documentoConsultaService);
+  // El intercambio real no sustituye el repositorio CSRF del filtro compartido.
+  var xsrf=mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
+   .andExpect(jsonPath("$.headerName").value("X-XSRF-TOKEN"))
+   .andReturn().getResponse().getCookie("XSRF-TOKEN");
+  assertThat(xsrf).isNotNull();
   for(String rol:List.of("admin","familia")) for(String p:List.of("deportistas","tutores"))
-   mvc.perform(post(ruta(rol,p)).cookie(sesion(Rol.valueOf(rol.toUpperCase()))).with(csrf())).andExpect(status().isMethodNotAllowed());
+   mvc.perform(post(ruta(rol,p)).cookie(sesion(Rol.valueOf(rol.toUpperCase())),xsrf)
+    .header("X-XSRF-TOKEN",xsrf.getValue())).andExpect(status().isMethodNotAllowed());
   verifyNoInteractions(documentoConsultaService);
+  mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
+   .andExpect(cookie().exists("XSRF-TOKEN"))
+   .andExpect(jsonPath("$.headerName").value("X-XSRF-TOKEN"));
  }
  @Test void openApiDocumentaLasCuatroRutasYElDtoMinimo() throws Exception {
   var spec=arbol();
