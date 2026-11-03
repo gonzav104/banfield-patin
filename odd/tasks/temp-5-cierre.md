@@ -1,6 +1,6 @@
 # TEMP-5 — Cierre integral de la Fase 1 (Temporadas y DeportistaTemporada)
 
-Objetivo: verificar que la Fase 1 está completa, corregir solo lo realmente necesario y declararla cerrada con criterios objetivos. Estado: **CERRADA** (PR #8 fusionado en `main`, merge `d367137`).
+Objetivo: verificar que la Fase 1 está completa, corregir solo lo realmente necesario y declararla cerrada con criterios objetivos. Estado: **IMPLEMENTADO localmente (commits locales; sin push ni merge); a la espera de autorización de push/PR.**
 Rama: `feat/temp-5-cierre` (desde `main` = `d12afe9`, PR #7 fusionado). Entrega: `ask-on-risk`; sin push, merge, migraciones ni Supabase. Alcance: **solo Fase 1**; no se amplía hacia Documentos, Aptos, Licencias ni Competencias.
 
 ## Specs
@@ -23,7 +23,7 @@ Rama: `feat/temp-5-cierre` (desde `main` = `d12afe9`, PR #7 fusionado). Entrega:
 | T4 | S2 | Entrada estricta del año (`anio`): rechazar decimales y cadenas numéricas (si se aprueba D4) | inline | hecho | `03e1673`; reproducción y RED en L13 |
 | T5 | S2 | Pruebas faltantes para completar la evidencia (listado ADMIN de temporadas sin N+1; códigos de error documentados existen) | inline | hecho | `89b15a8` |
 | T6 | S4 | Informe de cierre de la Fase 1 (matriz de requisitos, criterios, hallazgos) | inline | hecho | `odd/tasks/fase-1-cierre.md` |
-| T7 | S4 | `./mvnw clean verify` y `./mvnw verify -Pdb-tests`; CI remoto; RDD según protocolo | inline | hecho | local 891/408, `assess` y CI remoto del PR #8 (ver L14) |
+| T7 | S4 | `./mvnw clean verify` y `./mvnw verify -Pdb-tests`; CI remoto; RDD según protocolo | inline | parcial | local 891/408 y `assess` hechos; CI remoto pendiente de push |
 
 Ruta: todo inline. Estimación: ~40 líneas de producción (T4) y ~250 de pruebas; el resto es documentación.
 
@@ -228,9 +228,3 @@ Corrección (`03e1673`): un `ValueDeserializer` **solo para ese campo** (`AnioEs
 
 **Riesgos residuales:** ver `fase-1-cierre.md` §5 (A1–A12). Nuevos de esta unidad: ninguno; el endurecimiento de `anio` rechaza entradas que antes se aceptaban en silencio (sin consumidores). Pendiente: CI remoto del PR de `temp-5` (criterio C1) y sincronización de los espejos de Engram de `temp-1`/`temp-2`.
 
-### L14 — Validación remota y merge (2026-11-02)
-
-- Autorización del usuario: publicar la rama y abrir PR hacia `main`, tras reejecutar ambas suites sobre el código commiteado (HEAD `64a5714`, árbol limpio): 891 / 408, 0 fallos; `TemporadaEntradaHttpDbTest` 3/3 y `TemporadaAdminControllerWebMvcTest` 16/16 ejecutadas.
-- **PR #8** (`feat/temp-5-cierre`, HEAD `64a5714`, 7 commits). Runs `41374996542` (push) y `41375001632` (pull_request): `Suite normal` 891/0/0/0 y `Suite db (PostgreSQL 17)` 408/0/0/0, ambos `BUILD SUCCESS`. Estado `OPEN` / `MERGEABLE` / `CLEAN`.
-- Merge con merge commit `d36713788ad3af77e81ad2a6fe9cba74ca289ee7` (2026-11-02T02:09Z), autorizado por el usuario. `main` tras el merge: run `41376178593` verde.
-- Engram: observaciones 597 (PR) y 598 (merge), guardadas con `project` explícito; cada una quedó con una revisión de conflictos pendiente que no se resolvió (deuda A8).
