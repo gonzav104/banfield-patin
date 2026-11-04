@@ -58,7 +58,8 @@ class V5IntegridadDocumentalDbTest {
         return Flyway.configure().dataSource(fuente).locations("classpath:db/migration")
                 .schemas("gestion_patin").defaultSchema("gestion_patin").target(version).cleanDisabled(true).load();
     }
-    private void migrar() { flyway(ds, "latest").migrate(); }
+    // Este harness valida V5, no las migraciones que se añadan después.
+    private void migrar() { flyway(ds, "5").migrate(); }
 
     private UUID documento(UUID d, UUID t, String tipo, UUID temp, UUID anterior, boolean vigente) {
         return jdbc.sql("""
@@ -115,7 +116,7 @@ class V5IntegridadDocumentalDbTest {
 
     @Test void migracionLimpiaYBackfillConservaCadenasSinCambiarDatosPrevios() {
         String vacia = PostgresDescartable.crearBase("v5fresh");
-        try { assertThat(flyway(fuente(vacia), "latest").migrate().migrationsExecuted).isEqualTo(5); }
+        try { assertThat(flyway(fuente(vacia), "5").migrate().migrationsExecuted).isEqualTo(5); }
         finally { PostgresDescartable.eliminarBase(vacia); }
         UUID raiz = otro(null, false), medio = otro(raiz, false), ultimo = otro(medio, true);
         UUID independiente = otro(null, true);

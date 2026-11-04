@@ -83,3 +83,25 @@ Los fallos tienen códigos internos (`ENTRADA_INVALIDA`, `AUTENTICACION`, `CONFL
 Timeouts y fallos de transporte, respuestas 5xx/redirecciones o confirmaciones no válidas pueden dejar un objeto privado huérfano. No se devuelve recibo de éxito ni se intenta borrar automáticamente en ese caso; D3b deberá decidir cómo correlacionar y reconciliar esos resultados sin filtrarlos al cliente. Un error al compensar no prueba que el objeto siga existiendo ni que se haya borrado. No se promete reintento seguro tras perder un recibo/reiniciar el proceso.
 
 Pruebas: HTTP loopback simulado y configuración Spring, además de regresión D1/D2. No equivalen a validar Supabase real, políticas RLS/bucket, rendimiento de archivos grandes ni comportamiento frente a cambios de versión del proveedor. Antes de D3b siguen pendientes autorización/revalidación, transacción de publicación, correlación durable, compensación/reconciliación, límites/MIME real/escaneo y retención. No se aprueban por arrastre.
+
+## Registro durable SQL — B1 de D3b
+
+V6 añade sólo `operacion_carga_documental`: identidad, escuela/solicitante/propietario, tipo/temporada, bucket y UUID opaco, idempotencia, manifiesto SHA-256/MIME/bytes, fase, versión, reserva, Documento resultante y fecha. El id de operación reserva el futuro id de Documento; el UUID Storage es distinto. Se reutilizan FK compuestas de V1. Tres índices: PK y dos UNIQUE (escuela/solicitante/idempotencia, bucket/objeto). No hay backfill ni cambios de V1–V5.
+
+Propietario exclusivo; compatibilidad de tipo/propietario y DNI sin temporada; APTO FÍSICO no se habilita. OTRO conserva múltiples series. No se agrega anualidad ni cardinalidad por temporada para WADA/solicitud. Un manifiesto tiene todos sus campos o ninguno y no cambia tras asignarse. SQL sólo valida estructura: SHA de 32 bytes, MIME permitido y tamaño positivo; no prueba contenido, límite configurado de archivo, scanner ni existencia remota.
+
+Transiciones: RESERVADA→TRANSFIRIENDO/CERRADA; TRANSFIRIENDO→ALMACENADA/RECONCILIANDO; ALMACENADA→PUBLICADA/RECONCILIANDO; RECONCILIANDO→ALMACENADA/CERRADA. PUBLICADA/CERRADA son terminales y no conservan reserva. Contexto/destino/idempotencia son inmutables. No hay purga SQL habilitada en B1: olvidar una operación permitiría reutilizar una idempotencia o perder un resultado incierto; esto no establece una retención legal indefinida.
+
+### Contrato CAS obligatorio para futuros mutadores
+
+Cada sentencia operativa debe incluir `WHERE id=:id AND version=:esperada` y comprobar exactamente una fila afectada. Cero filas significa versión perdida o fila no disponible; no continuar. El trigger exige `version=version+1` e impide cambios sin incremento, pero no puede inferir la versión que tenía en memoria un cliente que construya SQL arbitrario. Las pruebas ejecutan las sentencias CAS de referencia; no existe todavía un repositorio mutador. Un usuario con SQL privilegiado no queda convertido en cliente autorizado por este mecanismo.
+
+La adquisición comprueba además reserva nula/vencida y fase permitida, usando reloj PostgreSQL. La versión retornada se transporta como token de la ejecución y no se sustituye silenciosamente por una versión consultada después. El titular vigente puede renovar o renunciar a su reserva; renunciar dejándola vencida NO confirma fin de transferencia. Una TRANSFIRIENDO vencida no se renueva: sólo puede reclamarse para RECONCILIANDO con otra versión. No se fija duración ni límite de concurrencia en esta migración. Las sentencias con reserva activa que ya bloquearon la fila se serializan con los demás adquirentes.
+
+### Vínculo de publicación y recuperación
+
+PUBLICADA requiere Documento cuyo id coincide con la operación, misma escuela/propietario/tipo/temporada (NULL-safe), bucket, UUID de objeto convertido a clave canónica, MIME/tamaño y cargador. Debe ser raíz (`serie_id=id`, sin predecesor), vigente y CARGADO al publicar. El Documento debe insertarse antes del UPDATE a PUBLICADA, en la misma transacción futura; las pruebas SQL ejercitan commit/rollback de ambos. El trigger comprueba el contexto al publicar y bloquea esa fila, no implementa controles familiares ni protege contra administradores que desactiven restricciones. No modifica el Documento ni su modelo D1 inmutable.
+
+Un commit incierto exige leer operación y Documento desde otra conexión antes de decidir. Un reinicio no prueba éxito externo. TRANSFIRIENDO o RECONCILIANDO sin respuesta permanecen sin resolver: reserva vencida, 404 remoto o cancelación local no demuestran ausencia definitiva del objeto. Ningún código B1 consulta/borra Storage ni interpreta CERRADA como resultado de un borrado real. Reconciliación, scanner, autorización y atomicidad con auditoría pertenecen a unidades posteriores y requieren pruebas propias.
+
+No persistir nombres originales, DNI/CUIL, contenido, credenciales ni respuestas crudas en este registro. Identificadores y SHA de archivo son información interna; no deben filtrarse en URLs, logs ni DTO. B1 no añade API ni lectura de estas filas al frontend.
