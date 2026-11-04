@@ -1,6 +1,6 @@
 # Fase 3 — Gestión privada de documentos
-Objetivo actual: D3a, adaptador privado de almacenamiento sin endpoints; D3b (flujo de carga) no autorizada. D1/D2 y sus verificaciones se integraron por PR #10, merge `42d356c543da6805367cb165f2aa8abe60b6b9dc`; se conserva debajo la trazabilidad histórica.
-Rama D3a: `feat/documentos-storage`, desde ese main actualizado. Entrega D3a: `exception-ok`, autorizada exclusivamente para 11 archivos/712 líneas más el registro documental mínimo en L19; sin excepción heredada ni ampliación funcional. Las excepciones D1/D2 y PR #10 siguen siendo históricas, no aplican a D3a. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). No hay autorización de publicación, commit previo a controles ni despliegue.
+Objetivo actual: B1 de D3b, registro SQL durable sin mutadores ni Storage. D3a integrada por PR #11, merge `85f354636e3ae0c44fa2e94638393a97e5002886`; historial anterior conservado.
+Rama B1: `feat/operaciones-carga-documental`, desde main actualizado. Entrega `ask-on-risk`; pronóstico 400–600 líneas, sin excepción de tamaño heredada y sin commit antes de verificaciones/RDD. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17 local). Sin push/PR/merge B1 ni despliegue.
 
 ## Specs
 
@@ -27,6 +27,19 @@ Rama D3a: `feat/documentos-storage`, desde ese main actualizado. Entrega D3a: `e
 - **S18 (D3a, L17).** "Configurá URL, bucket, credenciales y timeouts desde configuración externa." / "Nunca expongas claves de servicio, URLs públicas ni rutas internas al frontend." / "Definí errores tipados y controlados para fallos de red, timeouts, autenticación, respuestas inesperadas y estado remoto incierto." / "No registres tokens, nombres personales, contenido documental ni respuestas sensibles del proveedor en logs."
 - **S19 (D3a, L17).** "Implementá pruebas automatizadas contra un servidor HTTP simulado, incluyendo fallos y casos límite. No conectes todavía con Supabase real." / "Aplicá ODD con pruebas RED/GREEN." / "Ejecutá las suites normal y PostgreSQL." / "Realizá verificación independiente proporcional al riesgo." / "Ejecutá assess RDD y solicitá consentimiento si corresponde."
 - **S20 (D3a, L17).** "Registrá D3a como unidad diferenciada de D3b en ODD, sin heredar excepciones de tamaño o delegación anteriores." / "No hacer commit antes de completar los controles exigidos. No hacer push, PR ni merge sin autorización posterior." El resto de las restricciones literales de L17 forma parte del alcance. Excepciones operativas nuevas y exclusivas: spawn/wait sin list_agents y explorador gpt-6-luna/high, autorizadas por dos respuestas "autorizo"; no constituyen cumplimiento literal del protocolo habitual.
+
+- **S21 (B1, L20).** "Objetivo: implementar `V6__registrar_operaciones_carga_documental.sql`, pruebas PostgreSQL 17 y documentación ODD." / "Una tabla `gestion_patin.operacion_carga_documental`." / "Manifiesto validado estructuralmente y de asignación única." / "Estados RESERVADA, TRANSFIRIENDO, ALMACENADA, PUBLICADA, RECONCILIANDO y CERRADA."
+- **S22 (B1, L20).** "Exigí versión esperada para las transiciones operativas y comprobación de filas afectadas." / "Rechazá publicaciones con contexto documental incompatible, incluyendo temporada nullable y destino Storage." / "No interpretes el vencimiento de una reserva como confirmación de que terminó una transferencia externa."
+- **S23 (B1, L20).** "Usá pruebas RED/GREEN, migración limpia, actualización desde V5 y pruebas concurrentes con conexiones PostgreSQL reales." / "Ejecutá regresiones de D1, D2 y D3a, las suites completas y la verificación independiente exigida por ODD." / "Ejecutá assess RDD y solicitá consentimiento para el candidato si corresponde."
+- **S24 (B1, L20).** "No modificar V1–V5." / "No implementar repositorios mutadores, endpoints, cargas, scanner, integración real con Supabase ni reconciliación." / "No realizar commit de B1 antes de completar verificaciones y RDD. Cualquier excepción de tamaño requiere autorización específica." Excepción operativa NUEVA B1: el usuario respondió "autorizo" a spawn_agent/wait_agent sin list_agents, manteniendo verificación independiente real y RDD completo; no constituye cumplimiento literal del protocolo habitual ni se extiende a otras unidades.
+
+- **S25 (diagnóstico B1-C, L21).** "Identificar y corregir la causa raíz demostrable sin modificar comportamiento funcional ni debilitar pruebas." / "Inspeccioná las evidencias existentes antes de ejecutar nuevas pruebas." / "Contrastá baseline y rama B1 bajo condiciones equivalentes." / "Capturá evidencia suficiente para establecer causalidad, no solo correlación."
+- **S26 (B1-C, L21).** "No introduzcas sleeps arbitrarios, reintentos ciegos ni cambios de expectativa." / "No desactives tests, restricciones ni verificaciones de seguridad." / "No modifiques las migraciones V1–V6." / "Si el fallo no puede atribuirse a una causa demostrable, no implementes correcciones especulativas. Presentá el diagnóstico y las alternativas."
+- **S27 (B1-C, L21).** "Ejecutá repetidamente la prueba afectada para comprobar estabilidad." / "Ejecutá todas las pruebas de `V5OperacionDbTest`." / "Repetí las 57 pruebas B1." / "Ejecutá las suites completas normal y PostgreSQL." / "Realizá una verificación independiente del diagnóstico y la corrección." / "No iniciar RDD hasta completar satisfactoriamente la verificación funcional." / "No solicitar excepción de tamaño todavía."
+
+- **S28 (verificabilidad B1, L22).** "Cerrar la evaluación de verificabilidad de B1 y, si las reglas ODD lo permiten, realizar RDD sobre el candidato definitivo." / "Mantené B1-C registrada como incidencia intermitente sin causa raíz demostrada." / "Diferenciá claramente entre verificación funcional aprobada e incidencia ambiental no resuelta." / "Si B1-C constituye un bloqueo obligatorio según ODD, no lo ignores: explicá la regla y detené el avance."
+- **S29 (RDD B1, L22).** "Recalculá el inventario exacto de archivos, líneas y hash del candidato, incluyendo los últimos cambios documentales." / "Ejecutá el assess nativo RDD sobre el candidato completo." / "Solicitá el consentimiento correspondiente si el protocolo lo requiere." / "Realizá una revisión independiente con las lentes pertinentes a persistencia, seguridad, aislamiento y concurrencia."
+- **S30 (límites RDD B1, L22).** "Corregí exclusivamente defectos demostrados, siguiendo RED/GREEN y reevaluando el candidato si cambia." / "No modificar V1–V6 salvo que RDD demuestre un defecto y exista autorización específica para corregirlo." / "No hacer commit, push, PR ni merge." / "No solicitar todavía excepción de tamaño." / "Si el protocolo exige consentimiento o intervención humana, detenete en ese punto."
 
 Las tablas siguientes conservan propuestas para unidades posteriores. O1-A/O2-A y D1 están aprobadas según L4; no se aprueban por arrastre WADA anual, retención, escaneo, límites operativos ni transiciones/restricciones definitivas. Registro formal de O1/O2 en `docs/DECISIONES.md`.
 
@@ -170,6 +183,8 @@ Pruebas previstas: JUnit servicio/DTO, WebMvc (rol/sesión/errores/contrato), Te
 | D2 | S3–S5,S13,S14 | Integridad acotada aprobada en L8, V5 y pruebas PostgreSQL/concurrencia | inline; verificador independiente con excepción operativa D2 | CERRADA LOCALMENTE en 82ff948; 903 normales/440 DB, verificación independiente y spot-check 20/20; RDD reconocido y delta documental evaluado; tamaños autorizados L13/L14 |
 | CI1 | S15,S16 | Causas demostradas de CI: aislamiento CSRF de pruebas y aserción estructurada de auditoría | inline; diagnóstico/verificación independientes por ítems 2/5, excepción CI específica | VERIFICADA FUNCIONAL, INDEPENDIENTE Y RDD; RED reproducido; GREEN 37/37 y 6/6, suites 903/903 y 440/440; RDD tres lentes sin hallazgos y reconocimiento confirmado en L16; sin commit/push |
 | D3a | S17–S20 | Puerto y adaptador privado, errores/configuración y HTTP simulado | implementación inline; mapa delegado por presupuesto; verificador independiente por ítem 2 | VERIFICADA funcional e independientemente en L17: 50 específicas, 953 normales, 451 DB y 4 probes; explorador/verificador terminados por wait_agent, paths-injected; RDD cuatro lentes sin hallazgos reconocido en L18; commit pendiente de decisión de tamaño/entrega |
+| B1 | S21–S24,S28–S30 | Registro SQL durable: V6, pruebas y documentación | implementación inline; verificación independiente por ítems 1/2/4 | VERIFICADA FUNCIONAL, INDEPENDIENTE Y RDD L22: 57 B1, 953 normales vigentes, 508 DB; cuatro lentes sin hallazgos y reconocimiento nativo confirmado; B1-C abierta; delta documental de cierre se evalúa aparte, sin commit ni excepción de tamaño |
+| B1-C | S25–S27,S28 | Diagnóstico y corrección causal del arranque local bloqueante | inline; verificación independiente por entorno/concurrencia | ABIERTA, diagnóstico INCONCLUSO L21; causalidad pendiente, sin corrección; L22 separa esta incidencia histórica de la verificación funcional actual aprobada, sin declararla resuelta |
 | D3b | S5,S6,S8 | Flujo de carga documental con autorización, publicación y compensación integral | reevaluar al autorizar | NO AUTORIZADA; depende D3a y decisiones P6/P7/P9 y límites operativos; sin endpoints en D3a |
 | D4 | S4,S5 | Revisión y reemplazo sin sobrescritura | inline; verificar ítems 1/2/4 | NO AUTORIZADA; depende D3 y P4 |
 | D5 | S5,S7 | Gestión documental de tutores con alcance familiar | inline; verificar ítem 2 | NO AUTORIZADA para escritura; consulta de tutor incluida en D1; depende D4 |
@@ -612,3 +627,193 @@ Assess del ajuste documental posterior: `risk=medium`, `review_due=false`, `revi
 ### L19 — Excepción propia y commit local D3a (2026-11-04)
 
 El usuario autorizó: "Autorizo la excepción de tamaño exclusivamente para D3a: 11 archivos y 712 líneas, más el registro documental mínimo de esta autorización en ODD." También autorizó el commit local `feat(documentos): implementar adaptador privado de Supabase Storage`, condicionado a identidad ejecutable/pruebas, ausencia de secretos y assess sin nueva revisión obligatoria. Se mantienen juntos puerto, adaptador, configuración, pruebas y documentación porque forman una única infraestructura verificable, sin ampliar funciones ni heredar excepciones. La comparación binaria con el árbol RDD `aacdfb345c889fc428fa00664899acf22f105457` confirma diez archivos idénticos; sólo este documento agrega cierre y autorización. Siguen aplicando 50 específicas, 953 normales, 451 PostgreSQL y 4 comprobaciones independientes; no se repiten sobre fuentes idénticas. Registro posterior sujeto a assess propio, no a la aprobación anterior. No push, PR, merge, Supabase real, V1–V5 ni D3b. Los JSON/logs temporales RDD ya no están disponibles; la trazabilidad reconocida se conserva en L18 y Engram, sin simular nuevas ejecuciones. Risk: item 2 e item 4; controles ya completados, alcance de esta continuación únicamente documental y commit local.
+
+
+### L20 — B1 autorizada y plan anterior a fuentes (2026-11-04)
+
+El usuario autorizó integrar PR #11 con HEAD `e4015356a0e064365080000c489582965a566b72` usando merge commit y luego implementar B1 desde main actualizado. Resultado observado: merge `85f354636e3ae0c44fa2e94638393a97e5002886`; CI posterior 953 normales/451 PostgreSQL aprobadas. Cinco entradas ajenas intactas; rama B1 desde ese merge; V6 disponible y FK compuestas compatibles con V1/V5.
+
+Solicitud B1 literal:
+
+> Tras integrar D3a, autorizo comenzar B1 en una rama nueva desde main actualizado.
+>
+> Objetivo: implementar `V6__registrar_operaciones_carga_documental.sql`, pruebas PostgreSQL 17 y documentación ODD.
+>
+> Alcance aprobado:
+> - Una tabla `gestion_patin.operacion_carga_documental`.
+> - Identidad de operación, escuela, solicitante, propietario exclusivo, tipo y temporada.
+> - Destino Storage opaco y único.
+> - Idempotencia única por escuela y solicitante.
+> - Manifiesto validado estructuralmente y de asignación única.
+> - Estados RESERVADA, TRANSFIRIENDO, ALMACENADA, PUBLICADA, RECONCILIANDO y CERRADA.
+> - Transiciones controladas, versionado y reservas.
+> - Publicación vinculada al Documento correspondiente.
+>
+> Condiciones:
+> 1. Comprobá nuevamente que V6 está disponible y que las FK propuestas son compatibles con el esquema existente.
+> 2. Priorizá restricciones SQL declarativas. Utilizá un trigger acotado para las invariantes que realmente lo requieran.
+> 3. El manifiesto no podrá quedar parcialmente informado ni modificarse después de su primera asignación.
+> 4. Exigí versión esperada para las transiciones operativas y comprobación de filas afectadas.
+> 5. Rechazá publicaciones con contexto documental incompatible, incluyendo temporada nullable y destino Storage.
+> 6. No interpretes el vencimiento de una reserva como confirmación de que terminó una transferencia externa.
+> 7. No prometas validación antimalware, autorización de familias ni transferencia exitosa: B1 sólo establece la estructura SQL necesaria.
+> 8. Usá pruebas RED/GREEN, migración limpia, actualización desde V5 y pruebas concurrentes con conexiones PostgreSQL reales.
+> 9. Ejecutá regresiones de D1, D2 y D3a, las suites completas y la verificación independiente exigida por ODD.
+> 10. Ejecutá assess RDD y solicitá consentimiento para el candidato si corresponde.
+>
+> No modificar V1–V5.
+> No implementar repositorios mutadores, endpoints, cargas, scanner, integración real con Supabase ni reconciliación.
+> No realizar commit de B1 antes de completar verificaciones y RDD. Cualquier excepción de tamaño requiere autorización específica.
+> No hacer push, PR ni merge de B1.
+> No ejecutar migraciones en bases compartidas ni desplegar.
+> Al finalizar, informá la evidencia de B1, el tamaño real, las pruebas, los riesgos residuales y el estado del candidato para RDD y commit local.
+
+**Excepción B1 propia:** faltando list_agents, el usuario respondió "autorizo" a usar exclusivamente para B1 spawn_agent y wait_agent, con verificación independiente real y RDD completo. No se hereda de D3a ni constituye cumplimiento literal del protocolo habitual. Implementador: sesión principal; verificador gpt-6.1-sol/medium distinto, ID y resultado terminal se registrarán. No se solicita sustitución de modelo ni excepción de tamaño por arrastre.
+
+**Plan:** una unidad comprendida, inline, V6 declarativa y un trigger para contexto inmutable, manifiesto asignable una vez, transiciones y validación de publicación; reutilizar claves compuestas V1 y PostgresDescartable/DatosDb para pruebas. CAS SQL en pruebas directas con versión esperada y filas afectadas; ningún repositorio mutador. Reservas vencidas no habilitan reenvío de TRANSFIRIENDO: sólo reconciliación. Publicación valida documento insertado en la misma transacción, raíz serie=id, sin predecesor, estado inicial CARGADO. B1 no prueba antimalware, autorización familiar ni existencia remota. Primera carga/registro durable aprobados sustituyen para D3b la propuesta B5 sin registro. RED antes de V6; después GREEN, migración limpia y desde V5, carreras con dos conexiones/barreras, regresión completa, verificación independiente desde scratch y spot-check del padre. Risk: ítems 1/2/4. Pruebas largas se delegarán al verificador; no afirmar resultados antes de wait_agent terminal. Normalización antes de congelar: whitespace check-only, sin formatter mutante conocido. Assess/RDD posterior, consentimiento específico si corresponde; tamaño real se resolverá antes de commit. No otras unidades.
+
+**Evidencia propia previa a verificación independiente:** RED real `/tmp/b1-red.log`: 1 prueba fallida, esperaba versión 6 y obtuvo 5, Docker/PostgreSQL real disponible. GREEN inicial 44/44 en `/tmp/b1-green-inicial.log`. Ampliación de contexto documental detectó un fixture incorrecto (Documento de otra escuela con temporada de la original); se corrigió el fixture para que el documento ajeno fuese válido antes de probar el rechazo de publicación, sin cambiar la regla. GREEN focal final `/tmp/b1-focalizadas-final.log`: 57 B1 + 21 V5 = 78/78, cero fallos/errores/omitidas; incluye carreras con conexiones distintas para reserva CAS, idempotencia y publicación, sin sleeps. Rechazos comprueban SQLSTATE y conservación tanto de operaciones como de documentos.
+
+Regresión demostrada del harness histórico: `/tmp/b1-regresion-v5-red.log`, esperaba 5 migraciones pero `latest` ya aplicaba 6. Ajuste mínimo únicamente en V5IntegridadDocumentalDbTest: target explícito 5 en sus dos caminos de migración; mantiene la aserción y escenarios V5 sin cambiarlos. No edita V1–V5. El resto de diferencias: nueva V6, nueva prueba B1 y documentación. Documentado contrato CAS: WHERE con versión esperada y comprobar una fila; trigger exige incremento, sin fingir que adivina la versión de un cliente SQL arbitrario. B1 no implementa mutadores ni purga; DELETE de operaciones no habilitado hasta política propia, sin afirmar retención legal. Whitespace check-only conforme, no formatter mutante. Suites completas y verificación independiente pendientes; no congelar RDD antes de sus resultados. Sin commit ni excepción de tamaño.
+
+**Primera verificación independiente real:** Raman `01a1a7e6-60de-70e2-9b08-f5b92c4fa81f`, gpt-6.1-sol/medium; wait_agent confirmó completed, skill_resolution paths-injected. Scratch externo desde baseline y cinco SHA iguales al inicio/final. S21/S22 y alcance S24 conformes; S23 bloqueada por harnesses históricos. Suite normal 953: 1 fallo (inventario sólo V1–V5). Suite DB 508: 3 fallos y 3 errores: historia V4 exacta sin V6, ensayos V5 `latest` que intentan dos migraciones o V6 con un rol V5 restringido, más dos conexiones loopback rechazadas. Controles baseline confirmaron las regresiones deterministas; también reprodujeron un error de conexión anterior, que no se atribuye a V6. Probes SQL independientes 4/4 y CAS propio 1/1 aprobados; sin defecto adicional reproducido de V6. Evidencia inicial `/tmp/b1-independent.JtMJe9/`.
+
+**Única corrección acotada de los bloqueantes:** inventario estático ampliado exactamente a V6 (conserva hash V1 y lista cerrada); consulta de V4 acotada al prefijo histórico V1–V5; ensayos operativos V5 ahora target 5 explícito en sus seis llamadas, sin ampliar permisos ni cambiar sus aserciones. No se cambió V6 ni su test B1. Siete pruebas estáticas focales aprobadas. Focal de V5Operación/V4: 12 pruebas, cero fallos, tres errores de conexión en casos incompatibles anteriores (Connection refused antes de migrar; SQLSTATE no capturado en esos logs); los bloqueantes deterministas desaparecieron, pero no se declara la suite verde. Recheck independiente limitado a estos bloqueantes y suites completas pendiente. Se permite una única ejecución local de recheck con host loopback `localhost` en vez de `127.0.0.1` para comprobar el entorno sin alterar código ni omitir pruebas; no se afirma causa raíz ni reparación del problema de conexión. Si permanece prueba requerida fallida, informar parcial, no iterar hasta verde.
+
+
+**Recheck terminal limitado, sin nueva corrección:** mismo verificador Raman, resultado PARTIAL confirmado por wait_agent. Scratch nuevo `/tmp/b1-recheck.abet3v`, ocho SHA iguales al inicio/final, SQL V6 y pruebas B1 idénticos a la primera verificación. Correcciones deterministas confirmadas: inventario V2 7/7, pruebas V4 20/20 y los tres métodos operativos V5 antes bloqueantes aprobados, sin permisos nuevos ni aserciones debilitadas. Ejecuciones únicas con `DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=localhost`: `./mvnw -o clean verify` 953/953 (exit 0); `./mvnw -o verify -Pdb-tests` 508 pruebas, cero fallos, un error y cero omitidas (exit 1). PostgreSQL 17.11. B1 57/57, V5Integridad 21/21, V5Operación 10/11. Error restante: `V5OperacionDbTest.incompatiblesRechazadosSinCambiosEnTodaLaBase(String)[2]`, Connection refused a localhost:50568 al preparar el contenedor, antes de aplicar migración. Baseline y candidato inicial también mostraron conexión rechazada con 127.0.0.1. No se demostró la causa raíz ni se afirma que el host alternativo repare el entorno.
+
+S21/S22 y alcance S24 verificados; S23 permanece incompleta por la suite requerida fallida. Probes SQL independientes previos 4/4 y spot-check CAS propio 1/1 siguen aplicando al SQL sin cambios; no representan aprobación de la suite completa. Se agotó la corrección acotada/recheck; no se modifican más fuentes ni se repiten comprobaciones para buscar verde. Próximo paso requiere decisión del usuario sobre diagnóstico del arranque/conectividad del harness local V5, separado de las invariantes B1. Assess de riesgo solicitado pendiente de registrar fuera de este archivo; no iniciar START/RDD con verificación funcional incompleta ni pedir consentimiento de revisión como sustituto. No commit, excepción de tamaño, push, PR, proveedor real ni migraciones compartidas. Evidencias preservadas en `/tmp/b1-verificacion-evidencia/`, fuera del repositorio; no incorporar respaldos. Risk: ítems 1/2/4.
+
+
+### L21 — Diagnóstico local autorizado del bloqueo B1 (2026-11-04)
+
+El usuario autorizó exclusivamente diagnosticar y corregir el rechazo de conexión de V5OperacionDbTest, también observado en baseline. Contexto confirmado: 8 archivos/583 líneas, 57 B1 y 953 normales aprobadas, DB 507/508, probes independientes 4/4 y CAS 1/1. No se infiere culpa de V6 por correlación. Continúa la excepción operativa propia de B1 (spawn/wait sin list_agents, verificador real), sin extenderla a otras unidades.
+
+Procedimiento literal autorizado:
+> 1. Inspeccioná las evidencias existentes antes de ejecutar nuevas pruebas.
+> 2. Revisá el ciclo de vida de PostgreSQL Testcontainers y el harness de `V5OperacionDbTest`.
+> 3. Determiná si el fallo proviene de:
+>    - Contenedor terminado prematuramente.
+>    - Puerto dinámico obsoleto.
+>    - Conexión JDBC reutilizada después del cierre.
+>    - Carrera de inicialización o teardown.
+>    - Interferencia entre pruebas o ejecuciones concurrentes.
+>    - Problema local de Docker/WSL2 o resolución de direcciones.
+> 4. Contrastá baseline y rama B1 bajo condiciones equivalentes.
+> 5. Capturá evidencia suficiente para establecer causalidad, no solo correlación.
+> 6. Si identificás la causa, aplicá la corrección mínima al componente responsable.
+> 7. No introduzcas sleeps arbitrarios, reintentos ciegos ni cambios de expectativa.
+> 8. No desactives tests, restricciones ni verificaciones de seguridad.
+> 9. No modifiques las migraciones V1–V6.
+> 10. No alteres código de producción ajeno al problema.
+
+Validación literal:
+> 1. Ejecutá repetidamente la prueba afectada para comprobar estabilidad.
+> 2. Ejecutá todas las pruebas de `V5OperacionDbTest`.
+> 3. Repetí las 57 pruebas B1.
+> 4. Ejecutá las suites completas normal y PostgreSQL.
+> 5. Realizá una verificación independiente del diagnóstico y la corrección.
+> 6. Confirmá que el candidato B1 sigue cumpliendo sus invariantes y que no se alteraron las garantías de V5.
+
+Restricciones: sin commit/push/PR/migraciones compartidas/Supabase ni modificación de las cinco entradas locales; no iniciar RDD ni pedir excepción de tamaño. Sólo corregir tras causalidad demostrada. La autorización reabre el diagnóstico agotado anterior; no se repiten intentos para buscar verde.
+
+**Plan previo a cambios del harness:** evidencias ya inspeccionadas en `/tmp/b1-verificacion-evidencia/`: fallo en constructor, antes de cualquier migración; fuente V5OperacionSupport idéntica en baseline y B1. Testcontainers 2.0.5 PostgreSQLContainer espera únicamente dos mensajes de log; su override no usa la comprobación JDBC de JdbcDatabaseContainer. Esto es una hipótesis de readiness insuficiente, aún NO causa probada. Experimento acotado en scratch externos baseline/B1, secuencial y con misma imagen instalada/host: capturar al primer fallo, ANTES del cierre, estado fresco del contenedor, puertos efectivos, readiness interna, TCP externo y JDBC después de una condición explícita de puerto; conservar y volver a lanzar el error original, sin ocultarlo. Si no se prueba la hipótesis, no tocar el harness. Si se prueba, corregir únicamente la estrategia de readiness, con regresión determinista de la barrera y validación repetida/independiente. Sin pausas arbitrarias ni reenvíos de operaciones. Risk: ítems 4/5; SQL B1 intacto y RDD pendiente.
+
+**Resultado B1-C: diagnóstico causal inconcluso, sin corrección.** Baseline `85f354636e3ae0c44fa2e94638393a97e5002886` y candidato contrastados secuencialmente con Docker Unix local, imagen PostgreSQL 17 instalada y host `127.0.0.1`. El padre ejecutó 12 arranques independientes y los 11 escenarios V5Operacion por variante: todos aprobaron. No son reintentos de una aserción fallida. La copia diagnóstica sólo agrega captura al catch, antes de cerrar el contenedor, y relanza el error original; no modifica el camino exitoso. No se incorporó al repositorio.
+
+Verificador independiente real `01a1a7e6-60de-70e2-9b08-f5b92c4fa81f`, tarea `b1_conectividad_independiente`: suites PostgreSQL completas una vez por variante, salida 0, baseline **451/451**, B1 **508/508**, cero fallos/errores/omitidas. XML B1: **57/57 V6**, **21/21 V5Integridad**, **11/11 V5Operacion**. Comando: `DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 ./mvnw -o -Pdb-tests test`. Support instrumentado idéntico en ambas copias, SHA-256 `f4de20f4db27a44a7c38461ff265a2517d5f6e361c2965baeb7af2e3e543757f`. La suite normal previa **953/953** sigue siendo aplicable porque ningún ejecutable cambió; no se volvió a ejecutar. Las cuatro comprobaciones SQL y el spot-check CAS anteriores permanecen aplicables, sin atribuirles ejecuciones nuevas.
+
+El informe fue interrumpido por un límite de uso después de terminar las suites. El usuario indicó literalmente «segui»; se retomó sólo la síntesis, sin repetir pruebas. `wait_agent` devolvió finalmente **completed**, con conclusión **INCONCLUSO**, no PASS global; `skill_resolution: paths-injected`. S25 parcial (falta causalidad), S26 conforme (sin parche especulativo), S27 con evidencia funcional DB e independiente obtenida, pero sin cierre causal. El padre contrastó los XML y el manifiesto por separado.
+
+La captura se activó **cero veces**: no existe evidencia nueva del instante del rechazo para distinguir contenedor terminado, puerto obsoleto, carrera o interferencia Docker/WSL2. La primera conexión usa un DriverManagerDataSource nuevo; no es una conexión de pool reutilizada. El error anterior precede a las migraciones. Que Testcontainers espere logs no demuestra que esa estrategia causara el rechazo. Limitaciones del diagnóstico: `pg.start()` queda fuera del catch y un probe que falle puede impedir los siguientes; no se alteró el harness del workspace para corregir estas limitaciones sin una nueva necesidad demostrada.
+
+Evidencia reproducible preservada fuera de Git: `/tmp/b1-verificacion-evidencia/conectividad/`, con logs, XML, manifiestos, diff diagnóstico, comandos y hashes; sin respaldos PostgreSQL. Único archivo del repositorio modificado en B1-C: este plan. V1–V6, pruebas y producción conservan sus bytes; las cinco entradas ajenas conservan las 2340 entradas y sus hashes/modos/enlaces. Sin commit, publicación, migraciones compartidas, Supabase ni RDD. No se solicitó excepción de tamaño.
+
+**Siguiente decisión:** mantener B1-C abierta y no declarar B1 habilitada para RDD con una causa inventada. La alternativa preferida es una captura prospectiva acotada de la siguiente ocurrencia, preservando estado Docker/puertos y el error original antes de cerrar; su límite es que depende de reproducir la intermitencia. Contrastar con Docker Linux nativo podría aislar dependencia del entorno, pero requiere otro entorno y tampoco demostraría por sí solo la causa. No se autorizaron ni ejecutaron esas nuevas pruebas. No agregar sleeps, reintentos ni una barrera de readiness por hipótesis. Risk: ítems 4/5 (incidencia local intermitente sin causa demostrada); no cambio funcional.
+
+
+### L22 — Verificabilidad B1 y autorización para preflight RDD (2026-11-04)
+
+Solicitud literal del usuario:
+
+> Autorizo avanzar hacia la revisión RDD de B1, manteniendo documentada la intermitencia B1-C.
+>
+> ### Contexto
+>
+> La incidencia de conectividad JDBC no pudo reproducirse durante el diagnóstico.
+>
+> Resultados comprobados:
+> - 12/12 arranques independientes por variante.
+> - 11/11 escenarios operativos V5 por variante.
+> - 451/451 PostgreSQL baseline.
+> - 508/508 PostgreSQL B1, incluidas las 57 específicas.
+> - 953/953 suite normal previa, sin cambios ejecutables posteriores.
+> - Verificación independiente completada.
+>
+> No se modificó código funcional ni V1–V6. Únicamente se actualizó ODD, L21.
+>
+> ### Objetivo
+>
+> Cerrar la evaluación de verificabilidad de B1 y, si las reglas ODD lo permiten, realizar RDD sobre el candidato definitivo.
+>
+> ### Procedimiento
+>
+> 1. Confirmá que los resultados actuales y sus evidencias son suficientes conforme al protocolo ODD.
+> 2. Mantené B1-C registrada como incidencia intermitente sin causa raíz demostrada.
+> 3. Diferenciá claramente entre verificación funcional aprobada e incidencia ambiental no resuelta.
+> 4. Si B1-C constituye un bloqueo obligatorio según ODD, no lo ignores: explicá la regla y detené el avance.
+> 5. Si no hay impedimento, actualizá el estado de verificabilidad de B1 sin declarar corregida la intermitencia.
+> 6. Recalculá el inventario exacto de archivos, líneas y hash del candidato, incluyendo los últimos cambios documentales.
+> 7. Ejecutá el assess nativo RDD sobre el candidato completo.
+> 8. Solicitá el consentimiento correspondiente si el protocolo lo requiere.
+> 9. Realizá una revisión independiente con las lentes pertinentes a persistencia, seguridad, aislamiento y concurrencia.
+> 10. Corregí exclusivamente defectos demostrados, siguiendo RED/GREEN y reevaluando el candidato si cambia.
+> 11. Registrá resultados, hallazgos y riesgos residuales.
+>
+> ### Restricciones
+>
+> - No modificar V1–V6 salvo que RDD demuestre un defecto y exista autorización específica para corregirlo.
+> - No introducir reintentos ciegos, sleeps ni relajaciones de pruebas.
+> - No declarar B1-C resuelta sin evidencia.
+> - No hacer commit, push, PR ni merge.
+> - No ejecutar migraciones en bases compartidas.
+> - No conectarse a Supabase real.
+> - Conservar las cinco entradas locales sin seguimiento.
+> - No solicitar todavía excepción de tamaño.
+>
+> ### Resultado esperado
+>
+> Informá:
+>
+> - Estado de la verificación funcional.
+> - Estado separado de B1-C.
+> - Inventario y hash definitivos del candidato.
+> - Resultado RDD y reconocimiento nativo.
+> - Correcciones necesarias, si las hubiera.
+> - Si B1 queda preparada para solicitar autorización de commit local.
+>
+> Si el protocolo exige consentimiento o intervención humana, detenete en ese punto.
+
+**Evaluación ODD previa a RDD:** las evidencias de L20/L21 son suficientes para verificar el comportamiento del candidato actual, no para resolver B1-C. Se comprobaron los hashes de los 120 archivos de evidencia conservados, los resultados XML y logs de 953 normales, 451 DB baseline y 508 DB B1 (57 específicas), los cuatro probes SQL independientes y el spot-check CAS. No hay cambios ejecutables posteriores; la captura diagnóstica de scratch sólo agregaba un camino de error, nunca activado, conservando la excepción original. Las 953 normales previas y las pruebas de las invariantes siguen siendo aplicables. No se atribuyen nuevas ejecuciones a esta comprobación documental.
+
+**Reglas aplicadas:** ODD exige verificaciones propias y un verificador independiente para los ítems de alto riesgo, antes de RDD; la regla de fallos de comandos requeridos impide aprobar una suite actualmente fallida, no convierte automáticamente una intermitencia histórica en un veto perpetuo tras comprobaciones completas aprobadas. El contrato de verificación distingue defectos nuevos reproducibles del candidato de observaciones ya presentes en baseline. La incidencia anterior también apareció en baseline y antes de ejecutar las migraciones; no se reproduce ahora y no demuestra un defecto de V6. No existe una regla adicional que obligue a inventar una reparación o cerrar causalmente B1-C antes de revisar estos bytes. La autorización actual permite separar ambos estados, sin rebajar la verificación requerida ni declarar que la causa sea definitivamente ambiental.
+
+**Estado:** B1 verificada funcional e independientemente para entrar al preflight nativo. B1-C ABIERTA, causa no demostrada; L21 y sus resultados históricos permanecen intactos. Verificador SQL y diagnóstico: agente distinto `01a1a7e6-60de-70e2-9b08-f5b92c4fa81f`, handoffs terminales reales registrados en L20/L21; no se simula otra verificación ni se repiten pruebas de código idéntico. No es un PASS de RDD ni una autorización de entrega. Se conservan los límites B1: sin autorización familiar, scanner, existencia remota ni flujo de transferencia demostrados por este registro SQL.
+
+**Plan acotado:** ruta inline documental y orquestación RDD nativa; ninguna implementación nueva ni otra delegación genérica. Antes de congelar: lectura estructural, `git diff --check`, inventario de los ocho archivos y sus modos/bytes, exclusión de las cinco raíces ajenas, hashes V1–V6 y evidencia conservada. Después: assess nativo elevado por ítem 1 y preflight con riesgo (persistencia, propietario/escuela y publicación), resiliencia (reservas, concurrencia y resultados inciertos), legibilidad (contrato SQL/documental) y confiabilidad (transiciones y pruebas). El proveedor conserva la selección/admisión y el consentimiento específico. Si lo exige, detenerse antes de ejecutar lentes. Sin normalizadores mutantes posteriores al freeze. Identidad, inventario y continuaciones se guardarán fuera del candidato para no cambiar sus bytes durante el consentimiento; sólo registrar resultados en el plan después del cierre y evaluar por separado ese delta documental. No solicitar excepción de tamaño ni hacer commit/publicación. Risk: ítems 1/2/4; B1-C sigue como riesgo residual no resuelto.
+
+**Cierre RDD B1 (2026-11-04):** el usuario respondió literalmente `granted`. Se ejecutó una sola vez la invocación exacta del consentimiento nativo, para `sha256:3829634bfd39f9f4e8d20c16e34a9bf558c6e91577ee8b90201736b36ec14a0a`: ocho archivos, **710 líneas (697 añadidas/13 eliminadas)**, base `ea4c2307f69b74166d9e1b4abb659cb711393b79`, candidato `ce55320456c25308e19e994bf605c6d63ea37e12`. El assess había sido alto por escalamiento de persistencia; START registró tier medio y seleccionó expresamente las cuatro lentes solicitadas. No se rebajó por ello el riesgo de datos/aislamiento/concurrencia de B1.
+
+Las cuatro capturas nativas se lanzaron concurrentemente, en orden riesgo, resiliencia, legibilidad y confiabilidad, mediante los argumentos exactos del proveedor. Todas terminaron con salida 0 y **cero hallazgos**. Inspeccionaron los ocho patches inmutables; no ejecutaron pruebas ni sustituyen las verificaciones funcionales e independientes previas. No hicieron falta refutación, corrección ni validación dirigida. El presupuesto nativo de 200 líneas no se utilizó y no se modificó V6 ni ningún ejecutable.
+
+La última captura devolvió `approved` pendiente de reconocimiento. El STATUS ligado a esa misma revisión recuperó la misma invocación de reconocimiento, token y revisión; se ejecutó una sola vez. Resultado real `gentle-ai.review-acknowledged/v1`, `action: acknowledged`, `authority: burned`, lineage `review-a95e68fe42dc56fa`, revisión consumida `sha256:a2453ad991598a6300d4cdb589538831d059a3b9d826196c189f853b89e3fb94`. El ciclo termina ahí: no se reutiliza esa autoridad ni se inicia otra revisión del código idéntico. Evidencia externa: `/tmp/b1-rdd-cierre.json` y capturas en `/tmp/b1-rdd-native-9b5ftw4h/`.
+
+Se mantienen 57 B1, 953 normales previas, 508 PostgreSQL B1, 451 baseline, cuatro probes SQL y un spot-check CAS: no se atribuyen nuevas ejecuciones a RDD. **B1-C permanece abierta e inconclusa**, no reparada ni atribuida definitivamente al entorno. Tampoco se demuestra autorización de familias, antimalware, transferencia remota ni recuperación operativa por el solo hecho de aprobar la estructura SQL.
+
+Este registro y el estado de la tabla son un **delta documental posterior al reconocimiento**, no bytes cubiertos automáticamente por el candidato aprobado. Se comprobará estructuralmente y mediante assess nativo separado; su identidad y resultado se conservarán fuera del candidato para evitar un bucle de cambios documentales. No hubo ni se autorizan commit, push, PR, merge, nuevas migraciones compartidas, Supabase real o excepciones de tamaño en este cierre. Risk: ítems 1/2/4 del cambio SQL ya revisado; el delta nuevo sólo documenta hechos observados y B1-C sigue abierta.
+
+
+### L23 — Excepción de tamaño y commit local B1 autorizados (2026-11-04)
+
+El usuario autorizó explícitamente, sólo para B1, «8 archivos, 720 líneas (707 añadidas y 13 eliminadas)», candidato `sha256:c6a15154f9f79b3c73d9b2fa5198d531d13cd29e933cdf382c3759e7fd5d10f9`, más este registro documental mínimo, y el commit local `feat(documentos): registrar operaciones durables de carga documental`. Justificación: conservar como una unidad coherente las invariantes SQL, sus pruebas y la trazabilidad ODD/RDD ya verificadas. No se extiende a B2 ni otras unidades. Se conserva la evidencia 953 normales/508 PostgreSQL (57 B1), verificación independiente, cuatro lentes sin hallazgos y reconocimiento nativo; no se repiten pruebas de ejecutables idénticos. Este delta documental requiere assess propio, sin atribuirle automáticamente la aprobación anterior. B1-C permanece ABIERTA e inconclusa, sin reparación demostrada. No se autorizan push, PR, merge, despliegue, Supabase real ni bases compartidas; las cinco entradas ajenas permanecen excluidas. El SHA y las comprobaciones finales se registran en el cierre externo para no generar otro cambio posterior al commit.

@@ -34,11 +34,11 @@ class V5OperacionDbTest {
             assertThat(restaurada.pg.getContainerId()).isNotEqualTo(origen.pg.getContainerId());
             assertThat(restaurada.restaurar(dump)).isZero();
             assertThat(restaurada.estadoRestaurable()).isEqualTo(antes);
-            assertThat(origen.flyway("latest", "").migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(origen.flyway("5", "").migrate().migrationsExecuted).isEqualTo(1);
             assertThat(origen.datos(true)).isEqualTo(antes.datos());
             origen.integridadV5();
             var migrada = origen.estado();
-            assertThat(origen.flyway("latest", "").migrate().migrationsExecuted).isZero();
+            assertThat(origen.flyway("5", "").migrate().migrationsExecuted).isZero();
             assertThat(origen.estado()).isEqualTo(migrada);
 
             // Una restauración anterior no conserva escrituras posteriores: requiere ventana sin escrituras/RPO aprobado.
@@ -72,7 +72,7 @@ class V5OperacionDbTest {
             assertThat(b.numero("SELECT count(*) FROM information_schema.columns WHERE table_schema='gestion_patin' AND table_name='documento' AND column_name='serie_id'")).isZero();
             // Corrección del permiso exclusivamente en la base ficticia; no se repara historial ni se edita V5.
             b.sql.execute("GRANT CREATE ON SCHEMA gestion_patin TO v5_operativa_migrador");
-            assertThat(b.flyway("latest", "SET ROLE v5_operativa_migrador").migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(b.flyway("5", "SET ROLE v5_operativa_migrador").migrate().migrationsExecuted).isEqualTo(1);
             assertThat(b.datos(true)).isEqualTo(antes.datos());
             b.integridadV5();
             b.evidencia("rollback-ddl-tardio", Map.of("sqlstate", estado, "falloEnAlterConstraintsDespuesDelBackfill", true,
@@ -138,7 +138,7 @@ class V5OperacionDbTest {
                 assertThat(b.estado()).isEqualTo(antes);
             } finally { lector.rollback(); }
             long milisegundos = Duration.ofNanos(System.nanoTime() - inicio).toMillis();
-            assertThat(b.flyway("latest", "").migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(b.flyway("5", "").migrate().migrationsExecuted).isEqualTo(1);
             assertThat(b.datos(true)).isEqualTo(antes.datos());
             b.integridadV5();
             b.evidencia("lock-timeout", Map.of("bloqueoRealObservado", true, "sqlstate", "55P03",
@@ -163,7 +163,7 @@ class V5OperacionDbTest {
                 r.next(); pidControl = r.getInt(1);
             }
             long inicio = System.nanoTime();
-            var migracion = hilos.submit(() -> b.flyway("latest", "SET application_name='v5_ops_pausa'; SET statement_timeout='20s'").migrate());
+            var migracion = hilos.submit(() -> b.flyway("5", "SET application_name='v5_ops_pausa'; SET statement_timeout='20s'").migrate());
             try {
                 V5OperacionSupport.esperar(() -> b.bloqueado(pidControl, "v5_ops_pausa"));
                 int pidMigracion = b.pid("v5_ops_pausa");
@@ -197,7 +197,7 @@ class V5OperacionDbTest {
     }
 
     private static String fallarMigracion(V5OperacionSupport b, String inicio) {
-        try { b.flyway("latest", inicio).migrate(); return "EXITO"; }
+        try { b.flyway("5", inicio).migrate(); return "EXITO"; }
         catch (FlywayException e) {
             for (Throwable t = e; t != null; t = t.getCause())
                 if (t instanceof SQLException sql && sql.getSQLState() != null) return sql.getSQLState();

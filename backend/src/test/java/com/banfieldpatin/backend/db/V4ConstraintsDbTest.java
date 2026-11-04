@@ -67,10 +67,11 @@ class V4ConstraintsDbTest extends BaseDbTest {
 	// ---------- migracion ----------
 
 	@Test
+	// Comprueba el prefijo histórico V1–V5; B1 verifica la ampliación a V6.
 	void v4PermaneceAplicadaConV5() {
 		List<String> versiones = jdbc.sql("""
 				SELECT version FROM gestion_patin.flyway_schema_history
-				WHERE success AND version IS NOT NULL ORDER BY installed_rank
+				WHERE success AND version IN ('1','2','3','4','5') ORDER BY installed_rank
 				""")
 				.query(String.class).list();
 
