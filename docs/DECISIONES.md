@@ -193,3 +193,7 @@ Reglas:
 ## Fase 3 — límites de la aprobación inicial (2026-11-03)
 
 Estados y reemplazos aceptados sólo como base conceptual; transiciones y restricciones definitivas deben verificarse antes de sus migraciones. Permanecen pendientes la vigencia anual de WADA, retención, escaneo antimalware y límites operativos. La unidad inicial es consulta autorizada de metadatos, sin cambios de esquema, Storage, cargas, descargas o reemplazos. Plan: `odd/tasks/documentos-privados.md`.
+
+### O2-A — Implementación acotada D3a (2026-11-04)
+
+El usuario autorizó implementar el puerto `AlmacenDocumentos` y adaptador `RestClient` de creación sin sobrescritura y compensación acotada, con HTTP simulado y configuración externa desactivada por defecto. No autoriza endpoints, cargas reales, descargas, reemplazos, Supabase real ni buckets nuevos. No cierra políticas de retención, escaneo o compensación/reconciliación integral de D3b. Contrato y límites: `DOCUMENTOS.md`, sección D3a; evidencia y excepciones operativas exclusivas: `odd/tasks/documentos-privados.md`, L17.

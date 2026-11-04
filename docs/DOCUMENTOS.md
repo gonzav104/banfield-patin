@@ -54,3 +54,32 @@ V5 no habilita operaciones de escritura ni modifica el DTO D1. Añade `serie_id`
 Flyway ejecuta V5 transaccionalmente y toma un bloqueo exclusivo sobre Documento antes de prevalidar. Puede bloquear consultas/escrituras durante la migración: debe planificarse su ventana operativa antes de un despliegue; aquí sólo se ejecuta en PostgreSQL descartable local. Los conflictos abortan sin reparar ni seleccionar una versión ganadora. El backfill asigna la misma raíz a toda cadena válida; conserva todos los valores V4 y sus timestamps. El trigger de timestamp se deshabilita sólo dentro de esa transacción para el backfill y se restablece antes del commit.
 
 No se editaron V1–V4. Una base con historia incompatible necesita resolución humana explícita antes de aplicar V5; no se supone vacía. La migración no sustituye la autorización por escuela/familia ni la revocación de vínculos en las consultas D1. El propietario de la base puede desactivar triggers o restricciones: esa administración privilegiada queda fuera de las garantías de D2.
+
+## Adaptador interno de Storage (D3a)
+
+`AlmacenDocumentos` encapsula `RestClient`: sólo creación POST sin sobrescritura (`x-upsert=false`) y eliminación compensatoria del objeto recién confirmado. El backend genera UUID aleatorios, sin nombres personales, DNI/CUIL ni nombres originales en las claves. No existen entradas para rutas, un borrado genérico, URLs públicas, descargas o endpoints de escritura. D1 no consume este puerto y mantiene su contrato.
+
+El resultado `Creado` es una capacidad interna, no un DTO: permite obtener la clave para futura persistencia y compensar una sola vez desde la misma instancia emisora. No puede reconstruirse a partir de una clave guardada; un fallo consume el intento y requiere una decisión de reconciliación futura. No utilizarlo para borrar versiones históricas. El adaptador no coordina PostgreSQL/Storage ni implementa una política de compensación integral.
+
+### Configuración externa, desactivada por defecto
+
+| Variable | Uso |
+| --- | --- |
+| `DOCUMENTOS_STORAGE_HABILITADO` | `false` por defecto; no habilitar contra un servicio real en D3a |
+| `SUPABASE_URL` | Origen HTTPS, sin ruta, usuario, query ni fragmento; HTTP sólo con loopback IP para pruebas |
+| `SUPABASE_BUCKET_DOCUMENTOS` | Nombre de un bucket privado ya existente; un segmento, nunca una ruta |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secreto de servidor; no guardar en Git, frontend ni reportes |
+| `DOCUMENTOS_STORAGE_TIMEOUT_CONEXION` | Conexión, `PT3S` por defecto |
+| `DOCUMENTOS_STORAGE_TIMEOUT_RESPUESTA` | Respuesta completa, `PT15S` por defecto |
+
+Ambos plazos deben estar entre 1 ms y 5 minutos: límites técnicos para impedir esperas ilimitadas, no límites funcionales de carga. La configuración habilitada inválida falla al iniciar; desactivada no exige secretos, no crea el adaptador y no efectúa llamadas de arranque. No se crea ni inspecciona ningún bucket real en esta entrega. Antes de cada POST, el adaptador exige una lectura GET de metadatos del bucket que confirme `public=false`; si falta la confirmación, no inicia la carga. Los fallos de esa lectura no implican una creación incierta. La privacidad efectiva y permisos deberán comprobarse también antes de autorizar cargas reales: usar service_role o una ruta no pública no vuelve privado un bucket público. Cambios administrativos posteriores o concurrentes a esa lectura quedan fuera del control del adaptador.
+
+`crear` recibe bytes no vacíos y MIME concreto sin parámetros; todavía no verifica firma real, límite funcional de tamaño, autorización de usuario ni antimalware. Rechazar parámetros impide transportar nombres personales en MIME. Se utiliza un cliente dedicado sin interceptores globales, redirecciones ni reintentos de aplicación. No habilitar trazas HTTP del JDK, captura de cabeceras/cuerpos, proxies de inspección o volcados de memoria con datos reales: contienen credenciales y documentos independientemente del saneamiento de excepciones.
+
+### Fallos y límites de la evidencia
+
+Los fallos tienen códigos internos (`ENTRADA_INVALIDA`, `AUTENTICACION`, `CONFLICTO`, `RECHAZADO`, `RED`, `TIMEOUT`, `RESPUESTA_INESPERADA`) y bandera de resultado incierto. No retienen el cuerpo del proveedor, URI, cabeceras o causa original. HTTP 409 se clasifica como conflicto; respuestas 400, incluidas variantes antiguas de conflicto, se rechazan sin volver a intentar. Sólo se acepta la confirmación 200 con clave exacta; un 2xx inesperado o confirmación inválida no significa éxito. Las respuestas se limitan a 16 KiB.
+
+Timeouts y fallos de transporte, respuestas 5xx/redirecciones o confirmaciones no válidas pueden dejar un objeto privado huérfano. No se devuelve recibo de éxito ni se intenta borrar automáticamente en ese caso; D3b deberá decidir cómo correlacionar y reconciliar esos resultados sin filtrarlos al cliente. Un error al compensar no prueba que el objeto siga existiendo ni que se haya borrado. No se promete reintento seguro tras perder un recibo/reiniciar el proceso.
+
+Pruebas: HTTP loopback simulado y configuración Spring, además de regresión D1/D2. No equivalen a validar Supabase real, políticas RLS/bucket, rendimiento de archivos grandes ni comportamiento frente a cambios de versión del proveedor. Antes de D3b siguen pendientes autorización/revalidación, transacción de publicación, correlación durable, compensación/reconciliación, límites/MIME real/escaneo y retención. No se aprueban por arrastre.

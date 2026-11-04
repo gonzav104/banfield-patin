@@ -1,6 +1,6 @@
 # Fase 3 — Gestión privada de documentos
-Objetivo: integrar D1 (`b077021`) y D2 (`82ff948`), cerradas localmente, en un único Draft PR; D3 no autorizada. Base de Fase 3: `main` `8a132ee`; O1-A/O2-A y D2 aprobadas según L4/L8; decisiones diferidas conservadas.
-Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este documento. Entrega D2: `exception-ok`, autorizada exclusivamente para los 7 archivos/619 líneas aprobados más este registro documental (L13). Entrega D1: `exception-ok`, aprobada exclusivamente para el candidato de 22 archivos y 952 líneas más su registro documental (L7); no se hereda a otras unidades ni de Fase 2. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). D1/D2 con RDD completado; PR conjunto `single-pr`/`exception-ok` autorizado en L14, sin permiso de merge ni despliegue.
+Objetivo actual: D3a, adaptador privado de almacenamiento sin endpoints; D3b (flujo de carga) no autorizada. D1/D2 y sus verificaciones se integraron por PR #10, merge `42d356c543da6805367cb165f2aa8abe60b6b9dc`; se conserva debajo la trazabilidad histórica.
+Rama D3a: `feat/documentos-storage`, desde ese main actualizado. Entrega D3a: `exception-ok`, autorizada exclusivamente para 11 archivos/712 líneas más el registro documental mínimo en L19; sin excepción heredada ni ampliación funcional. Las excepciones D1/D2 y PR #10 siguen siendo históricas, no aplican a D3a. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17). No hay autorización de publicación, commit previo a controles ni despliegue.
 
 ## Specs
 
@@ -22,6 +22,11 @@ Rama: `feat/documentos-privados`, creada desde main 8a132ee conservando este doc
 - **S14 (excepción operativa D2, L9).** "utilizar `spawn_agent` y `wait_agent` sin `list_agents`" / "Conservá una verificación independiente real, realizada por un agente distinto del implementador." / "No hacer commit antes de completar satisfactoriamente las verificaciones y RDD." No se extiende a D3.
 - **S15 (corrección CI PR #10, L15).** "Vamos a diagnosticarlos y corregir únicamente las causas demostradas." / "No desactives CSRF, no cambies expectativas sin justificación ni debilites las pruebas de seguridad." / "Contrastá `main` y la rama del PR en condiciones equivalentes para determinar si hay una regresión nueva o un fallo preexistente." / "No modificar V5 ni ejecutar migraciones en Supabase o bases compartidas." / "No hacer push, merge ni despliegue todavía."
 - **S16 (verificación CI, L15).** "Ejecutá las suites relevantes y la revisión independiente exigida por ODD." / "Aplicá RDD al candidato corregido; solicitá consentimiento si corresponde." Excepción operativa autorizada para esta corrección mediante respuesta textual "si autorizo": spawn_agent/wait_agent sin list_agents, con resultado terminal real; no constituye cumplimiento literal del protocolo habitual y no se extiende a D3.
+
+- **S17 (D3a, L17).** "Definí una interfaz propia `AlmacenDocumentos`." / "Implementá un adaptador Supabase Storage con `RestClient`, conforme a la decisión O2-A." / "Diseñá las operaciones mínimas de almacenamiento privado y eliminación compensatoria de objetos recién creados." / "Usá claves opacas generadas por el backend. No aceptes rutas arbitrarias ni nombres de archivo como identificadores de almacenamiento." / "Garantizá que las cargas futuras no sobrescriban objetos existentes."
+- **S18 (D3a, L17).** "Configurá URL, bucket, credenciales y timeouts desde configuración externa." / "Nunca expongas claves de servicio, URLs públicas ni rutas internas al frontend." / "Definí errores tipados y controlados para fallos de red, timeouts, autenticación, respuestas inesperadas y estado remoto incierto." / "No registres tokens, nombres personales, contenido documental ni respuestas sensibles del proveedor en logs."
+- **S19 (D3a, L17).** "Implementá pruebas automatizadas contra un servidor HTTP simulado, incluyendo fallos y casos límite. No conectes todavía con Supabase real." / "Aplicá ODD con pruebas RED/GREEN." / "Ejecutá las suites normal y PostgreSQL." / "Realizá verificación independiente proporcional al riesgo." / "Ejecutá assess RDD y solicitá consentimiento si corresponde."
+- **S20 (D3a, L17).** "Registrá D3a como unidad diferenciada de D3b en ODD, sin heredar excepciones de tamaño o delegación anteriores." / "No hacer commit antes de completar los controles exigidos. No hacer push, PR ni merge sin autorización posterior." El resto de las restricciones literales de L17 forma parte del alcance. Excepciones operativas nuevas y exclusivas: spawn/wait sin list_agents y explorador gpt-6-luna/high, autorizadas por dos respuestas "autorizo"; no constituyen cumplimiento literal del protocolo habitual.
 
 Las tablas siguientes conservan propuestas para unidades posteriores. O1-A/O2-A y D1 están aprobadas según L4; no se aprueban por arrastre WADA anual, retención, escaneo, límites operativos ni transiciones/restricciones definitivas. Registro formal de O1/O2 en `docs/DECISIONES.md`.
 
@@ -164,7 +169,8 @@ Pruebas previstas: JUnit servicio/DTO, WebMvc (rol/sesión/errores/contrato), Te
 | D1 | S2,S5,S7,S9,S11,S12 | Consulta autorizada de metadatos de deportista y tutor, B6 | inline; verificación independiente por ítem 2 | CERRADA LOCALMENTE en b077021; RDD nativo cuatro lentes sin hallazgos, reconocido; normal 903/903 y DB 415/415; no reabrir revisión de contenido idéntico |
 | D2 | S3–S5,S13,S14 | Integridad acotada aprobada en L8, V5 y pruebas PostgreSQL/concurrencia | inline; verificador independiente con excepción operativa D2 | CERRADA LOCALMENTE en 82ff948; 903 normales/440 DB, verificación independiente y spot-check 20/20; RDD reconocido y delta documental evaluado; tamaños autorizados L13/L14 |
 | CI1 | S15,S16 | Causas demostradas de CI: aislamiento CSRF de pruebas y aserción estructurada de auditoría | inline; diagnóstico/verificación independientes por ítems 2/5, excepción CI específica | VERIFICADA FUNCIONAL, INDEPENDIENTE Y RDD; RED reproducido; GREEN 37/37 y 6/6, suites 903/903 y 440/440; RDD tres lentes sin hallazgos y reconocimiento confirmado en L16; sin commit/push |
-| D3 | S5,S6,S8 | Carga privada síncrona completa con compensación, B5 | inline; verificar ítems 1/2/4/5 | NO AUTORIZADA; depende D2 y P2/P7/P9; dividir sólo en comportamientos seguros con tests/docs propios |
+| D3a | S17–S20 | Puerto y adaptador privado, errores/configuración y HTTP simulado | implementación inline; mapa delegado por presupuesto; verificador independiente por ítem 2 | VERIFICADA funcional e independientemente en L17: 50 específicas, 953 normales, 451 DB y 4 probes; explorador/verificador terminados por wait_agent, paths-injected; RDD cuatro lentes sin hallazgos reconocido en L18; commit pendiente de decisión de tamaño/entrega |
+| D3b | S5,S6,S8 | Flujo de carga documental con autorización, publicación y compensación integral | reevaluar al autorizar | NO AUTORIZADA; depende D3a y decisiones P6/P7/P9 y límites operativos; sin endpoints en D3a |
 | D4 | S4,S5 | Revisión y reemplazo sin sobrescritura | inline; verificar ítems 1/2/4 | NO AUTORIZADA; depende D3 y P4 |
 | D5 | S5,S7 | Gestión documental de tutores con alcance familiar | inline; verificar ítem 2 | NO AUTORIZADA para escritura; consulta de tutor incluida en D1; depende D4 |
 | D6 | S6,S8 | Descarga mediada e historial, con auditoría | inline; verificar ítem 2 | NO AUTORIZADA; depende D4 y P2/P8 |
@@ -508,3 +514,101 @@ Al finalizar, presentá la causa raíz demostrada, archivos modificados, pruebas
 El usuario respondió "granted" al consentimiento específico de CI1. RDD nativo `review-8c45f1fd3449f4f9`, candidato `sha256:d89435ad2534d0543a72a3cbadfcc08f29fed3ccd79d666252f67822bf5d6261`, árbol `dc892ebf62d94e562c12eba668005553ed57a885`: tres lentes ejecutadas concurrentemente (riesgo, legibilidad, confiabilidad), todas sin hallazgos. La última captura devolvió approved; su reconocimiento exacto confirmó `action=acknowledged`, `authority=burned`. No hubo correcciones durante RDD ni cambios ejecutables posteriores; siguen aplicables las pruebas e independencia de L15. Esta entrada y el estado de CI1 son un delta documental posterior, no bytes automáticamente cubiertos por aquella aprobación; se evalúan separadamente. No se repitieron las revisiones de D1/D2. Sin commit, push, merge, despliegue ni cambios en Supabase; CI remoto conserva su resultado anterior.
 
 Assess posterior del registro de cierre: `risk=medium`, `review_due=false`, `review_due_reason=under_budget`; no se inicia otra revisión del código idéntico ni se atribuye al delta documental la aprobación previa. La comparación con el árbol aprobado sólo agrega documentación; fuentes ejecutables y verificaciones funcionales conservan su aplicabilidad.
+
+### L17 — D3a autorizada y plan previo a implementación (2026-11-04)
+
+Solicitud literal del usuario:
+
+> Continuemos con la Fase 3 del backend de Banfield Patín Carrera.
+>
+> El PR #10 quedó integrado en `main` mediante merge commit `42d356c543da6805367cb165f2aa8abe60b6b9dc`, con CI verde.
+>
+> Autorizo comenzar **D3a — Adaptador de almacenamiento privado Supabase Storage**.
+>
+> Objetivo: implementar la infraestructura mínima de Storage, sin habilitar todavía endpoints de carga de documentos.
+>
+> ### Preparación
+>
+> 1. Confirmá el estado de `origin/main`, el merge del PR #10 y el árbol de trabajo.
+> 2. Conservá intactas las cinco entradas locales sin seguimiento. No las borres, muevas ni agregues al commit.
+> 3. Creá una rama nueva desde `main` actualizado, por ejemplo `feat/documentos-storage`.
+> 4. Revisá `docs/DECISIONES.md`, `docs/DOCUMENTOS.md`, `odd/tasks/documentos-privados.md` y la implementación existente.
+> 5. Registrá D3a como unidad diferenciada de D3b en ODD, sin heredar excepciones de tamaño o delegación anteriores.
+>
+> ### Implementación D3a
+>
+> 1. Definí una interfaz propia `AlmacenDocumentos`.
+> 2. Implementá un adaptador Supabase Storage con `RestClient`, conforme a la decisión O2-A.
+> 3. Diseñá las operaciones mínimas de almacenamiento privado y eliminación compensatoria de objetos recién creados.
+> 4. Usá claves opacas generadas por el backend. No aceptes rutas arbitrarias ni nombres de archivo como identificadores de almacenamiento.
+> 5. Garantizá que las cargas futuras no sobrescriban objetos existentes.
+> 6. Configurá URL, bucket, credenciales y timeouts desde configuración externa.
+> 7. Nunca expongas claves de servicio, URLs públicas ni rutas internas al frontend.
+> 8. Definí errores tipados y controlados para fallos de red, timeouts, autenticación, respuestas inesperadas y estado remoto incierto.
+> 9. No registres tokens, nombres personales, contenido documental ni respuestas sensibles del proveedor en logs.
+> 10. Implementá pruebas automatizadas contra un servidor HTTP simulado, incluyendo fallos y casos límite. No conectes todavía con Supabase real.
+>
+> ### Restricciones
+>
+> - No implementar endpoints POST, PUT ni DELETE documentales.
+> - No modificar V1–V5.
+> - No habilitar cargas reales.
+> - No implementar revisión, reemplazo, descarga ni ZIP.
+> - No agregar dependencias innecesarias.
+> - No introducir colas, sagas ni servicios adicionales sin justificación.
+> - No ejecutar migraciones contra bases compartidas.
+> - No modificar Supabase ni crear buckets reales.
+> - No asumir que las políticas de retención, escaneo o compensación integral ya están aprobadas.
+>
+> ### Verificación
+>
+> 1. Aplicá ODD con pruebas RED/GREEN.
+> 2. Ejecutá pruebas específicas y regresiones.
+> 3. Ejecutá las suites normal y PostgreSQL.
+> 4. Realizá verificación independiente proporcional al riesgo.
+> 5. Ejecutá assess RDD y solicitá consentimiento si corresponde.
+> 6. Presentá el alcance, resultados, riesgos y decisiones pendientes para D3b.
+>
+> No hacer commit antes de completar los controles exigidos. No hacer push, PR ni merge sin autorización posterior.
+>
+> Si una decisión pendiente impide diseñar correctamente D3a, presentá las alternativas y detené solamente la parte afectada.
+
+**Excepciones nuevas y acotadas:** el usuario respondió "autorizo" a usar spawn_agent y wait_agent sin list_agents exclusivamente para D3a; luego respondió "autorizo" a sustituir gpt-6.1-luna por gpt-6-luna/high para la exploración de D3a, conservando gpt-6.1-sol/medium para verificación. No constituyen cumplimiento literal del protocolo habitual. No se heredan excepciones de D1/D2, validación V5 o CI ni de tamaño. Un primer spawn fue rechazado por límite de hilos: wait_agent confirmó terminados los cuatro agentes anteriores; se cerró únicamente el agente terminado `01a1a27d-a6da-7643-8435-9f7bbd2ff519` para liberar capacidad, sin cancelar trabajo activo. Explorador real Hilbert `01a1a52b-63cb-73a0-a24d-3ed728f5278b`, tarea d3a_storage_map: wait_agent confirmó completed con mapa de O2-A, propiedades/configuración, límites pendientes y HttpServer JDK sin dependencias; conclusión: adaptador aislado viable sin decidir D3b. Skill resolution paths-injected. No escribió ni ejecutó pruebas.
+
+**Preparación observada:** main y origin/main `42d356c543da6805367cb165f2aa8abe60b6b9dc`, PR #10 MERGED por lectura remota. Fetch limitado y fast-forward sin cambios; rama nueva `feat/documentos-storage`. Cinco raíces ajenas fotografiadas en `/tmp/d3a-untracked-before.json`, no versionables en esta unidad. Cambios iniciales sólo este plan; V1–V5 y dependencias se conservan.
+
+**Plan y criterios antes de la primera escritura de fuentes:**
+1. Puerto `AlmacenDocumentos` para crear con UUID opaco generado internamente y compensar sólo con recibo no construible por clientes, emitido al confirmar creación por la misma instancia. Sin ruta/nombre original en entradas, sin borrado genérico ni URL pública. D3b decidirá cómo coordinar transacción, autorización y objetos huérfanos; no se implementa reconciliación ni retención.
+2. Adaptador RestClient sin SDK, redirecciones ni reintentos de aplicación, alta POST con x-upsert=false. Validar confirmación y límite de respuesta. El recibo no permite borrar historia; error incierto nunca da éxito ni desencadena borrado automático. Configuración externa opt-in, inactiva por defecto; habilitada valida HTTPS (HTTP sólo loopback para pruebas), bucket, secreto y timeouts finitos sin imprimir valores sensibles.
+3. RED real antes de producción mediante pruebas JUnit contra HttpServer loopback: contrato/credenciales simuladas, claves distintas, compensación acotada, conflictos/no sobrescritura, fallos/redirecciones/red/timeouts/cuerpo inválido, salida saneada y configuración. Primero fallo de compilación por API aún ausente; luego GREEN y casos afectados. Sin runner de producción existente que comparta este código nuevo: diferencial previo no aplicable, contrato D1 protegido por regresión completa.
+4. Normalización check-only, sin formatter mutante conocido; suites normales y PostgreSQL 17 locales, verificación independiente desde scratch externo, spot-check del padre. Risk: item 2 (credencial privilegiada y almacenamiento privado), con fallos de red de resultado incierto. Verificador independiente no es el implementador; registrar su ID y retorno terminal real.
+5. Assess RDD del candidato final después de todas las fuentes/documentación y verificaciones; solicitar consentimiento específico si corresponde. No commit antes de completar controles. Publicación siempre requiere autorización posterior. Si supera el presupuesto de entrega, resolver estrategia/tamaño antes de commit; no dividir artificialmente comportamiento/tests/docs.
+
+Referencias técnicas primarias consultadas: [Supabase standard uploads](https://supabase.com/docs/guides/storage/uploads/standard-uploads) (alta sin upsert y conflictos), [cliente oficial StorageFileApi](https://github.com/supabase/storage-js/blob/main/src/packages/StorageFileApi.ts) (POST object y DELETE object/bucket con prefixes), [Spring RestClient](https://docs.spring.io/spring-framework/reference/integration/rest-clients.html). No se accedió al proyecto Supabase real.
+
+**Implementación y prueba propia D3a (antes de verificación independiente):** 5 clases de producción y 2 de pruebas nuevas, más configuración y documentación, sin dependencia nueva. El adaptador valida metadatos `public=false` antes de cada POST: el control no hace privado un bucket ni impide cambios administrativos concurrentes. Recibo de una sola compensación confirmada y de la misma instancia; sus carreras locales se prueban con dos tareas concurrentes, sin sleeps. Datos en memoria y MIME concreto sin parámetros; límites funcionales/escaneo no implementados.
+
+RED confirmado: `/tmp/d3a-red-confirmado.log`, fallo de compilación por API ausente. RED de comportamiento `/tmp/d3a-red-mime-confirmado.log`, 1 fallo por permitir parámetros MIME; corregido antes de congelar. RED `/tmp/d3a-red-bucket.log`, 4/4 fallos por no consultar privacidad; corregido con GET y fallo cerrado antes de POST. GREEN `/tmp/d3a-especificas-final.log`: 50/50, cero fallos/errores/omitidas (33 HTTP, 17 configuración). Primer intento de prueba HTTP dentro del sandbox no podía abrir sockets (Operation not permitted); reejecutado con autorización exclusivamente loopback. Un primer comando de pruebas no encontró el test por una ruta relativa equivocada; se movió sólo el archivo propio y se retiraron los directorios vacíos creados por ese comando. No se cuenta ese intento como RED de comportamiento. Normalización: git diff --check conforme; sin normalizador mutante. Suites completas, verificación independiente y RDD pendientes. No commit/push.
+
+
+**Cierre funcional e independiente de D3a, previo a RDD:** verificador distinto Nietzsche `01a1a53d-c197-70d0-9653-fbad2f4d88c4`, clase odd-verify, modelo gpt-6.1-sol/medium; tarea d3a_storage_independent. wait_agent confirmó estado terminal completed y entregó resultados, skill_resolution paths-injected. Extrajo baseline en scratch externo, superpuso exactamente 11 archivos del manifiesto, comprobó hashes antes/después y otros 401 archivos regulares del baseline idénticos. Conclusión por S17/S18: conforme localmente; S19: funcional e independiente completo, RDD pendiente; S20: alcance y separación conservados. Sin bloqueantes reproducidos.
+
+Resultados observados del verificador, desde backend en scratch: `./mvnw -o clean verify` 953/953; `DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 ./mvnw -o verify -Pdb-tests` 451/451, PostgreSQL 17 real local; `./mvnw -o -Dtest=VerificacionIndependienteTest test` 4/4 en copia separada. Todos sin fallos, errores ni omitidas. Los probes adicionales comprobaron denegación de bucket sin escrituras, timeout incierto sin borrado automático, ausencia de marcadores sensibles en logs/Throwable y altas/compensación paralelas preservando un objeto histórico ajeno. El primer intento normal en sandbox falló por restricciones de sockets/JVM (5 fallos/591 errores); reejecución escalada local aprobada, no se presenta ese intento como regresión corregida. Spot-check propio del padre: 50/50 en `/tmp/d3a-spotcheck-padre.log`, sobre las mismas fuentes. V5 conserva SHA-256 `fb9971ff8cab0210b973bae9a0c01cc406e62048c1166a775ef6dd8ea05a875f`; V1–V5, endpoints, entidades/consultas D1 y dependencias sin cambios.
+
+Aviso no bloqueante: dos llamadas `JsonNode.asText()` deprecadas en SupabaseAlmacenDocumentos; javac -Xlint:deprecation confirma compilación exitosa. No se modifica el candidato por ese aviso. Se conservan avisos previos de Mockito/ByteBuddy y fuentes no tocadas. Informe, logs, XML, hashes, conteos y probes conservados exclusivamente en `/tmp/d3a-verificacion-evidencia/`, no en Git; las dos copias scratch del verificador y de la suite se retiran después de conservar evidencia. No hay validación de credenciales reales, RLS/bucket real, archivos grandes, retención/escaneo ni reconciliación; no es aprobación de producción. Lectura de public=false no impide cambios administrativos concurrentes. El contenido de los cinco árboles ajenos sigue idéntico al snapshot D3a. Sin commit, push, PR, migraciones compartidas ni Supabase real. Risk: item 2 (credencial y Storage privado), item 4 (consumo concurrente de capacidad de compensación). Próximo paso: assess y consentimiento RDD específicos, sin heredar consentimientos anteriores.
+
+
+### L18 — Cierre RDD D3a (2026-11-04)
+
+El usuario respondió "granted" al consentimiento específico del candidato `sha256:30cb6a5fbf314cfcdf087719361b20be3ca86209f559d48c63cb0f9e4ba52b27` (11 archivos, 701 líneas; árbol `aacdfb345c889fc428fa00664899acf22f105457`). Se ejecutó exactamente la invocación nativa seleccionada, lineage `review-469b8c212631c291`, y luego su STATUS vinculado. Las cuatro capturas nativas se lanzaron concurrentemente en orden riesgo, resiliencia, legibilidad y confiabilidad; todas terminaron y fueron admitidas, sin hallazgos. Inspeccionaron parches inmutables, no ejecutaron pruebas; la evidencia funcional e independiente sigue siendo la de L17.
+
+La última captura devolvió approved y su continuación exacta de reconocimiento; ésta confirmó `gentle-ai.review-acknowledged/v1`, `action=acknowledged`, `authority=burned`, revisión consumida `sha256:d3f7029a0d29de76e8d90c09817dd0d2f7d0b351de47581cdb0f1c9f1b60b39f`. No hubo corrección ni cambios ejecutables posteriores. Resultados de L17 conservados: 50 específicas, 953 normales, 451 PostgreSQL 17 y 4 probes independientes aprobados; no se repiten sobre bytes idénticos. Persisten los dos avisos asText deprecados y los límites de validación real ya documentados.
+
+Esta entrada y el estado de la tarea son un ajuste documental posterior, no bytes automáticamente cubiertos por el candidato revisado. Se comprueba su estructura y se aplica assess por separado, sin atribuirle el reconocimiento anterior. La unidad excede el presupuesto de entrega: no hay excepción de tamaño D3a aprobada ni se heredan las anteriores. No se realiza commit, push, PR, merge ni Supabase real. Se conserva la separación D3b no autorizada y las cinco entradas locales ajenas. Risk: item 2 e item 4; revisión y verificación independiente completadas, publicación no autorizada.
+
+Assess del ajuste documental posterior: `risk=medium`, `review_due=false`, `review_due_reason=under_budget`; sólo cambió este documento respecto del árbol reconocido. Lectura estructural y whitespace conformes; no se reinicia revisión del código idéntico. El delta documental no hereda el reconocimiento del candidato original. Las verificaciones funcionales e independientes siguen aplicando a fuentes/configuración idénticas.
+
+
+### L19 — Excepción propia y commit local D3a (2026-11-04)
+
+El usuario autorizó: "Autorizo la excepción de tamaño exclusivamente para D3a: 11 archivos y 712 líneas, más el registro documental mínimo de esta autorización en ODD." También autorizó el commit local `feat(documentos): implementar adaptador privado de Supabase Storage`, condicionado a identidad ejecutable/pruebas, ausencia de secretos y assess sin nueva revisión obligatoria. Se mantienen juntos puerto, adaptador, configuración, pruebas y documentación porque forman una única infraestructura verificable, sin ampliar funciones ni heredar excepciones. La comparación binaria con el árbol RDD `aacdfb345c889fc428fa00664899acf22f105457` confirma diez archivos idénticos; sólo este documento agrega cierre y autorización. Siguen aplicando 50 específicas, 953 normales, 451 PostgreSQL y 4 comprobaciones independientes; no se repiten sobre fuentes idénticas. Registro posterior sujeto a assess propio, no a la aprobación anterior. No push, PR, merge, Supabase real, V1–V5 ni D3b. Los JSON/logs temporales RDD ya no están disponibles; la trazabilidad reconocida se conserva en L18 y Engram, sin simular nuevas ejecuciones. Risk: item 2 e item 4; controles ya completados, alcance de esta continuación únicamente documental y commit local.

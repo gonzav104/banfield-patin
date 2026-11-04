@@ -90,3 +90,12 @@ banfield:
     nombre: ${BOOTSTRAP_ADMIN_NOMBRE:}
     apellido: ${BOOTSTRAP_ADMIN_APELLIDO:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+
+  documentos:
+    storage:
+      habilitado: ${DOCUMENTOS_STORAGE_HABILITADO:false}
+      url: ${SUPABASE_URL:}
+      bucket: ${SUPABASE_BUCKET_DOCUMENTOS:}
+      credencial: ${SUPABASE_SERVICE_ROLE_KEY:}
+      conexion: ${DOCUMENTOS_STORAGE_TIMEOUT_CONEXION:PT3S}
+      respuesta: ${DOCUMENTOS_STORAGE_TIMEOUT_RESPUESTA:PT15S}
