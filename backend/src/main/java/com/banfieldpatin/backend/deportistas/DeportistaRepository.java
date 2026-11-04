@@ -17,6 +17,8 @@ import jakarta.persistence.LockModeType;
 /** Toda consulta lleva el predicado de escuela: un id de otra escuela es indistinguible de uno inexistente. */
 public interface DeportistaRepository extends JpaRepository<Deportista, UUID> {
 
+	boolean existsByIdAndEscuelaId(UUID id, UUID escuelaId);
+
 	Optional<Deportista> findByIdAndEscuelaId(UUID id, UUID escuelaId);
 
 	/**

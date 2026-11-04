@@ -67,14 +67,14 @@ class V4ConstraintsDbTest extends BaseDbTest {
 	// ---------- migracion ----------
 
 	@Test
-	void v4SeAplicaSobreV1V2V3() {
+	void v4PermaneceAplicadaConV5() {
 		List<String> versiones = jdbc.sql("""
 				SELECT version FROM gestion_patin.flyway_schema_history
 				WHERE success AND version IS NOT NULL ORDER BY installed_rank
 				""")
 				.query(String.class).list();
 
-		assertThat(versiones).containsExactly("1", "2", "3", "4");
+		assertThat(versiones).containsExactly("1", "2", "3", "4", "5");
 	}
 
 	@Test

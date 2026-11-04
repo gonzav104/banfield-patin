@@ -12,6 +12,19 @@ import org.springframework.data.repository.query.Param;
 /** Toda consulta lleva el predicado de escuela: un id de otra escuela es indistinguible de uno inexistente. */
 public interface TutorRepository extends JpaRepository<Tutor, UUID> {
 
+ /** Alcance de tutor independiente del vinculo familia-deportista. */
+ String ALCANCE_FAMILIA = """
+ from Tutor t join Familia f on f.id = t.familiaId and f.escuelaId = t.escuelaId
+ where t.escuelaId = :escuelaId and t.familiaId = :familiaId
+ and t.activo = true and f.activa = true
+ """;
+
+ boolean existsByIdAndEscuelaId(UUID id, UUID escuelaId);
+
+ @Query("select t.id " + ALCANCE_FAMILIA + " and t.id = :tutorId")
+ Optional<UUID> tutorEnAlcance(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+         @Param("tutorId") UUID tutorId);
+
 	Optional<Tutor> findByIdAndEscuelaId(UUID id, UUID escuelaId);
 
 	/** Tutores de la familia (cualquier estado) ordenados por apellido, nombre y id. */

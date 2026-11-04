@@ -51,6 +51,7 @@ import com.banfieldpatin.backend.usuarios.mfa.MfaAdminController;
 import com.banfieldpatin.backend.usuarios.mfa.MfaController;
 import com.banfieldpatin.backend.usuarios.mfa.MfaService;
 
+import com.banfieldpatin.backend.documentos.*;
 import jakarta.servlet.http.Cookie;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -68,7 +69,7 @@ import tools.jackson.databind.json.JsonMapper;
 		MfaAdminController.class, FamiliaAdminController.class, FamiliaGestionAdminController.class,
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
-		FamiliaPortalTemporadasController.class })
+		FamiliaPortalTemporadasController.class, DocumentoAdminController.class, DocumentoFamiliaController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })
@@ -130,6 +131,9 @@ abstract class BaseOpenApiWebMvc {
 	protected DeportistaTemporadaAdminService deportistaTemporadaAdminService;
 	@MockitoBean
 	protected FamiliaPortalTemporadasService familiaPortalTemporadasService;
+
+	@MockitoBean
+	protected DocumentoConsultaService documentoConsultaService;
 
 	protected Cookie sesion(Rol rol) {
 		UUID familia = rol == Rol.FAMILIA ? UUID.randomUUID() : null;

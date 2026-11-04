@@ -87,6 +87,10 @@ public class OpenApiConfig {
 			entry("GET /api/admin/invitaciones/{id}", ruta(200, "404 INVITACION_NO_ENCONTRADA")),
 			entry("POST /api/admin/invitaciones/{id}/revocar",
 					ruta(200, "404 INVITACION_NO_ENCONTRADA", "409 INVITACION_NO_REVOCABLE")),
+			entry("GET /api/admin/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
+			entry("GET /api/admin/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
+			entry("GET /api/familia/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
+			entry("GET /api/familia/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
 			// --- Familias
 			entry("GET /api/admin/familias", ruta(200)),
 			entry("GET /api/admin/familias/listado", ruta(200)),

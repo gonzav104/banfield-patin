@@ -21,6 +21,8 @@ import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaRespuesta;
 import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaSolicitud;
 import com.banfieldpatin.backend.temporadas.dto.PlantelRespuesta;
 
+import tools.jackson.databind.json.JsonMapper;
+
 /** Edicion (PUT) de los datos deportivos contra PostgreSQL real. */
 @PruebaDb
 @Import(ConfigTemporadasDb.class)
@@ -84,7 +86,11 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 	@Test
 	void laAuditoriaTieneNombresDeCamposYElCambioDeEstadoPeroNingunValorDeportivo() {
 		UUID d = deportista(escuelaA, "Ana", "Perez", true);
-		UUID t = datos.temporada(escuelaA, 2027, false);
+		UUID t = UUID.fromString("11111111-1111-4111-8111-111007009111");
+		jdbc.sql("""
+				INSERT INTO gestion_patin.temporada (id, escuela_id, anio, activa)
+				VALUES (:id, :e, 2027, false)
+				""").param("id", t).param("e", escuelaA).update();
 		DeportistaTemporadaRespuesta creada = alta(new UsuarioDeEscuela(admin), d, t, "Sub 12", "007");
 
 		dts.actualizar(admin, d, t, cambio("Sub 14", "009", EstadoDeportivo.SUSPENDIDO), DATOS);
@@ -94,8 +100,12 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 				WHERE escuela_id = :e AND accion = 'DEPORTISTA_TEMPORADA_ACTUALIZADA'
 				""").param("e", escuelaA).query().singleRow();
 		assertThat(evento).containsEntry("recurso_id", creada.id()).containsEntry("usuario_id", admin.id());
-		assertThat((String) evento.get("detalle")).contains("categoria", "numeroCorredor", "estadoDeportivo", "ACTIVO",
-				"SUSPENDIDO", t.toString()).doesNotContain("Sub 14", "Sub 12", "007", "009", "Femenino");
+		// Igualdad estructural: no admite valores deportivos ni confunde fragmentos del UUID con ellos.
+		var detalle = new JsonMapper().readTree((String) evento.get("detalle"));
+		assertThat(detalle).isEqualTo(new JsonMapper().readTree("""
+				{"temporadaId":"%s","camposModificados":["categoria","numeroCorredor","estadoDeportivo"],
+				 "estadoAnterior":"ACTIVO","estadoNuevo":"SUSPENDIDO"}
+				""".formatted(t)));
 	}
 
 	@Test
