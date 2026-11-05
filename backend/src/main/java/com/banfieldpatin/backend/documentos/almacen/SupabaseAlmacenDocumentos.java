@@ -35,22 +35,98 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 				.defaultHeader("apikey", propiedades.credencial()).build();
 	}
 
+    @Override
+    public DestinoPreparado prepararDestino() {
+        return new DestinoPreparado(propiedades.bucket(), UUID.randomUUID());
+    }
+
+    @Override
+    public void crear(DestinoPreparado destino, java.io.InputStream contenido, long tamanioBytes, String tipoContenido) {
+        validarDestino(destino);
+        MediaType mime = validarMime(tipoContenido);
+        if (contenido == null || tamanioBytes <= 0) throw fallo(ENTRADA_INVALIDA, false);
+        verificarBucketPrivado();
+        var alta = cliente.post().uri("/object/{bucket}/{clave}", destino.bucketInterno(), destino.objetoIdInterno())
+                .header("x-upsert", "false").contentType(mime).contentLength(tamanioBytes)
+                .body(salida -> {
+                    byte[] bloque = new byte[8192];
+                    long restantes = tamanioBytes;
+                    while (restantes > 0) {
+                        int n = contenido.read(bloque, 0, (int) Math.min(bloque.length, restantes));
+                        if (n < 0) throw new java.io.IOException("Contenido incompleto");
+                        if (n == 0) {
+                            int b = contenido.read();
+                            if (b < 0) throw new java.io.IOException("Contenido incompleto");
+                            salida.write(b); restantes--;
+                        } else { salida.write(bloque, 0, n); restantes -= n; }
+                    }
+                    if (contenido.read() != -1) throw new java.io.IOException("Contenido excedente");
+                });
+        confirmarAlta(ejecutar(alta, false), destino.objetoIdInterno());
+    }
+
+    @Override
+    public InspeccionAlmacen inspeccionar(DestinoPreparado destino) {
+        validarDestino(destino);
+        long inicio = System.nanoTime();
+        try {
+            verificarBucketPrivado();
+            return cliente.head().uri("/object/authenticated/{bucket}/{clave}", destino.bucketInterno(), destino.objetoIdInterno())
+                    .exchange((req, res) -> {
+                        int estado = res.getStatusCode().value();
+                        if (estado == 404) return InspeccionAlmacen.ausente();
+                        if (estado == 401 || estado == 403) return InspeccionAlmacen.incierta(AUTENTICACION);
+                        if (estado != 200) return InspeccionAlmacen.incierta(estado >= 400 && estado < 500 ? RECHAZADO : RESPUESTA_INESPERADA);
+                        var longitudes = res.getHeaders().get("Content-Length");
+                        var tipos = res.getHeaders().get("Content-Type");
+                        if (longitudes == null || longitudes.size() != 1 || tipos == null || tipos.size() != 1
+                                || !longitudes.getFirst().matches("[1-9][0-9]{0,18}") || tipos.getFirst().length() > 1000)
+                            return InspeccionAlmacen.incierta(RESPUESTA_INESPERADA);
+                        try {
+                            long tamanio = Long.parseLong(longitudes.getFirst());
+                            String mime = validarMime(tipos.getFirst()).toString();
+                            return InspeccionAlmacen.existe(tamanio, mime);
+                        } catch (IllegalArgumentException | FalloAlmacenDocumentos ex) {
+                            return InspeccionAlmacen.incierta(RESPUESTA_INESPERADA);
+                        }
+                    });
+        } catch (FalloAlmacenDocumentos ex) {
+            return InspeccionAlmacen.incierta(ex.codigo());
+        } catch (ResourceAccessException ex) {
+            return InspeccionAlmacen.incierta(errorRed(ex, inicio).codigo());
+        } catch (RuntimeException ex) {
+            return InspeccionAlmacen.incierta(RESPUESTA_INESPERADA);
+        }
+    }
+
+    private void validarDestino(DestinoPreparado destino) {
+        if (destino == null || !propiedades.bucket().equals(destino.bucketInterno())) throw fallo(ENTRADA_INVALIDA, false);
+    }
+
+    private static MediaType validarMime(String tipoContenido) {
+        try {
+            MediaType mime = MediaType.parseMediaType(tipoContenido);
+            if (!mime.isConcrete() || !mime.getParameters().isEmpty() || tipoContenido.chars().anyMatch(c -> c < 32 || c == 127))
+                throw new IllegalArgumentException();
+            return mime;
+        } catch (IllegalArgumentException ex) { throw fallo(ENTRADA_INVALIDA, false); }
+    }
+
+    private void confirmarAlta(JsonNode confirmacion, UUID clave) {
+        if (confirmacion == null || !confirmacion.isObject() || !confirmacion.path("Key").asText().equals(propiedades.bucket() + "/" + clave))
+            throw fallo(RESPUESTA_INESPERADA, true);
+    }
+
 	@Override
 	public Creado crear(byte[] contenido, String tipoContenido) {
-		MediaType mime;
-		try {
-			mime = MediaType.parseMediaType(tipoContenido);
-			if (!mime.isConcrete() || !mime.getParameters().isEmpty() || tipoContenido.chars().anyMatch(c -> c < 32 || c == 127)) throw new IllegalArgumentException();
-		} catch (IllegalArgumentException ex) { throw fallo(ENTRADA_INVALIDA, false); }
+		MediaType mime = validarMime(tipoContenido);
 		if (contenido == null || contenido.length == 0) throw fallo(ENTRADA_INVALIDA, false);
 		verificarBucketPrivado();
 		UUID clave = UUID.randomUUID();
 		var alta = cliente.post().uri("/object/{bucket}/{clave}", propiedades.bucket(), clave)
 				.header("x-upsert", "false").contentType(mime).body(contenido);
 		JsonNode confirmacion = ejecutar(alta, false);
-		if (confirmacion == null || !confirmacion.isObject() || !confirmacion.path("Key").asText().equals(propiedades.bucket() + "/" + clave)) {
-			throw fallo(RESPUESTA_INESPERADA, true);
-		}
+		confirmarAlta(confirmacion, clave);
 		return new Creado(clave, this);
 	}
 
@@ -95,14 +171,18 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 				try { return JSON.readTree(bytes); }
 				catch (RuntimeException ex) { throw fallo(RESPUESTA_INESPERADA, true); }
 			});
-		} catch (ResourceAccessException ex) {
-			boolean timeout = System.nanoTime() - inicio >= propiedades.respuesta().toNanos();
-			for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
-				if (causa instanceof HttpTimeoutException || causa instanceof SocketTimeoutException) timeout = true;
-			}
-			throw fallo(timeout ? TIMEOUT : RED, true);
-		}
-	}
+        } catch (ResourceAccessException ex) {
+            throw errorRed(ex, inicio);
+        }
+    }
+
+    private FalloAlmacenDocumentos errorRed(ResourceAccessException ex, long inicio) {
+        boolean timeout = System.nanoTime() - inicio >= propiedades.respuesta().toNanos();
+        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
+            if (causa instanceof HttpTimeoutException || causa instanceof SocketTimeoutException) timeout = true;
+        }
+        return fallo(timeout ? TIMEOUT : RED, true);
+    }
 
 	private static FalloAlmacenDocumentos fallo(FalloAlmacenDocumentos.Codigo codigo, boolean incierto) {
 		return new FalloAlmacenDocumentos(codigo, incierto);

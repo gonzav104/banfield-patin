@@ -105,3 +105,26 @@ PUBLICADA requiere Documento cuyo id coincide con la operación, misma escuela/p
 Un commit incierto exige leer operación y Documento desde otra conexión antes de decidir. Un reinicio no prueba éxito externo. TRANSFIRIENDO o RECONCILIANDO sin respuesta permanecen sin resolver: reserva vencida, 404 remoto o cancelación local no demuestran ausencia definitiva del objeto. Ningún código B1 consulta/borra Storage ni interpreta CERRADA como resultado de un borrado real. Reconciliación, scanner, autorización y atomicidad con auditoría pertenecen a unidades posteriores y requieren pruebas propias.
 
 No persistir nombres originales, DNI/CUIL, contenido, credenciales ni respuestas crudas en este registro. Identificadores y SHA de archivo son información interna; no deben filtrarse en URLs, logs ni DTO. B1 no añade API ni lectura de estas filas al frontend.
+
+
+## B2 — Puerto recuperable, sin flujo documental
+
+`prepararDestino()` genera sin tráfico un destino interno `(storage_bucket, objeto_id UUID)` para persistirlo **antes** del POST. `DestinoPreparado.desdeRegistro` rehidrata esos valores tras reinicio, valida el segmento como V6 y no admite rutas, nombres originales ni URLs. El adaptador exige que el bucket coincida exactamente con su configuración para cada alta o inspección. Estos tipos no son DTO HTTP; no deben serializarse al frontend. Sus métodos `toString` omiten las referencias. No hay cambios en V1–V6.
+
+`crear(destino, InputStream, longitud, MIME)` sólo envía al UUID preparado, con `x-upsert=false`, y confirma el `Key` exacto. Una colisión es CONFLICTO; no se sobrescribe ni se compensa/reintenta automáticamente. La entrada se copia en bloques de **8 KiB**, sin materializar otra copia completa, y debe coincidir con su longitud declarada. MIME sintácticamente válido no equivale a validar el contenido: validación estructural y antimalware pertenecen a otras unidades. No se fija aquí el límite funcional de archivo ni la concurrencia del flujo futuro.
+
+El stream es prestado, de un solo uso y propiedad del llamador: debe cerrarse con `try-with-resources`, incluso al fallar. No se reabre ni reproduce. Debe proceder de una fuente local controlada que permita terminar/cerrar la lectura; B2 no hace interruptible un `InputStream` arbitrario cuyo `read()` se bloquee. Un timeout no demuestra que cesó una escritura remota ni autoriza borrar o reenviar. Tras iniciar el POST, errores de red, confirmación inválida o discrepancia de longitud dejan resultado incierto. Un error de entrada o de comprobación previa del bucket no inicia el POST. La API D3a de `byte[]` y su recibo efímero conservan su comportamiento. `resultadoIncierto=false` se refiere al intento actual: nunca descarta que un escritor de un intento anterior continúe pendiente.
+
+`inspeccionar(destino)` comprueba primero el bucket privado y usa **HEAD autenticado** sin descargar el documento. Sólo proyecta tamaño positivo y MIME sintácticamente válido; cabeceras ausentes, inválidas o inesperadas producen incertidumbre. La consulta no retorna URLs, cuerpos del proveedor, nombres, IDs ni ETag. **No ofrece un SHA-256 del contenido** ni presupone que ETag sea equivalente. Fuentes primarias consultadas para el contrato HTTP: [ruta HEAD autenticada](https://github.com/supabase/storage/blob/master/src/http/routes/object/getObjectInfo.ts) y [cliente oficial](https://github.com/supabase/storage-js/blob/main/src/packages/StorageFileApi.ts). La compatibilidad con una instalación concreta no se ha probado contra Supabase real.
+
+| Resultado | Alcance de la observación |
+| --- | --- |
+| EXISTENCIA_CONFIRMADA | HEAD 200 y metadatos válidos en ese instante; no prueba contenido, publicación ni estabilidad posterior. |
+| AUSENCIA_OBSERVADA | HEAD 404 después de comprobar el bucket; no prueba fin de un POST pendiente ni ausencia definitiva. |
+| INCIERTA | Red, timeout, autenticación, bucket no privado, respuesta inesperada o metadatos inválidos; motivo tipado sin respuesta cruda. |
+
+Una entrada/destino inválidos fallan antes de contactar con el proveedor. Los errores de inspección no se transforman en ausencia. Una reserva vencida o una observación 404 no habilitan reenvíos ni borrados automáticos; B1 mantiene la decisión durable pendiente.
+
+**Compensación recuperable fuera de B2:** no se añade borrado por destino ni se reconstruye `Creado` desde la fila SQL. Se preserva `eliminarCreado(Creado)` de D3a, ligado a su emisor y consumible una vez, sólo para creación confirmada dentro de esa instancia. Una limpieza tras reinicio depende de B6/B8: autorización fresca, ausencia de publicación y control de escritores remotos tardíos deben demostrarse allí. B2 no implementa esos servicios, scanner, mutadores, endpoints ni reconciliación operativa. Storage sigue desactivado por defecto y los tests sólo usan HTTP sintético local.
+
+La rehidratación presupone la configuración del mismo proyecto Storage asociado al registro PostgreSQL: V6 no persiste un origen remoto. Un cambio de URL/proyecto exige evaluación operativa de las operaciones pendientes, no una reasignación silenciosa por coincidencia de bucket/UUID. La comprobación de privacidad es previa a cada operación; no bloquea cambios administrativos posteriores del proveedor.

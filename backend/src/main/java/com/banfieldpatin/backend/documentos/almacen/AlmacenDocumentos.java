@@ -1,10 +1,15 @@
 package com.banfieldpatin.backend.documentos.almacen;
 
+import java.io.InputStream;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Puerto interno: no acepta rutas ni nombres originales y nunca entrega URLs. No es un DTO HTTP. */
 public interface AlmacenDocumentos {
+    DestinoPreparado prepararDestino();
+    /** Stream de un solo uso, propiedad del llamador; éste debe cerrarlo, también ante error. */
+    void crear(DestinoPreparado destino, InputStream contenido, long tamanioBytes, String tipoContenido);
+    InspeccionAlmacen inspeccionar(DestinoPreparado destino);
 	Creado crear(byte[] contenido, String tipoContenido);
 	void eliminarCreado(Creado creado);
 
