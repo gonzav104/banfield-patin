@@ -1,6 +1,6 @@
 # Fase 3 — Gestión privada de documentos
-Objetivo actual: B1 de D3b, registro SQL durable sin mutadores ni Storage. D3a integrada por PR #11, merge `85f354636e3ae0c44fa2e94638393a97e5002886`; historial anterior conservado.
-Rama B1: `feat/operaciones-carga-documental`, desde main actualizado. Entrega `ask-on-risk`; pronóstico 400–600 líneas, sin excepción de tamaño heredada y sin commit antes de verificaciones/RDD. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17 local). Sin push/PR/merge B1 ni despliegue.
+Objetivo actual: B2 de D3b, puerto de almacenamiento recuperable sin flujo de carga. B1 integrada por PR #12, merge `29deb01f55212f32f7fe6616e5becdb05bc1fb86`; historial anterior conservado.
+Rama B2: `feat/documentos-storage-recuperable`, desde main actualizado. Entrega `ask-on-risk`; pronóstico B2 500–750 líneas, sin excepción de tamaño heredada y sin commit antes de verificaciones/RDD. Runner: `cd backend && ./mvnw -o clean verify` y `./mvnw -o verify -Pdb-tests` (PostgreSQL 17 local). Sin push/PR/merge B1 ni despliegue.
 
 ## Specs
 
@@ -40,6 +40,11 @@ Rama B1: `feat/operaciones-carga-documental`, desde main actualizado. Entrega `a
 - **S28 (verificabilidad B1, L22).** "Cerrar la evaluación de verificabilidad de B1 y, si las reglas ODD lo permiten, realizar RDD sobre el candidato definitivo." / "Mantené B1-C registrada como incidencia intermitente sin causa raíz demostrada." / "Diferenciá claramente entre verificación funcional aprobada e incidencia ambiental no resuelta." / "Si B1-C constituye un bloqueo obligatorio según ODD, no lo ignores: explicá la regla y detené el avance."
 - **S29 (RDD B1, L22).** "Recalculá el inventario exacto de archivos, líneas y hash del candidato, incluyendo los últimos cambios documentales." / "Ejecutá el assess nativo RDD sobre el candidato completo." / "Solicitá el consentimiento correspondiente si el protocolo lo requiere." / "Realizá una revisión independiente con las lentes pertinentes a persistencia, seguridad, aislamiento y concurrencia."
 - **S30 (límites RDD B1, L22).** "Corregí exclusivamente defectos demostrados, siguiendo RED/GREEN y reevaluando el candidato si cambia." / "No modificar V1–V6 salvo que RDD demuestre un defecto y exista autorización específica para corregirlo." / "No hacer commit, push, PR ni merge." / "No solicitar todavía excepción de tamaño." / "Si el protocolo exige consentimiento o intervención humana, detenete en ese punto."
+
+- **S31 (B2, L24).** "Extender el contrato de AlmacenDocumentos para trabajar con destinos opacos preparados previamente y permitir inspecciones remotas seguras ante operaciones interrumpidas." / "Diseñá un destino interno compatible con storage_bucket y objeto_id de V6." / "Permití crear un objeto exclusivamente en el destino preparado, con `x-upsert=false`." / "Impedí rutas arbitrarias, traversal, sobrescritura y exposición de referencias internas."
+- **S32 (B2, L24).** "Implementá inspección remota controlada y acotada, con errores saneados y resultados diferenciados entre existencia confirmada, ausencia observada e incertidumbre." / "No interpretes un 404 como prueba de que una escritura remota pendiente ha terminado." / "No supongas que un ETag equivale al SHA-256 del contenido." / "Conservá las verificaciones del bucket privado y la configuración desactivada por defecto."
+- **S33 (B2, L24).** "Evaluá una entrada de contenido con consumo acotado de memoria, sin introducir buffering adicional injustificado." / "Preservá la compatibilidad con las operaciones y pruebas D3a existentes." / "No implementes borrado genérico por clave. Cualquier capacidad de compensación recuperable debe exigir que un componente futuro aporte evidencia de autorización y ausencia de publicación; si eso requiere B6/B8, dejá esa operación fuera de B2 y documentá la dependencia."
+- **S34 (B2, L24).** "Pruebas RED/GREEN con servidor HTTP simulado." / "Creación sin sobrescritura y colisiones." / "Fallos antes, durante y después de transferir." / "Timeouts, respuestas inciertas y metadatos remotos inesperados." / "Reinicios simulados y referencias recuperadas." / "Regresión de D3a y B1." / "Suites completas normal y PostgreSQL." / "Verificación independiente y assess RDD; solicitar consentimiento cuando corresponda."
 
 Las tablas siguientes conservan propuestas para unidades posteriores. O1-A/O2-A y D1 están aprobadas según L4; no se aprueban por arrastre WADA anual, retención, escaneo, límites operativos ni transiciones/restricciones definitivas. Registro formal de O1/O2 en `docs/DECISIONES.md`.
 
@@ -185,6 +190,7 @@ Pruebas previstas: JUnit servicio/DTO, WebMvc (rol/sesión/errores/contrato), Te
 | D3a | S17–S20 | Puerto y adaptador privado, errores/configuración y HTTP simulado | implementación inline; mapa delegado por presupuesto; verificador independiente por ítem 2 | VERIFICADA funcional e independientemente en L17: 50 específicas, 953 normales, 451 DB y 4 probes; explorador/verificador terminados por wait_agent, paths-injected; RDD cuatro lentes sin hallazgos reconocido en L18; commit pendiente de decisión de tamaño/entrega |
 | B1 | S21–S24,S28–S30 | Registro SQL durable: V6, pruebas y documentación | implementación inline; verificación independiente por ítems 1/2/4 | VERIFICADA FUNCIONAL, INDEPENDIENTE Y RDD L22: 57 B1, 953 normales vigentes, 508 DB; cuatro lentes sin hallazgos y reconocimiento nativo confirmado; B1-C abierta; delta documental de cierre se evalúa aparte, sin commit ni excepción de tamaño |
 | B1-C | S25–S27,S28 | Diagnóstico y corrección causal del arranque local bloqueante | inline; verificación independiente por entorno/concurrencia | ABIERTA, diagnóstico INCONCLUSO L21; causalidad pendiente, sin corrección; L22 separa esta incidencia histórica de la verificación funcional actual aprobada, sin declararla resuelta |
+| B2 | S31–S34 | Puerto recuperable: destinos opacos, POST sin upsert, inspección y streaming acotado | inline; verificador independiente ítems 2/4 con excepción B2 propia | VERIFICADA FUNCIONAL, INDEPENDIENTE Y RDD L24: cuatro lentes sin hallazgos, reconocimiento nativo confirmado; 110 específicas/1013 normales/508 DB/seis probes/spot-check vigentes; delta documental de cierre se evalúa aparte, sin excepción de tamaño ni commit |
 | D3b | S5,S6,S8 | Flujo de carga documental con autorización, publicación y compensación integral | reevaluar al autorizar | NO AUTORIZADA; depende D3a y decisiones P6/P7/P9 y límites operativos; sin endpoints en D3a |
 | D4 | S4,S5 | Revisión y reemplazo sin sobrescritura | inline; verificar ítems 1/2/4 | NO AUTORIZADA; depende D3 y P4 |
 | D5 | S5,S7 | Gestión documental de tutores con alcance familiar | inline; verificar ítem 2 | NO AUTORIZADA para escritura; consulta de tutor incluida en D1; depende D4 |
@@ -817,3 +823,86 @@ Este registro y el estado de la tabla son un **delta documental posterior al rec
 ### L23 — Excepción de tamaño y commit local B1 autorizados (2026-11-04)
 
 El usuario autorizó explícitamente, sólo para B1, «8 archivos, 720 líneas (707 añadidas y 13 eliminadas)», candidato `sha256:c6a15154f9f79b3c73d9b2fa5198d531d13cd29e933cdf382c3759e7fd5d10f9`, más este registro documental mínimo, y el commit local `feat(documentos): registrar operaciones durables de carga documental`. Justificación: conservar como una unidad coherente las invariantes SQL, sus pruebas y la trazabilidad ODD/RDD ya verificadas. No se extiende a B2 ni otras unidades. Se conserva la evidencia 953 normales/508 PostgreSQL (57 B1), verificación independiente, cuatro lentes sin hallazgos y reconocimiento nativo; no se repiten pruebas de ejecutables idénticos. Este delta documental requiere assess propio, sin atribuirle automáticamente la aprobación anterior. B1-C permanece ABIERTA e inconclusa, sin reparación demostrada. No se autorizan push, PR, merge, despliegue, Supabase real ni bases compartidas; las cinco entradas ajenas permanecen excluidas. El SHA y las comprobaciones finales se registran en el cierre externo para no generar otro cambio posterior al commit.
+
+
+### L24 — B2 autorizada y plan previo a fuentes (2026-11-04)
+
+> B1 está integrada en main mediante el merge commit `29deb01f55212f32f7fe6616e5becdb05bc1fb86`.
+>
+> Autorizo iniciar B2 — Puerto de almacenamiento recuperable, exclusivamente en una rama local nueva desde main actualizado.
+>
+> ### Objetivo
+>
+> Extender el contrato de AlmacenDocumentos para trabajar con destinos opacos preparados previamente y permitir inspecciones remotas seguras ante operaciones interrumpidas.
+>
+> ### Preparación
+>
+> 1. Confirmá main sincronizado y CI del merge B1 satisfactorio.
+> 2. Revisá el adaptador D3a, las restricciones de V6 y el plan ODD.
+> 3. Creá una rama independiente para B2.
+> 4. Conservá intactas las cinco entradas locales sin seguimiento.
+> 5. Registrá B2 como unidad ODD independiente, sin heredar excepciones anteriores.
+>
+> ### Implementación
+>
+> 1. Diseñá un destino interno compatible con storage_bucket y objeto_id de V6.
+> 2. Permití crear un objeto exclusivamente en el destino preparado, con `x-upsert=false`.
+> 3. Impedí rutas arbitrarias, traversal, sobrescritura y exposición de referencias internas.
+> 4. Implementá inspección remota controlada y acotada, con errores saneados y resultados diferenciados entre existencia confirmada, ausencia observada e incertidumbre.
+> 5. No interpretes un 404 como prueba de que una escritura remota pendiente ha terminado.
+> 6. No supongas que un ETag equivale al SHA-256 del contenido.
+> 7. Conservá las verificaciones del bucket privado y la configuración desactivada por defecto.
+> 8. Evaluá una entrada de contenido con consumo acotado de memoria, sin introducir buffering adicional injustificado.
+> 9. Preservá la compatibilidad con las operaciones y pruebas D3a existentes.
+> 10. No implementes borrado genérico por clave. Cualquier capacidad de compensación recuperable debe exigir que un componente futuro aporte evidencia de autorización y ausencia de publicación; si eso requiere B6/B8, dejá esa operación fuera de B2 y documentá la dependencia.
+>
+> ### Verificación
+>
+> - Pruebas RED/GREEN con servidor HTTP simulado.
+> - Creación sin sobrescritura y colisiones.
+> - Fallos antes, durante y después de transferir.
+> - Timeouts, respuestas inciertas y metadatos remotos inesperados.
+> - Reinicios simulados y referencias recuperadas.
+> - Regresión de D3a y B1.
+> - Suites completas normal y PostgreSQL.
+> - Verificación independiente y assess RDD; solicitar consentimiento cuando corresponda.
+>
+> ### Límites
+>
+> No modificar V1–V6.
+> No implementar endpoints, repositorios mutadores, scanner, carga documental ni reconciliación operativa.
+> No habilitar Supabase real ni usar documentos personales.
+> No hacer commit antes de completar ODD/RDD.
+> No hacer push, PR, merge ni despliegue.
+> Toda excepción de tamaño requiere autorización específica.
+>
+> Entregá el candidato B2, inventario y hash, pruebas ejecutadas, resultados de revisión y riesgos pendientes.
+
+**Excepción operativa B2 propia:** el usuario respondió literalmente «autorizo» a usar spawn_agent y wait_agent sin list_agents, con verificador independiente real, resultado terminal comprobado y RDD nativo completo. No constituye cumplimiento literal del protocolo habitual ni hereda las excepciones B1/D3a; no se autoriza sustitución de modelos ni excepción de tamaño.
+
+**Plan y ruta:** una unidad de comportamiento inline, S31–S34, con código/pruebas/documentación juntos; pronóstico 500–750 líneas antes del tamaño real, sin commit y sin modificar V1–V6. Nuevo destino UUID y bucket validado como V6, preparación sin tráfico y rehidratación desde registro; cada operación verifica el bucket configurado y su privacidad. POST sin upsert; creación nueva no devuelve capacidad de borrado recuperable. Se mantiene la compensación efímera D3a sin generalizarla; B6/B8 deben aportar garantías propias para eliminación tras reinicio. HEAD autenticado, sin descargar contenido, distingue observación 404 de ausencia definitiva y nunca interpreta ETag como SHA-256. Resultado saneado con tamaño/MIME validado y motivo tipado de incertidumbre; sin URLs, cuerpo remoto ni identificadores en toString. Flujo InputStream de un solo uso, longitud declarada y copia de 8 KiB, sin copia completa; titular del stream debe cerrarlo y no se reenvía automáticamente. Fallos tras iniciar POST son inciertos; validar entrada y bucket antes de consumir contenido. Las fuentes primarias del proveedor respaldan HEAD autenticado; se probará contra HTTP local, no Supabase real. RED por regla nueva, GREEN, 50 D3a y 57 B1, suites completas delegadas al verificador gpt-6.1-sol/medium en scratch nuevo, probes propios y spot-check del padre. RDD después de las verificaciones, consentimiento específico cuando corresponda. Risk: ítems 2/4 (credenciales, aislamiento de destino y resultados interrumpidos); no se presume autorización familiar, escaneo ni reconciliación.
+
+**Primeras evidencias B2:** RED de contrato observado: NoSuchMethodException de prepararDestino. El primer intento HTTP quedó bloqueado por socket del sandbox (no cuenta como RED funcional); con permiso local el RED real produjo 17 fallos/25 errores frente a métodos sin implementar, 53 casos. GREEN inicial: 103/103 (53 B2 y 50 D3a), sin omitidas. Se incorporan además regresiones de timeout tras POST, bucket 404/errores, propiedad del stream y ausencia de borrado recuperable. Fallo inicial de ruta de archivo/test inexistente se corrigió antes de observar el RED; no se atribuye como prueba del comportamiento. No hubo servicios externos, cambios SQL ni reintentos funcionales para ocultar fallos.
+
+**GREEN propio final:** 110/110, 60 casos B2 (58 HTTP y dos de contrato), 50 D3a (33 adaptador/17 configuración), cero fallos, errores u omitidas. Sin normalizador mutante; `git diff --check` aprobado. La verificación independiente cubrirá los ocho archivos en scratch SHA-verificado, baseline D3a, suite normal completa, PostgreSQL 17 completa con los 57 B1 y probes propios; no se declarará éxito antes del resultado terminal real.
+
+**Verificación independiente B2 terminada:** agente `01a1a91c-6be7-7850-9743-7a3de9224eb0` (Hubble), tarea `b2_independent`, modelo gpt-6.1-sol/medium, distinto del implementador; `wait_agent` devolvió **completed**, S31–S34 conformes en su verificación funcional, sin bloqueantes, `skill_resolution: paths-injected`. Scratch nuevo de baseline `29deb01f55212f32f7fe6616e5becdb05bc1fb86`, ocho SHA/modos verificados antes y después. Comandos observados, una vez cada uno, exit 0: baseline `./mvnw -o test -Dtest=SupabaseAlmacenDocumentosTest,StorageConfiguracionTest` **50/50**; candidato `./mvnw -o test` **1013/1013**; `DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 ./mvnw -o -Pdb-tests test` **508/508**, incluidas **57 B1**, 21 V5Integridad y 11 V5Operacion sobre PostgreSQL 17.11; `./mvnw -o -Dtest=B2IndependienteProbeTest test` **6/6**. Cero fallos, errores u omitidas. Los nombres y estados de las 50 D3a coinciden entre baseline y candidato. No hay comandos CLI nuevos que requieran diferencial de stdout/exit; el contrato HTTP anterior se contrasta con esas pruebas sin cambios.
+
+Los probes independientes ejercitaron preservación de objetos ante colisiones/destinos ajenos, cambio a bucket público, stream de 100.019 bytes con lectura máxima 8192 sin reset/cierre implícito, IOException saneada, POST pendiente→HEAD 404→finalización posterior sin reenvío/borrado y metadatos inesperados sin ETag. El padre ejecutó el comando reportado `./mvnw -o -Dtest=B2IndependienteProbeTest#ausenciaObservadaPermitePostTardioSinReenvioNiCompensacion test`: **1/1**, exit 0. Se verificaron los totales XML y las seis migraciones idénticas; un control auxiliar de permisos tar 0664/0644 se contrastó por bytes y ejecutabilidad Git sin repetir suites ni cambiar fuentes. No hubo correcciones del verificador.
+
+**Antes del freeze:** sólo se amplía la documentación con resultados y límites observados: false de un intento no prueba ausencia global; rehidratar presupone mismo proyecto Storage y la comprobación de privacidad no bloquea cambios administrativos del proveedor. No cambian código, pruebas, configuración ni SQL respecto de los SHA verificados. Sin servicios externos ni documentos personales. B1-C no se reprodujo y permanece ABIERTA; no se declara corregida. La compensación recuperable continúa fuera de B2, dependiente de B6/B8. Evidencias reproducibles, probe y hashes preservados en `/tmp/b2-verificacion-evidencia/`, sin respaldos; scratch se retira sólo después de verificar la copia. El assess y las continuaciones del candidato final se registran fuera del árbol para no alterar el hash durante el consentimiento. No commit, excepción de tamaño, publicación ni migraciones compartidas autorizados en este cierre. Risk: ítems 2/4.
+
+**Cierre RDD B2 (2026-11-05):** el usuario respondió literalmente `granted` al consentimiento del candidato `sha256:0eba98afdfd5a24770bfc294f7ec5cca518ddc42f9631af74b47fe310f7afba0`, ocho archivos y **569 líneas (551 añadidas/18 eliminadas)**, base `58283c202cd6ca2304ae299102c5f05e7cbcb961`, árbol revisado `3e961546374eb06f1198d3a484edc99e15958647`. Assess y START de riesgo alto, escalamiento por ítem 2; cuatro lentes nativas ejecutadas concurrentemente en orden riesgo, resiliencia, legibilidad y confiabilidad, con argumentos exactos del proveedor y sin reconstruir contexto de revisión fuera de sus árboles inmutables.
+
+Las cuatro capturas terminaron con salida 0 y **cero hallazgos**. Fue inspección estática de los ocho patches, no nueva ejecución de pruebas; no sustituye la verificación independiente real anterior. No hubo refutación, corrección ni validador dirigido; el presupuesto de 200 líneas no se utilizó. Código, pruebas, configuración y V1–V6 permanecieron idénticos hasta el reconocimiento.
+
+La última captura aprobada exigió reconocimiento; el STATUS ligado a la misma revisión recuperó la misma invocación exacta, token y revisión. Se ejecutó una sola vez y devolvió `gentle-ai.review-acknowledged/v1`, `action: acknowledged`, `authority: burned`, lineage `review-5e2fdbfee53fec75`, revisión consumida `sha256:294d9d3b8a4550002fc0c86555ebb75430cc22f596a70ffc39ae6cfbe02411fc`. Esa autoridad no se reutiliza ni se reinicia el ciclo del código idéntico. Evidencia de cierre externa: `/tmp/b2-rdd-cierre.json`.
+
+Se mantienen los resultados 110 específicos (60 B2/50 D3a), 1013 normales, 508 PostgreSQL (57 B1), seis probes independientes y spot-check 1/1, sin atribuir nuevas ejecuciones a los revisores. B1-C continúa ABIERTA sin causa demostrada. Supabase real no fue verificado; siguen los límites de stream prestado, configuración del mismo proyecto Storage y observaciones remotas no definitivas. Compensación recuperable, autorización familiar, scanner y reconciliación operativa permanecen fuera de B2. No se han concedido excepción de tamaño, commit ni publicación.
+
+Este registro y el estado de la tabla son un delta documental **posterior** al reconocimiento: no están cubiertos automáticamente por el hash aprobado. Se verifican por lectura estructural y assess nativo propio, cuyo resultado e identidad se conservan externamente para evitar otro cambio del candidato. No se modifican fuentes ni se repiten pruebas de ejecutables idénticos. Risk: ítems 2/4 del comportamiento ya revisado; sólo este cierre documental es nuevo.
+### L25 — Cierre local autorizado de B2 (2026-11-05)
+
+El usuario autorizó explícitamente, sólo para B2, la excepción de tamaño y el commit local del candidato `sha256:2379179ccfbe96e2623dba03ee17b7ea32fd6fe53d0840f57f1fddf651dec4b8`: ocho archivos, 579 líneas (561 adiciones/18 eliminaciones), más este registro documental mínimo. La excepción no se extiende a B3 ni a otras unidades.
+Justificación: conservar juntos el contrato recuperable, el adaptador, las pruebas y la documentación de un único comportamiento ya verificado y revisado, sin ampliar alcance ni fragmentar artificialmente su evidencia. Se mantienen 110 pruebas específicas, 1013 normales, 508 PostgreSQL, seis comprobaciones independientes, un spot-check y RDD de cuatro lentes sin hallazgos, reconocido; no se repiten pruebas de ejecutables idénticos.
+Commit autorizado: `feat(documentos): implementar puerto recuperable de almacenamiento`, condicionado a siete archivos no ODD idénticos al candidato revisado, V1–V6 y cinco entradas locales intactas, ausencia de material sensible y assess nativo propio sin revisión obligatoria para este delta. Resultado y SHA se registran externamente para no alterar después el candidato. B1-C sigue ABIERTA; permanecen las limitaciones de D3a/B1/B2. No se autorizan publicación, B3, compensación B6/B8, Supabase real ni migraciones compartidas. Risk: ítems 2/4 ya revisados; este delta sólo registra autorización documental.
