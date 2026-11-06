@@ -29,6 +29,35 @@ class RecursosCargaTest {
   }
 
   @Test
+  void valoresPorDefectoAcotanArchivoMultipartYPixeles() throws Exception {
+    var p = PreparadorDocumentoTest.porDefecto(temporal.resolve("cargas"));
+    assertThat(p.maxBytes()).isEqualTo(5_000_000);
+    assertThat(p.maxPixeles()).isEqualTo(16_000_000);
+    var multipart = new CargaConfiguracion().multipartConfigElement(p);
+    assertThat(multipart.getMaxFileSize()).isEqualTo(5_000_000);
+    assertThat(multipart.getMaxRequestSize()).isEqualTo(5_000_000 + 65_536);
+    assertThat(multipart.getFileSizeThreshold()).isZero();
+  }
+
+  @Test
+  void limiteDeArchivoSigueSiendoConfigurable() throws Exception {
+    var p =
+        new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source
+                    .MapConfigurationPropertySource(
+                    java.util.Map.of(
+                        "banfield.documentos.carga.temporales",
+                        temporal.resolve("cargas").toString(),
+                        "banfield.documentos.carga.max-bytes",
+                        "15000000")))
+            .bind("banfield.documentos.carga", CargaPropiedades.class)
+            .get();
+    assertThat(p.maxBytes()).isEqualTo(15_000_000);
+    assertThat(new CargaConfiguracion().multipartConfigElement(p).getMaxFileSize())
+        .isEqualTo(15_000_000);
+  }
+
+  @Test
   void cuentaBytesRealesAunqueElMetadatoMienta() throws Exception {
     var file =
         new MockMultipartFile(

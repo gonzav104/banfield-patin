@@ -8,9 +8,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties("banfield.documentos.carga")
 public record CargaPropiedades(
     @DefaultValue("false") boolean habilitada,
-    @DefaultValue("15000000") long maxBytes,
+    @DefaultValue("5000000") long maxBytes,
     Path temporales,
-    @DefaultValue("12000000") long maxPixeles,
+    @DefaultValue("16000000") long maxPixeles,
     @DefaultValue("PT10S") Duration procesamiento,
     @DefaultValue("PT20S") Duration scannerPlazo,
     @DefaultValue("127.0.0.1") String scannerHost,

@@ -214,4 +214,45 @@ class PreparadorDocumentoTest {
                         "archivo", "sintetico.png", "image/png", pngConPaleta(true))))
         .isInstanceOf(ExcepcionNegocio.class);
   }
+
+  /** Enlaza los valores predeterminados reales, como Spring, en lugar de repetirlos en la prueba. */
+  static CargaPropiedades porDefecto(Path dir) {
+    return new org.springframework.boot.context.properties.bind.Binder(
+            new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                java.util.Map.of("banfield.documentos.carga.temporales", dir.toString())))
+        .bind("banfield.documentos.carga", CargaPropiedades.class)
+        .get();
+  }
+
+  private void acepta(String nombre, String mime, byte[] data) {
+    try (var a =
+        new PreparadorDocumento(porDefecto(temporal))
+            .preparar(new MockMultipartFile("archivo", nombre, mime, data))) {
+      assertThat(a.bytes).isEqualTo(data.length);
+    }
+  }
+
+  private void rechaza(String nombre, String mime, byte[] data) throws Exception {
+    var input = new MockMultipartFile("archivo", nombre, mime, data);
+    assertThatThrownBy(() -> new PreparadorDocumento(porDefecto(temporal)).preparar(input))
+        .isInstanceOfSatisfying(
+            ExcepcionNegocio.class, e -> assertThat(e.getEstado().value()).isEqualTo(422));
+    try (var ds = Files.list(temporal)) {
+      assertThat(ds.count()).isZero();
+    }
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"4032,3024", "4080,3072", "4608,3456", "4000,4000"})
+  void aceptaFotosHabitualesDeCelularConElLimitePorDefecto(int ancho, int alto)
+      throws Exception {
+    acepta("foto.jpg", "image/jpeg", imagen("jpeg", ancho, alto));
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"jpeg,4001,4000", "png,4001,4000", "png,16001,1"})
+  void rechazaImagenesQueSuperanLosLimitesPorDefecto(String formato, int ancho, int alto)
+      throws Exception {
+    rechaza("foto." + formato, "image/" + formato, imagen(formato, ancho, alto));
+  }
 }

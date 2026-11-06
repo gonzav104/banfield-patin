@@ -665,6 +665,44 @@ class CargaDocumentalHttpDbTest {
     sinFugas(r);
   }
 
+  /** PNG válido completado con un chunk auxiliar tEXt hasta medir exactamente {@code total} bytes. */
+  static byte[] pngDeTamanio(int total) throws Exception {
+    byte[] base = png();
+    int iend = base.length - 12;
+    byte[] contenido = new byte[total - base.length - 12];
+    Arrays.fill(contenido, (byte) 'a');
+    byte[] clave = "Comment\0".getBytes(StandardCharsets.ISO_8859_1);
+    System.arraycopy(clave, 0, contenido, 0, clave.length);
+    byte[] tipo = "tEXt".getBytes(StandardCharsets.US_ASCII);
+    var crc = new java.util.zip.CRC32();
+    crc.update(tipo);
+    crc.update(contenido);
+    var salida = new ByteArrayOutputStream();
+    var datos = new DataOutputStream(salida);
+    datos.write(base, 0, iend);
+    datos.writeInt(contenido.length);
+    datos.write(tipo);
+    datos.write(contenido);
+    datos.writeInt((int) crc.getValue());
+    datos.write(base, iend, 12);
+    return salida.toByteArray();
+  }
+
+  @Test
+  void limitePorDefectoAdmiteCincoMegabytesYRechazaElByteSiguiente() throws Exception {
+    byte[] limite = pngDeTamanio(5_000_000), excedido = pngDeTamanio(5_000_001);
+    assertThat(limite).hasSize(5_000_000);
+    assertThat(excedido).hasSize(5_000_001);
+    var r = cargar(UUID.randomUUID(), excedido);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(413);
+    assertThat(POSTS.get()).isZero();
+    sinFugas(r);
+    var a = cargar(UUID.randomUUID(), limite);
+    assertThat(a.statusCode()).as(a.body()).isEqualTo(201);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+  }
+
   @Test
   void capacidadAcotadaRechazaSinEncolarOtroArchivo() throws Exception {
     var entraron = new CountDownLatch(2);
