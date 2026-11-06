@@ -75,7 +75,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   mvc.perform(get(ruta("admin","tutores")).cookie(sesion(Rol.ADMIN))).andExpect(status().isServiceUnavailable());
   verifyNoInteractions(documentoConsultaService);
  }
- @Test void noHayOperacionesDeArchivos() throws Exception {
+ @Test void cargaDesactivadaYLosDemasMetodosNoSeHabilitan() throws Exception {
   clearInvocations(documentoConsultaService);
   // El intercambio real no sustituye el repositorio CSRF del filtro compartido.
   var xsrf=mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
@@ -84,7 +84,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   assertThat(xsrf).isNotNull();
   for(String rol:List.of("admin","familia")) for(String p:List.of("deportistas","tutores"))
    mvc.perform(post(ruta(rol,p)).cookie(sesion(Rol.valueOf(rol.toUpperCase())),xsrf)
-    .header("X-XSRF-TOKEN",xsrf.getValue())).andExpect(status().isMethodNotAllowed());
+    .header("X-XSRF-TOKEN",xsrf.getValue())).andExpect(status().is(rol.equals("familia") && p.equals("deportistas") ? 503 : 405));
   verifyNoInteractions(documentoConsultaService);
   mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
    .andExpect(cookie().exists("XSRF-TOKEN"))

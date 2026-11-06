@@ -34,6 +34,16 @@ public class ManejadorGlobalErrores {
 	private static final Logger log = LoggerFactory.getLogger(ManejadorGlobalErrores.class);
 	static final String MENSAJE_CONCURRENCIA = "Otro cambio sobre el mismo deportista esta en curso. Reintentá en unos segundos.";
 
+    /** El parser multipart puede incluir nombres o cuerpos en la causa: jamás usar el fallback con traza. */
+    @ExceptionHandler({org.springframework.web.multipart.MultipartException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+            org.springframework.web.bind.MissingRequestHeaderException.class})
+    ResponseEntity<ErrorRespuesta> multipart(Exception ex) {
+        boolean grande=ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException;
+        return responder(grande?HttpStatus.PAYLOAD_TOO_LARGE:HttpStatus.BAD_REQUEST,
+                ErrorRespuesta.de(grande?"ARCHIVO_DEMASIADO_GRANDE":"SOLICITUD_INVALIDA","Solicitud de archivo inválida."));
+    }
+
 	@ExceptionHandler(ExcepcionNegocio.class)
 	ResponseEntity<ErrorRespuesta> negocio(ExcepcionNegocio e) {
 		return responder(e.getEstado(), new ErrorRespuesta(e.getCodigo(), e.getMessage(), e.getDetalles()));
