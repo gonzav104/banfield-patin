@@ -658,7 +658,7 @@ class CargaDocumentalHttpDbTest {
 
   @Test
   void limiteRealDelServletNoPublicaNiEscanea() throws Exception {
-    var r = cargar(UUID.randomUUID(), new byte[15000001]);
+    var r = cargar(UUID.randomUUID(), new byte[5000001]);
     assertThat(r.statusCode()).as(r.body()).isEqualTo(413);
     assertThat(documentos()).isZero();
     assertThat(POSTS.get()).isZero();
