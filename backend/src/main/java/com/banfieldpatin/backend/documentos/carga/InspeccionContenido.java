@@ -8,12 +8,16 @@ import javax.imageio.ImageIO;
 import org.apache.pdfbox.cos.*;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdfparser.PDFParser;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 
 /**
  * Entrada exclusiva del proceso acotado; sin Spring, red, salida documental ni evaluación de
  * acciones.
  */
 public final class InspeccionContenido {
+  private static final List<String> DCT =
+      List.of(COSName.DCT_DECODE.getName(), COSName.DCT_DECODE_ABBREVIATION.getName());
+
   private InspeccionContenido() {}
 
   public static void main(String[] args) {
@@ -21,7 +25,7 @@ public final class InspeccionContenido {
       Path file = Path.of(args[0]);
       String mime = args[1];
       long pixels = Long.parseLong(args[2]);
-      if (mime.equals("application/pdf")) pdf(file);
+      if (mime.equals("application/pdf")) pdf(file, pixels);
       else {
         if (mime.equals("image/png")) png(file, pixels);
         else if (mime.equals("image/jpeg")) jpeg(file, pixels);
@@ -34,7 +38,7 @@ public final class InspeccionContenido {
     }
   }
 
-  private static void pdf(Path file) throws IOException {
+  private static void pdf(Path file, long pixels) throws IOException {
     try (var source = new RandomAccessReadBufferedFile(file);
         var doc = new PDFParser(source).parse(false)) {
       if (doc.isEncrypted() || doc.getNumberOfPages() < 1 || doc.getNumberOfPages() > 1000)
@@ -69,8 +73,16 @@ public final class InspeccionContenido {
                       "RichMediaExecute")
                   .contains(dict.getNameAsString(COSName.S, ""))
               || "EmbeddedFile".equals(dict.getNameAsString(COSName.TYPE))) throw new IOException();
-          if (dict instanceof COSStream stream)
-            try (var in = stream.createInputStream()) {
+          // Los datos DCT se cuentan codificados: su ráster no es necesario para inspeccionar el PDF,
+          // pero su encabezado de cuadro debe respetar los mismos límites que una imagen suelta.
+          // Todo filtro anterior a DCT se sigue decodificando y descontando del mismo presupuesto.
+          if (dict instanceof COSStream stream) {
+            var datos = new PDStream(stream);
+            if (datos.getFilters().stream().anyMatch(f -> DCT.contains(f.getName())))
+              try (var jpeg = datos.createInputStream(DCT)) {
+                marcoJpeg(jpeg, pixels);
+              }
+            try (var in = datos.createInputStream(DCT)) {
               byte[] buf = new byte[8192];
               int n;
               while ((n = in.read(buf)) != -1) {
@@ -78,6 +90,7 @@ public final class InspeccionContenido {
                 if (decodificados > 32000000) throw new IOException();
               }
             }
+          }
         } else if (obj instanceof COSArray array)
           for (COSBase value : array) if (value != null) cola.add(value);
       }
@@ -86,6 +99,30 @@ public final class InspeccionContenido {
 
   private static void dimensiones(long w, long h, long limite) throws IOException {
     if (w < 1 || h < 1 || w > 16000 || h > 16000 || w * h > limite) throw new IOException();
+  }
+
+  /** JPEG embebido en PDF: lee sólo hasta su encabezado de cuadro y acota sus dimensiones. */
+  private static void marcoJpeg(InputStream entrada, long limite) throws IOException {
+    var in = new DataInputStream(new BufferedInputStream(entrada));
+    if (in.readUnsignedShort() != 0xffd8) throw new IOException();
+    while (true) {
+      if (in.readUnsignedByte() != 255) throw new IOException();
+      int marker;
+      do {
+        marker = in.readUnsignedByte();
+      } while (marker == 255);
+      if (marker == 0 || marker == 1 || marker >= 0xd0 && marker <= 0xda) throw new IOException();
+      int len = in.readUnsignedShort() - 2;
+      if (len < 0) throw new IOException();
+      if (marker >= 0xc0 && marker <= 0xcf && !Set.of(0xc4, 0xc8, 0xcc).contains(marker)) {
+        if (len < 6) throw new IOException();
+        in.readUnsignedByte();
+        int h = in.readUnsignedShort(), w = in.readUnsignedShort();
+        dimensiones(w, h, limite);
+        return;
+      }
+      in.skipNBytes(len);
+    }
   }
 
   private static void imagen(Path file, long limite) throws IOException {

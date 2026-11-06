@@ -255,4 +255,144 @@ class PreparadorDocumentoTest {
       throws Exception {
     rechaza("foto." + formato, "image/" + formato, imagen(formato, ancho, alto));
   }
+
+  /** Escaneo sintético: una imagen DCT de página completa por hoja, como generan escáneres y celulares. */
+  static byte[] pdfEscaneado(int paginas, int ancho, int alto) throws Exception {
+    try (var doc = new PDDocument();
+        var salida = new ByteArrayOutputStream()) {
+      for (int i = 0; i < paginas; i++) {
+        var hoja = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        var g = hoja.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, ancho, alto);
+        g.setColor(java.awt.Color.DARK_GRAY);
+        for (int y = 100; y < alto - 100; y += 60) g.fillRect(100, y, ancho - 200, 12);
+        g.dispose();
+        var pagina = new PDPage(org.apache.pdfbox.pdmodel.common.PDRectangle.A4);
+        doc.addPage(pagina);
+        var imagen =
+            org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory.createFromImage(doc, hoja, 0.75f);
+        try (var cs = new PDPageContentStream(doc, pagina)) {
+          cs.drawImage(
+              imagen, 0, 0, pagina.getMediaBox().getWidth(), pagina.getMediaBox().getHeight());
+        }
+      }
+      doc.save(salida);
+      return salida.toByteArray();
+    }
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"2,2480,3508", "3,1654,2339"})
+  void aceptaPdfEscaneadoConImagenesDct(int paginas, int ancho, int alto) throws Exception {
+    acepta("escaneo.pdf", "application/pdf", pdfEscaneado(paginas, ancho, alto));
+  }
+
+  static COSArray filtros(COSName... nombres) {
+    var filtros = new COSArray();
+    for (var nombre : nombres) filtros.add(nombre);
+    return filtros;
+  }
+
+  static byte[] deflate(long ceros) throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z =
+        new java.util.zip.DeflaterOutputStream(crudo, new java.util.zip.Deflater(9))) {
+      byte[] bloque = new byte[1 << 20];
+      for (long n = 0; n < ceros; n += bloque.length)
+        z.write(bloque, 0, (int) Math.min(bloque.length, ceros - n));
+    }
+    return crudo.toByteArray();
+  }
+
+  /** PDF con un XObject cuyos bytes crudos y cadena de filtros elige la prueba. */
+  static byte[] pdfConStream(COSArray filtros, byte[] crudo, boolean javascript) throws Exception {
+    try (var doc = new PDDocument();
+        var salida = new ByteArrayOutputStream()) {
+      var pagina = new PDPage();
+      pagina.setResources(new PDResources());
+      doc.addPage(pagina);
+      COSStream stream = doc.getDocument().createCOSStream();
+      try (var out = stream.createRawOutputStream()) {
+        out.write(crudo);
+      }
+      stream.setItem(COSName.FILTER, filtros);
+      stream.setItem(COSName.TYPE, COSName.XOBJECT);
+      stream.setItem(COSName.SUBTYPE, COSName.IMAGE);
+      if (javascript) stream.setString(COSName.getPDFName("JS"), "app.alert('sintetico')");
+      var xobjetos = new COSDictionary();
+      xobjetos.setItem(COSName.getPDFName("Im0"), stream);
+      pagina.getResources().getCOSObject().setItem(COSName.XOBJECT, xobjetos);
+      doc.save(salida);
+      return salida.toByteArray();
+    }
+  }
+
+  @Test
+  void aceptaImagenDctConFiltroPrevioDentroDelPresupuesto() throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z = new java.util.zip.DeflaterOutputStream(crudo)) {
+      z.write(imagen("jpeg", 64, 64));
+    }
+    acepta(
+        "documento.pdf",
+        "application/pdf",
+        pdfConStream(
+            filtros(COSName.FLATE_DECODE, COSName.DCT_DECODE), crudo.toByteArray(), false));
+  }
+
+  /** JPEG pequeño cuyo encabezado de cuadro (SOF0) declara otras dimensiones, sin cambiar sus datos. */
+  static byte[] jpegQueDeclara(int ancho, int alto) throws Exception {
+    byte[] data = imagen("jpeg", 64, 64);
+    for (int i = 2; i + 8 < data.length; i++)
+      if ((data[i] & 255) == 0xff && (data[i + 1] & 255) == 0xc0) {
+        data[i + 5] = (byte) (alto >> 8);
+        data[i + 6] = (byte) alto;
+        data[i + 7] = (byte) (ancho >> 8);
+        data[i + 8] = (byte) ancho;
+        return data;
+      }
+    throw new IllegalStateException("SOF0 ausente");
+  }
+
+  static byte[] flate(byte[] data) throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z = new java.util.zip.DeflaterOutputStream(crudo)) {
+      z.write(data);
+    }
+    return crudo.toByteArray();
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "bomba-previa-a-dct",
+        "previa-a-dct-excedida",
+        "flate-excedido",
+        "jbig2",
+        "javascript-en-dct",
+        "dct-excede-pixeles",
+        "dct-excede-lado",
+        "flate-dct-excede-pixeles",
+        "dct-sin-encabezado-jpeg"
+      })
+  void rechazaPdfConStreamsPeligrososOExcesivos(String caso) throws Exception {
+    var dct = filtros(COSName.DCT_DECODE);
+    var flateDct = filtros(COSName.FLATE_DECODE, COSName.DCT_DECODE);
+    byte[] pdf =
+        switch (caso) {
+          case "bomba-previa-a-dct" -> pdfConStream(flateDct, deflate(400_000_000L), false);
+          case "previa-a-dct-excedida" -> pdfConStream(flateDct, deflate(40_000_000L), false);
+          case "flate-excedido" ->
+              pdfConStream(filtros(COSName.FLATE_DECODE), deflate(40_000_000L), false);
+          case "jbig2" -> pdfConStream(filtros(COSName.JBIG2_DECODE), new byte[1024], false);
+          case "dct-excede-pixeles" -> pdfConStream(dct, jpegQueDeclara(4001, 4000), false);
+          case "dct-excede-lado" -> pdfConStream(dct, jpegQueDeclara(16001, 1), false);
+          case "flate-dct-excede-pixeles" ->
+              pdfConStream(flateDct, flate(jpegQueDeclara(16000, 16000)), false);
+          case "dct-sin-encabezado-jpeg" -> pdfConStream(dct, new byte[4096], false);
+          default -> pdfConStream(dct, imagen("jpeg", 64, 64), true);
+        };
+    rechaza("documento.pdf", "application/pdf", pdf);
+  }
 }
