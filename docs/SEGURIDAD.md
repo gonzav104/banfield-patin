@@ -77,7 +77,8 @@ solo es vigente si:
 - Despliegue preferido: mismo origen detrás de un reverse proxy. Entonces `CORS_ORIGENES_PERMITIDOS` queda vacío y CORS
   permanece desactivado.
 - Si se configura CORS: orígenes explícitos (nunca comodín), `allowCredentials=true`, métodos `GET/POST/PUT/PATCH/DELETE`
-  y solo los headers `Content-Type` y `X-XSRF-TOKEN`.
+  y solo los headers `Content-Type`, `X-XSRF-TOKEN` e `Idempotency-Key` (exigido por la carga documental). Esa cabecera
+  no amplía orígenes ni reemplaza CSRF.
 
 ## 4. Matriz 401 / 403
 
