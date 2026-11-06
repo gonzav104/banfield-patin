@@ -395,4 +395,41 @@ class PreparadorDocumentoTest {
         };
     rechaza("documento.pdf", "application/pdf", pdf);
   }
+
+  /** Compatibilidad Ultra HDR/MPF diferida: cualquier byte posterior al EOI principal se sigue rechazando. */
+  static byte[] jpegConMpf(byte[] anexo) throws Exception {
+    byte[] principal = imagen("jpeg", 1600, 1200);
+    byte[] mpf = {(byte) 0xff, (byte) 0xe2, 0, 10, 'M', 'P', 'F', 0, 0, 0, 0, 0};
+    var salida = new ByteArrayOutputStream();
+    salida.write(principal, 0, 2);
+    salida.write(mpf);
+    salida.write(principal, 2, principal.length - 2);
+    salida.write(anexo);
+    return salida.toByteArray();
+  }
+
+  @Test
+  void aceptaJpegConSegmentoMpfSinDatosAnexados() throws Exception {
+    acepta("foto.jpg", "image/jpeg", jpegConMpf(new byte[0]));
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {"mpf-con-imagen-anexada", "mpf-con-video-anexado", "imagen-concatenada"})
+  void rechazaJpegConDatosDespuesDelFinDeImagen(String caso) throws Exception {
+    byte[] anexo = imagen("jpeg", 400, 300);
+    byte[] data =
+        switch (caso) {
+          case "mpf-con-imagen-anexada" -> jpegConMpf(anexo);
+          case "mpf-con-video-anexado" ->
+              jpegConMpf(new byte[] {0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'});
+          default -> {
+            var salida = new ByteArrayOutputStream();
+            salida.write(imagen("jpeg", 1600, 1200));
+            salida.write(anexo);
+            yield salida.toByteArray();
+          }
+        };
+    rechaza("foto.jpg", "image/jpeg", data);
+  }
 }
