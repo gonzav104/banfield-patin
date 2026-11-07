@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InventarioRutasTest {
 
 	/** Rutas mutantes esperadas, con el formato "METODO /ruta". */
-	private static final Set<String> MUTANTES_ESPERADAS = Set.of(
+	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/deportistas/{id}/documentos",
 			"POST /api/auth/login",
 			"POST /api/auth/admin/login",
 			"POST /api/auth/logout",
@@ -220,19 +220,19 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void ningunaRutaMutanteExisteBajoElPortalDeFamilia() throws Exception {
-		// FAMILIA es solo lectura (F5, REQ-XC-07): ninguna ruta POST/PUT/PATCH/DELETE bajo /api/familia/.
-		assertThat(rutas(true)).noneMatch(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"));
+	void laUnicaRutaMutanteFamiliarEsLaCargaAutorizada() throws Exception {
+		// La carga documental es la única excepción explícita al portal de lectura.
+		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactly("POST /api/familia/deportistas/{id}/documentos");
 	}
 
 	@Test
-	void elPortalDeFamiliaTieneExactamenteSieteRutasYTodasSonGet() throws Exception {
+	void elPortalConservaLasLecturasYAgregaSoloLaCargaDocumental() throws Exception {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
 				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/tutores/{id}/documentos",
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
-				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}");
+				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "POST /api/familia/deportistas/{id}/documentos");
 	}
 }

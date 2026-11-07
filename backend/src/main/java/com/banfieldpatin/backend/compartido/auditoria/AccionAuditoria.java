@@ -1,6 +1,7 @@
 package com.banfieldpatin.backend.compartido.auditoria;
 
 public enum AccionAuditoria {
+    DOCUMENTO_CARGADO,
 	DOCUMENTOS_CONSULTADOS,
 	LOGIN_EXITOSO,
 	LOGIN_FALLIDO,

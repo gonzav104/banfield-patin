@@ -128,3 +128,61 @@ Una entrada/destino inválidos fallan antes de contactar con el proveedor. Los e
 **Compensación recuperable fuera de B2:** no se añade borrado por destino ni se reconstruye `Creado` desde la fila SQL. Se preserva `eliminarCreado(Creado)` de D3a, ligado a su emisor y consumible una vez, sólo para creación confirmada dentro de esa instancia. Una limpieza tras reinicio depende de B6/B8: autorización fresca, ausencia de publicación y control de escritores remotos tardíos deben demostrarse allí. B2 no implementa esos servicios, scanner, mutadores, endpoints ni reconciliación operativa. Storage sigue desactivado por defecto y los tests sólo usan HTTP sintético local.
 
 La rehidratación presupone la configuración del mismo proyecto Storage asociado al registro PostgreSQL: V6 no persiste un origen remoto. Un cambio de URL/proyecto exige evaluación operativa de las operaciones pendientes, no una reasignación silenciosa por coincidencia de bucket/UUID. La comprobación de privacidad es previa a cada operación; no bloquea cambios administrativos posteriores del proveedor.
+
+## Primera carga familiar — flujo vertical local
+
+Esta sección incorpora una única escritura habilitable; las secciones D1/D2/D3a/B1/B2 anteriores conservan su alcance histórico. No habilita descargas, revisión, reemplazos, ZIP, tutores ni aptos físicos.
+
+### Contrato HTTP y autorización
+
+`POST /api/familia/deportistas/{id}/documentos`, con sesión FAMILIA y cabecera `X-XSRF-TOKEN` que contiene el valor crudo de la cookie CSRF. `Idempotency-Key` es un UUID obligatorio. Multipart admite exactamente un `archivo`, un `tipo` y, opcionalmente, un `temporadaId`; partes adicionales o duplicadas se rechazan. El id de escuela, familia y solicitante nunca procede del cliente.
+
+Tipos permitidos: DNI_DEPORTISTA_FRENTE, DNI_DEPORTISTA_DORSO, SOLICITUD_LICENCIA, CERTIFICADO_WADA y OTRO. DNI sin temporada y sin reemplazo implícito si ya existe uno vigente. No se establece anualidad de WADA/solicitud ni cardinalidad por temporada; OTRO mantiene series independientes. Una temporada informada debe pertenecer a la escuela.
+
+- `201`: nuevo `DocumentoMetadatos`, estado CARGADO, visible por el GET D1; sin Location hacia una descarga inexistente.
+- `200`: repetición confirmada con mismo contexto y manifiesto, tras autorizar nuevamente; devuelve el mismo documento, sin otro POST a Storage ni nueva auditoría de carga.
+- `401/403/404`: sesión/rol/acceso; padre ajeno, inexistente o vínculo no ACTIVO mantienen el 404 uniforme. No exige deportista activo ni vínculo principal, como D1.
+- `400/415`: solicitud o contenedor multipart/tipo HTTP inválido; `413`: bytes reales excedidos.
+- `422`: formato/estructura/contenido no admitido o detección positiva del scanner.
+- `409`: clave/contexto diferentes, operación en curso/pendiente de resolución, versión perdida o DNI ya vigente.
+- `429`: capacidad de procesamiento ocupada; no se encola otro archivo.
+- `503`: integración apagada, scanner/infraestructura no disponibles o resultado no confirmable. No significa que el objeto/documento no exista.
+
+La primera guarda de cabecera CSRF evita que el fallback a parámetros lea multipart antes de la autorización, también para métodos mutantes no implementados. Después de la autorización general, cualquier multipart fuera del único POST documental se rechaza con 415 sin llegar al procesador; no se habilitan archivos en consultas GET ni otros endpoints. Los cuerpos JSON conservan su tratamiento previo. Spring Security sigue validando el token, la sesión y el rol; después, otro filtro comprueba el alcance y adquiere capacidad **antes** del DispatcherServlet/multipart. No se confía en atributos enviados por el cliente.
+
+Al publicar se bloquean escuela → usuario → familia (SHARE), deportista (helper existente de vinculación) y vínculo (SHARE); se revalidan sesión, expiración y predicado D1. Son filas comunes a los mutadores administrativos de revocación/desactivación. Documento, transición PUBLICADA y auditoría DOCUMENTO_CARGADO confirman juntos. Se acota la espera de locks; no se promete ausencia universal de deadlocks. Se conserva la semántica vigente de JWT: el logout borra cookie pero no existe revocación persistida de jti; esta entrega no inventa invalidación servidor por logout.
+
+### Contenido, scanner y recursos
+
+Límite inicial 5.000.000 bytes (configurable con `max-bytes`), contado al copiar, además del límite servlet por archivo y por solicitud (64 KiB adicionales para el envoltorio). Extensión y MIME deben corresponder a PDF/JPEG/PNG; no bastan para aceptar contenido. No se conserva el nombre original: Documento recibe el nombre técnico neutro `documento`.
+
+PDFBox 3.0.8 inspecciona el PDF estricto y su grafo COS, sin ejecutar acciones; se rechazan cifrado, JavaScript, adjuntos y acciones externas peligrosas/XFA. Se limita a 1000 páginas, 50.000 objetos y 32 MB descomprimidos examinados. Las imágenes DCT (JPEG) embebidas se cuentan con sus bytes codificados, sin decodificar su ráster, pero deben empezar con un encabezado JPEG válido cuyo cuadro respete los mismos límites de dimensiones y píxeles que una imagen suelta; todo filtro previo a DCT (por ejemplo Flate) se sigue decodificando y descontando del mismo presupuesto, y la JVM hija agota su heap ante una expansión mayor. JBIG2 y JPX carecen de decodificador en la JVM hija y se siguen rechazando. PNG valida firma/chunks/CRC/final y JPEG marcadores/segmentos/final; ambos se decodifican con ImageIO, se rechazan advertencias, y se acotan dimensiones (16.000 por lado) y píxeles (16 millones por defecto). Cualquier byte posterior al EOI del JPEG principal se rechaza: Ultra HDR/MPF con gain map, Motion Photo y trailers de fabricante no se admiten todavía; deben subirse como imagen fija. No es una garantía de inocuidad absoluta.
+
+La inspección ocurre en una JVM hija sin entorno heredado de secretos, con heap de 128 MiB, metaspace de 96 MiB y plazo inicial de 10 segundos; al vencer se fuerza su terminación y se espera antes de retirar el temporal. Estos límites no equivalen a un límite de RSS de todo el servicio ni a un sandbox del sistema operativo. Pico de RSS medido por JVM hija con los límites iniciales: ~125 MB para un JPEG de 16 MP, ~218 MB para un JPEG progresivo de 16 MP, ~146 MB para un PNG RGBA de 16 MP, ~111 MB para una foto de 12,2 MP y ~56 MB para un PDF escaneado; con dos plazas, prever hasta unos 450 MB adicionales al proceso principal. Los errores del parser no se imprimen ni se devuelven. El empaquetado ejecutable debe conservar el launcher/clases/dependencias necesarios; su comprobación forma parte del cierre.
+
+ClamAV usa TCP INSTREAM con IP privada literal, sin DNS ni rutas del host remoto; bloques de 8 KiB y plazo total de conexión/escritura/lectura. Sólo se acepta una confirmación exacta `stream: OK` terminada en NUL y cierre de conexión; detección, respuesta truncada/extraña, ERROR, exceso o indisponibilidad fallan cerrado. No incluye un scanner de producción ni valida aquí sus firmas. El protocolo TCP de clamd no cifra ni autentica: debe aislarse y no exponerse a Internet. El operador deberá validar firmas, límites de escaneo, alertas de límites y acceso efectivo antes de habilitarlo. Fuentes: [protocolo ClamD](https://docs.clamav.net/manual/Usage/ClamdProtocol.html), [seguridad de PDFBox](https://pdfbox.apache.org/security.html).
+
+Temporales con directorios 0700 y archivos 0600, UUID/nombres técnicos, fuera del repositorio; eliminación al terminar la petición, también ante rechazo. Un directorio no privado se rechaza sin cambiar sus permisos. No se establece retención legal; caída abrupta del proceso/disco o fallo de eliminación requieren procedimiento operativo supervisado, no una purga automática nueva. No habilitar trazas HTTP/JDBC de parámetros, volcados de memoria o captura de cuerpos con documentación real.
+
+### Consistencia y estados inciertos
+
+V6 conserva contexto, destino opaco y manifiesto SHA-256/MIME/bytes antes de transferir. Se usan sus transiciones y CAS de versión recibida, sin recargar una versión para que un trabajador tardío publique. El scanner, la copia/inspección y el único POST B2 ocurren fuera de transacciones. No hay transacción PostgreSQL abierta durante esos I/O.
+
+Ante pérdida de confirmación, timeout, versión perdida, revocación o fallo de publicación, se conserva la operación y el objeto. Marcar RECONCILIANDO identifica resolución pendiente: no inspecciona, reenvía ni borra remotamente. Si no puede confirmar ese cambio, se conserva el estado anterior; no se afirma éxito. Un commit de publicación puede haber confirmado aunque falle la respuesta: repetir la misma clave/contexto/manifiesto permite recuperar el documento si ya está PUBLICADA. Una operación no publicada no se reanuda automáticamente.
+
+No se interpreta un 404 como fin de una transferencia pendiente ni ETag como SHA-256. No se usa la compensación efímera D3a como borrado recuperable. B6/B8 deberán resolver autorización y ausencia de publicación de forma supervisada; no existe aquí su reconciliación ni eliminación genérica.
+
+### Configuración y demostración aislada
+
+`DOCUMENTOS_CARGA_HABILITADA=false` por defecto; además requiere el adaptador Storage habilitado y configurado explícitamente. Propiedades externas `banfield.documentos.carga.*`: `max-bytes`, `temporales`, `max-pixeles`, `procesamiento`, `scanner-plazo`, `scanner-host`, `scanner-puerto`, `concurrencia`, `reserva`. Valores iniciales: 5 MB decimales, 16 millones de píxeles, 10 s parser, 20 s scanner, loopback:3310, dos plazas y reserva de tres minutos. Dos plazas constituyen una guarda de recursos probada, **no** una capacidad definitiva/benchmark de producción. Ajustar infraestructura, timeouts, reserva, límites del servlet y protección ante clientes lentos antes de habilitar tráfico real; una reserva vencida no habilita reenvíos.
+
+Desde `backend/`, después de resolver dependencias aprobadas:
+
+```bash
+./mvnw -o -Dtest='*CargaTest,PreparadorDocumentoTest,ClamAvPrivadoTest,CargaDocumentalSeguridadWebMvcTest' test
+DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 ./mvnw -o -Pdb-tests -Dtest=CargaDocumentalHttpDbTest test
+./mvnw -o clean verify
+DOCKER_HOST=unix:///var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 ./mvnw -o -Pdb-tests verify
+```
+
+La prueba HTTP arranca PostgreSQL 17 exclusivo, Tomcat en puerto aleatorio, HTTP Storage y TCP scanner sintéticos, sesiones/familias y archivos generados. Los dobles sólo existen en código/configuración de test y no se empaquetan como proveedores de producción. No sustituye Supabase/ClamAV reales, permisos efectivos, hardening, análisis de capacidad, recuperación de temporales tras caída ni revisión operativa de V5/V6. B1-C permanece ABIERTA sin causa raíz demostrada. Flyway sigue habilitado al arrancar Spring Boot: no iniciar contra una base compartida sin autorización y evaluación de migraciones pendientes.

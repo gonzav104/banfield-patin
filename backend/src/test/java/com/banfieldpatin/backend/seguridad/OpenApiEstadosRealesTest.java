@@ -135,8 +135,8 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 
 	@Test
 	void lasRutasProbadasSonExactamenteLasQueLaEspecificacionDeclaraComo201Y204() {
-		// Si se agrega una ruta 201/204 a la especificacion, este test obliga a probarla aqui tambien.
-		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/admin/familias",
+		// Cada 201/204 tiene cobertura: MVC para servicios simulados; carga real aislada en PostgreSQL para el motor documental.
+		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/admin/familias",
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas", "POST /api/admin/invitaciones",
 				"POST /api/auth/registro/invitacion", "POST /api/admin/temporadas",
 				"POST /api/admin/deportistas/{deportistaId}/temporadas");
@@ -147,4 +147,15 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 		assertThat(OpenApiConfig.RUTAS.entrySet().stream().filter(e -> e.getValue().exito() == 204).map(java.util.Map.Entry::getKey))
 				.containsExactlyInAnyOrderElementsOf(OpenApiRutasTest.SIN_CONTENIDO);
 	}
+    @Test
+    void laCarga201YRepeticion200TienenCoberturaHttpRealEnLaSuitePg() throws Exception {
+        // Sin inicializar la clase: la suite normal no arranca Docker. La suite db ejecuta el caso real.
+        Class<?> tipo=Class.forName("com.banfieldpatin.backend.db.CargaDocumentalHttpDbTest",false,getClass().getClassLoader());
+        var metodo=tipo.getDeclaredMethod("cargaConfirmadaVisiblePorD1YRepeticionSinDuplicado");
+        assertThat(tipo.getAnnotation(org.junit.jupiter.api.Tag.class).value()).isEqualTo("db");
+        assertThat(metodo.isAnnotationPresent(org.junit.jupiter.api.Test.class)).isTrue();
+        assertThat(metodo.isAnnotationPresent(org.junit.jupiter.api.Disabled.class)).isFalse();
+        assertThat(tipo.isAnnotationPresent(org.junit.jupiter.api.Disabled.class)).isFalse();
+    }
+
 }

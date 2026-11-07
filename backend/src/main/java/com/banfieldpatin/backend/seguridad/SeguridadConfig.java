@@ -64,7 +64,9 @@ public class SeguridadConfig {
 			CookieCsrfTokenRepository csrfRepo, CookieBearerTokenResolver resolver,
 			PuntoEntradaJson puntoEntrada, ManejadorAccesoDenegadoJson accesoDenegado,
 			JwtAuthenticationConverter convertidor, JwtDecoder decoder, VerificadorSesionVigente verificador,
-			ManejadorFalloToken manejadorFalloToken, Environment entorno) throws Exception {
+			ManejadorFalloToken manejadorFalloToken, Environment entorno,
+            org.springframework.beans.factory.ObjectProvider<com.banfieldpatin.backend.documentos.carga.CargaDocumentalService> carga,
+            tools.jackson.databind.json.JsonMapper jsonCarga) throws Exception {
 		boolean documentacionPublica = entorno.acceptsProfiles(Profiles.of(PERFIL_DEV));
 		http
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -76,7 +78,9 @@ public class SeguridadConfig {
 				.exceptionHandling(e -> e.authenticationEntryPoint(puntoEntrada).accessDeniedHandler(accesoDenegado))
 				.addFilterBefore(filtroToken(decoder, convertidor, resolver, puntoEntrada, verificador,
 						manejadorFalloToken), AuthorizationFilter.class)
-				.authorizeHttpRequests(a -> reglas(a, documentacionPublica)
+				.addFilterBefore(new com.banfieldpatin.backend.documentos.carga.CsrfCargaFiltro(accesoDenegado), org.springframework.security.web.csrf.CsrfFilter.class)
+                .addFilterAfter(new com.banfieldpatin.backend.documentos.carga.PreautorizacionCargaFiltro(carga,jsonCarga), AuthorizationFilter.class)
+                .authorizeHttpRequests(a -> reglas(a, documentacionPublica)
 						.requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/admin/login",
 								"/api/auth/invitaciones/validar", "/api/auth/registro/invitacion").permitAll()
@@ -147,7 +151,7 @@ public class SeguridadConfig {
 		CorsConfiguration cors = new CorsConfiguration();
 		cors.setAllowedOrigins(origenes);
 		cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
-		cors.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
+		cors.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key"));
 		cors.setAllowCredentials(true);
 		cors.setMaxAge(3600L);
 		UrlBasedCorsConfigurationSource fuente = new UrlBasedCorsConfigurationSource();

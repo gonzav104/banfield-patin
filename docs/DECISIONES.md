@@ -197,3 +197,11 @@ Estados y reemplazos aceptados sólo como base conceptual; transiciones y restri
 ### O2-A — Implementación acotada D3a (2026-11-04)
 
 El usuario autorizó implementar el puerto `AlmacenDocumentos` y adaptador `RestClient` de creación sin sobrescritura y compensación acotada, con HTTP simulado y configuración externa desactivada por defecto. No autoriza endpoints, cargas reales, descargas, reemplazos, Supabase real ni buckets nuevos. No cierra políticas de retención, escaneo o compensación/reconciliación integral de D3b. Contrato y límites: `DOCUMENTOS.md`, sección D3a; evidencia y excepciones operativas exclusivas: `odd/tasks/documentos-privados.md`, L17.
+
+## Primera carga documental familiar vertical (implementación local autorizada)
+
+Se prioriza una entrega funcional completa: POST familiar → validación/ClamAV → V6/B2 → Documento CARGADO/auditoría → lectura D1. Se reutilizan migraciones V1–V6 sin editarlas; no se separan PRs por adaptador ni se habilitan tutores, aptos, reemplazos, descarga o reconciliación.
+
+Se conserva la semántica de JWT vigente; cuenta/escuela/familia/vínculo y expiración se revalidan al publicar bajo filas comunes a revocación. No se incorpora revocación persistida de jti por logout. Se añade PDFBox 3.0.8 como dependencia justificada para inspección estructural (no búsqueda textual); el proceso JVM hijo acota heap/tiempo porque cancelar un hilo no prueba que terminó un parser no confiable. ClamAV usa protocolo INSTREAM del JDK, sin biblioteca adicional, y fallo cerrado. No se promete inocuidad absoluta ni validación de proveedores/permisos reales.
+
+La integración sigue apagada por defecto; sólo se demuestran proveedores y datos sintéticos en entorno local aislado. Incertidumbre se conserva duraderamente, sin borrar ni reenviar; compensación supervisada corresponde a B6/B8. Valores iniciales de recursos son guardas configurables, no una política definitiva de rendimiento o retención legal. Los riesgos y requisitos operativos de `DOCUMENTOS.md` permanecen abiertos antes de producción. Esta decisión no autoriza publicar, desplegar ni ejecutar V5/V6 sobre bases compartidas.

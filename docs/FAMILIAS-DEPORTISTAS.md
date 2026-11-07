@@ -10,8 +10,7 @@ datos de otras personas. La estrategia de autenticación está en [SEGURIDAD.md]
   `usuarioId`, `activo`, `estado`, `esPrincipal` y `autorizadoPor` enviados en un cuerpo se rechazan con `400 SOLICITUD_INVALIDA`, y en la query string se ignoran.
   Un id de otra escuela es indistinguible de uno inexistente (`404`).
 - **Rutas `/api/admin/**`:** solo `ADMIN` con sesión completa (MFA). Toda ruta que escribe exige CSRF (`403 CSRF_INVALIDO` si falta).
-- **Rutas `/api/familia/**`:** solo `FAMILIA`. Hoy **solo lectura**: no existe ninguna ruta que escriba y cualquier otro método responde `405 METODO_NO_PERMITIDO`. La decisión D1 (`docs/DECISIONES.md`) habilita escrituras acotadas por workflow (documentos/aptos propios, respuesta a competencias, números de rifa) en las fases 3, 6 y 8; hasta que esas rutas existan, este invariante sigue vigente.
-  (con CSRF) o `403 CSRF_INVALIDO` (sin CSRF).
+- **Rutas `/api/familia/**`:** sólo `FAMILIA`. La primera escritura habilitable es `POST /api/familia/deportistas/{id}/documentos`, con CSRF por cabecera y habilitación explícita, apagada por defecto. No se habilitan otros workflows de escritura: métodos no implementados conservan `405 METODO_NO_PERMITIDO` con CSRF correcto o `403 CSRF_INVALIDO` sin él. Ver `DOCUMENTOS.md` para el alcance de la carga y sus límites.
 - **Errores transversales de toda ruta autenticada:** `401 NO_AUTENTICADO` (sin sesión, o sesión no vigente: la cookie se borra), `403 ACCESO_DENEGADO`
   (rol equivocado), `503 SERVICIO_NO_DISPONIBLE` (la base no responde al revalidar; la cookie no se toca), `400 SOLICITUD_INVALIDA` (JSON ilegible,
   propiedad desconocida o prohibida, parámetro o id mal formado) y `400 VALIDACION` (campos inválidos; `detalles` lista campo y mensaje, nunca el valor).
@@ -34,6 +33,7 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/admin/deportistas/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
 | `GET /api/admin/tutores/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 TUTOR_NO_ENCONTRADO` |
 | `GET /api/familia/deportistas/{id}/documentos` | FAMILIA | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `POST /api/familia/deportistas/{id}/documentos` | FAMILIA | multipart: archivo, tipo, temporadaId opcional; Idempotency-Key UUID | `201` DocumentoMetadatos; `200` repetición confirmada; habilitación explícita, ver `DOCUMENTOS.md` | `404`, `409`, `413`, `422`, `429`, `503`; CSRF obligatorio |
 | `GET /api/familia/tutores/{id}/documentos` | FAMILIA | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 TUTOR_NO_ENCONTRADO` |
 | `GET /api/admin/familias` | ADMIN | `page`, `size`, `busqueda` | `200` `Pagina<FamiliaResumen>` (solo activas; **ruta heredada, sin cambios**) | — |
 | `GET /api/admin/familias/listado` | ADMIN | `estado` (por defecto `TODOS`), `busqueda`, `page`, `size` | `200` `Pagina<{id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos}>` | `400 SOLICITUD_INVALIDA` (estado desconocido) |

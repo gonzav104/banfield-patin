@@ -1,0 +1,435 @@
+package com.banfieldpatin.backend.documentos.carga;
+
+import static org.assertj.core.api.Assertions.*;
+
+import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.stream.Stream;
+import javax.imageio.ImageIO;
+import org.apache.pdfbox.cos.*;
+import org.apache.pdfbox.pdmodel.*;
+import org.apache.pdfbox.pdmodel.encryption.*;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.mock.web.MockMultipartFile;
+
+class PreparadorDocumentoTest {
+  @TempDir Path temporal;
+
+  static CargaPropiedades propiedades(Path dir, long limite) {
+    return new CargaPropiedades(
+        true,
+        limite,
+        dir,
+        12000000,
+        Duration.ofSeconds(10),
+        Duration.ofSeconds(2),
+        "127.0.0.1",
+        3310,
+        2,
+        Duration.ofMinutes(3));
+  }
+
+  static byte[] imagen(String formato, int ancho, int alto) throws Exception {
+    var salida = new ByteArrayOutputStream();
+    ImageIO.write(new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB), formato, salida);
+    return salida.toByteArray();
+  }
+
+  static byte[] pdf(String peligro) throws Exception {
+    try (var doc = new PDDocument();
+        var salida = new ByteArrayOutputStream()) {
+      doc.addPage(new PDPage());
+      if (peligro.equals("cifrado"))
+        doc.protect(
+            new StandardProtectionPolicy(
+                "propietario-sintetico", "clave-sintetica", new AccessPermission()));
+      if (peligro.equals("javascript")) {
+        var a = new COSDictionary();
+        a.setName(COSName.S, "JavaScript");
+        a.setString(COSName.getPDFName("JS"), "app.alert('sintetico')");
+        doc.getDocumentCatalog().getCOSObject().setItem(COSName.getPDFName("OpenAction"), a);
+      }
+      if (peligro.equals("adjunto")) {
+        var a = new COSDictionary();
+        a.setItem(COSName.getPDFName("EmbeddedFiles"), new COSDictionary());
+        doc.getDocumentCatalog().getCOSObject().setItem(COSName.getPDFName("Names"), a);
+      }
+      doc.save(salida);
+      return salida.toByteArray();
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("validos")
+  void aceptaContenidoSinteticoRealYEliminaTemporal(String formato) throws Exception {
+    byte[] data = formato.equals("pdf") ? pdf("") : imagen(formato, 2, 2);
+    String mime = formato.equals("pdf") ? "application/pdf" : "image/" + formato;
+    Path file;
+    try (var a =
+        new PreparadorDocumento(propiedades(temporal, 15000000))
+            .preparar(new MockMultipartFile("archivo", "documento." + formato, mime, data))) {
+      file = a.ruta;
+      assertThat(a.mime).isEqualTo(mime);
+      assertThat(a.bytes).isEqualTo(data.length);
+      assertThat(a.sha).isEqualTo(java.security.MessageDigest.getInstance("SHA-256").digest(data));
+      assertThat(a.toString()).doesNotContain("documento.", "/", mime);
+      assertThat(Files.getPosixFilePermissions(file))
+          .containsExactlyInAnyOrder(
+              java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+              java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+    }
+    assertThat(file).doesNotExist();
+    try (var ds = Files.list(temporal)) {
+      assertThat(ds.count()).isZero();
+    }
+  }
+
+  static Stream<String> validos() {
+    return Stream.of("pdf", "png", "jpeg");
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidos")
+  void rechazaAntesDePublicar(String caso) throws Exception {
+    byte[] data = imagen("png", 2, 2);
+    String mime = "image/png", nombre = "documento.png";
+    long limite = 15000000;
+    switch (caso) {
+      case "vacio" -> data = new byte[0];
+      case "exceso" -> limite = 5;
+      case "mime" -> mime = "application/pdf";
+      case "extension" -> nombre = "documento.exe";
+      case "cabecera" -> data = "no es imagen".getBytes();
+      case "truncado" -> data = java.util.Arrays.copyOf(data, data.length - 4);
+      case "crc" -> data[40] ^= 1;
+      case "cola" -> {
+        byte[] extra = java.util.Arrays.copyOf(data, data.length + 7);
+        extra[data.length] = 'X';
+        data = extra;
+      }
+      case "dimensiones" -> data = imagen("png", 4000, 4000);
+      case "jpeg" -> {
+        data = imagen("jpeg", 2, 2);
+        data[data.length - 1] = 0;
+        mime = "image/jpeg";
+        nombre = "documento.jpeg";
+      }
+      case "pdf" -> {
+        data = "%PDF-1.7\ncontenido truncado\n%%EOF".getBytes();
+        mime = "application/pdf";
+        nombre = "documento.pdf";
+      }
+      default -> {
+        data = pdf(caso);
+        mime = "application/pdf";
+        nombre = "documento.pdf";
+      }
+    }
+    var input = new MockMultipartFile("archivo", nombre, mime, data);
+    long max = limite;
+    assertThatThrownBy(() -> new PreparadorDocumento(propiedades(temporal, max)).preparar(input))
+        .isInstanceOf(ExcepcionNegocio.class);
+    try (var ds = Files.list(temporal)) {
+      assertThat(ds.count()).isZero();
+    }
+  }
+
+  static Stream<String> invalidos() {
+    return Stream.of(
+        "vacio",
+        "exceso",
+        "mime",
+        "extension",
+        "cabecera",
+        "truncado",
+        "crc",
+        "cola",
+        "dimensiones",
+        "jpeg",
+        "pdf",
+        "cifrado",
+        "javascript",
+        "adjunto");
+  }
+
+  @Test
+  void rechazaXrefInconsistenteSinRepararlo() throws Exception {
+    String original = new String(pdf(""), java.nio.charset.StandardCharsets.ISO_8859_1);
+    var matcher = java.util.regex.Pattern.compile("startxref\\s+(\\d+)").matcher(original);
+    assertThat(matcher.find()).isTrue();
+    String roto =
+        original.substring(0, matcher.start(1))
+            + "0".repeat(matcher.group(1).length())
+            + original.substring(matcher.end(1));
+    var file =
+        new MockMultipartFile(
+            "archivo",
+            "sintetico.pdf",
+            "application/pdf",
+            roto.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+    assertThatThrownBy(
+            () -> new PreparadorDocumento(propiedades(temporal, 15000000)).preparar(file))
+        .isInstanceOf(ExcepcionNegocio.class);
+  }
+
+  static byte[] pngConPaleta(boolean tardia) throws Exception {
+    byte[] original = imagen("png", 2, 2);
+    var chunk = new ByteArrayOutputStream();
+    var out = new java.io.DataOutputStream(chunk);
+    out.writeInt(3);
+    byte[] tipo = "PLTE".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+    byte[] rgb = {0, 20, 30};
+    out.write(tipo);
+    out.write(rgb);
+    var crc = new java.util.zip.CRC32();
+    crc.update(tipo);
+    crc.update(rgb);
+    out.writeInt((int) crc.getValue());
+    int posicion = tardia ? original.length - 12 : 33;
+    var png = new ByteArrayOutputStream();
+    png.write(original, 0, posicion);
+    png.write(chunk.toByteArray());
+    png.write(original, posicion, original.length - posicion);
+    return png.toByteArray();
+  }
+
+  @Test
+  void rechazaPaletaPngDespuesDeDatosPeroConservaLaValida() throws Exception {
+    var preparador = new PreparadorDocumento(propiedades(temporal, 15000000));
+    try (var valido =
+        preparador.preparar(
+            new MockMultipartFile("archivo", "sintetico.png", "image/png", pngConPaleta(false)))) {
+      assertThat(valido.bytes).isPositive();
+    }
+    assertThatThrownBy(
+            () ->
+                preparador.preparar(
+                    new MockMultipartFile(
+                        "archivo", "sintetico.png", "image/png", pngConPaleta(true))))
+        .isInstanceOf(ExcepcionNegocio.class);
+  }
+
+  /** Enlaza los valores predeterminados reales, como Spring, en lugar de repetirlos en la prueba. */
+  static CargaPropiedades porDefecto(Path dir) {
+    return new org.springframework.boot.context.properties.bind.Binder(
+            new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                java.util.Map.of("banfield.documentos.carga.temporales", dir.toString())))
+        .bind("banfield.documentos.carga", CargaPropiedades.class)
+        .get();
+  }
+
+  private void acepta(String nombre, String mime, byte[] data) {
+    try (var a =
+        new PreparadorDocumento(porDefecto(temporal))
+            .preparar(new MockMultipartFile("archivo", nombre, mime, data))) {
+      assertThat(a.bytes).isEqualTo(data.length);
+    }
+  }
+
+  private void rechaza(String nombre, String mime, byte[] data) throws Exception {
+    var input = new MockMultipartFile("archivo", nombre, mime, data);
+    assertThatThrownBy(() -> new PreparadorDocumento(porDefecto(temporal)).preparar(input))
+        .isInstanceOfSatisfying(
+            ExcepcionNegocio.class, e -> assertThat(e.getEstado().value()).isEqualTo(422));
+    try (var ds = Files.list(temporal)) {
+      assertThat(ds.count()).isZero();
+    }
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"4032,3024", "4080,3072", "4608,3456", "4000,4000"})
+  void aceptaFotosHabitualesDeCelularConElLimitePorDefecto(int ancho, int alto)
+      throws Exception {
+    acepta("foto.jpg", "image/jpeg", imagen("jpeg", ancho, alto));
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"jpeg,4001,4000", "png,4001,4000", "png,16001,1"})
+  void rechazaImagenesQueSuperanLosLimitesPorDefecto(String formato, int ancho, int alto)
+      throws Exception {
+    rechaza("foto." + formato, "image/" + formato, imagen(formato, ancho, alto));
+  }
+
+  /** Escaneo sintético: una imagen DCT de página completa por hoja, como generan escáneres y celulares. */
+  static byte[] pdfEscaneado(int paginas, int ancho, int alto) throws Exception {
+    try (var doc = new PDDocument();
+        var salida = new ByteArrayOutputStream()) {
+      for (int i = 0; i < paginas; i++) {
+        var hoja = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        var g = hoja.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, ancho, alto);
+        g.setColor(java.awt.Color.DARK_GRAY);
+        for (int y = 100; y < alto - 100; y += 60) g.fillRect(100, y, ancho - 200, 12);
+        g.dispose();
+        var pagina = new PDPage(org.apache.pdfbox.pdmodel.common.PDRectangle.A4);
+        doc.addPage(pagina);
+        var imagen =
+            org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory.createFromImage(doc, hoja, 0.75f);
+        try (var cs = new PDPageContentStream(doc, pagina)) {
+          cs.drawImage(
+              imagen, 0, 0, pagina.getMediaBox().getWidth(), pagina.getMediaBox().getHeight());
+        }
+      }
+      doc.save(salida);
+      return salida.toByteArray();
+    }
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({"2,2480,3508", "3,1654,2339"})
+  void aceptaPdfEscaneadoConImagenesDct(int paginas, int ancho, int alto) throws Exception {
+    acepta("escaneo.pdf", "application/pdf", pdfEscaneado(paginas, ancho, alto));
+  }
+
+  static COSArray filtros(COSName... nombres) {
+    var filtros = new COSArray();
+    for (var nombre : nombres) filtros.add(nombre);
+    return filtros;
+  }
+
+  static byte[] deflate(long ceros) throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z =
+        new java.util.zip.DeflaterOutputStream(crudo, new java.util.zip.Deflater(9))) {
+      byte[] bloque = new byte[1 << 20];
+      for (long n = 0; n < ceros; n += bloque.length)
+        z.write(bloque, 0, (int) Math.min(bloque.length, ceros - n));
+    }
+    return crudo.toByteArray();
+  }
+
+  /** PDF con un XObject cuyos bytes crudos y cadena de filtros elige la prueba. */
+  static byte[] pdfConStream(COSArray filtros, byte[] crudo, boolean javascript) throws Exception {
+    try (var doc = new PDDocument();
+        var salida = new ByteArrayOutputStream()) {
+      var pagina = new PDPage();
+      pagina.setResources(new PDResources());
+      doc.addPage(pagina);
+      COSStream stream = doc.getDocument().createCOSStream();
+      try (var out = stream.createRawOutputStream()) {
+        out.write(crudo);
+      }
+      stream.setItem(COSName.FILTER, filtros);
+      stream.setItem(COSName.TYPE, COSName.XOBJECT);
+      stream.setItem(COSName.SUBTYPE, COSName.IMAGE);
+      if (javascript) stream.setString(COSName.getPDFName("JS"), "app.alert('sintetico')");
+      var xobjetos = new COSDictionary();
+      xobjetos.setItem(COSName.getPDFName("Im0"), stream);
+      pagina.getResources().getCOSObject().setItem(COSName.XOBJECT, xobjetos);
+      doc.save(salida);
+      return salida.toByteArray();
+    }
+  }
+
+  @Test
+  void aceptaImagenDctConFiltroPrevioDentroDelPresupuesto() throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z = new java.util.zip.DeflaterOutputStream(crudo)) {
+      z.write(imagen("jpeg", 64, 64));
+    }
+    acepta(
+        "documento.pdf",
+        "application/pdf",
+        pdfConStream(
+            filtros(COSName.FLATE_DECODE, COSName.DCT_DECODE), crudo.toByteArray(), false));
+  }
+
+  /** JPEG pequeño cuyo encabezado de cuadro (SOF0) declara otras dimensiones, sin cambiar sus datos. */
+  static byte[] jpegQueDeclara(int ancho, int alto) throws Exception {
+    byte[] data = imagen("jpeg", 64, 64);
+    for (int i = 2; i + 8 < data.length; i++)
+      if ((data[i] & 255) == 0xff && (data[i + 1] & 255) == 0xc0) {
+        data[i + 5] = (byte) (alto >> 8);
+        data[i + 6] = (byte) alto;
+        data[i + 7] = (byte) (ancho >> 8);
+        data[i + 8] = (byte) ancho;
+        return data;
+      }
+    throw new IllegalStateException("SOF0 ausente");
+  }
+
+  static byte[] flate(byte[] data) throws Exception {
+    var crudo = new ByteArrayOutputStream();
+    try (var z = new java.util.zip.DeflaterOutputStream(crudo)) {
+      z.write(data);
+    }
+    return crudo.toByteArray();
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "bomba-previa-a-dct",
+        "previa-a-dct-excedida",
+        "flate-excedido",
+        "jbig2",
+        "javascript-en-dct",
+        "dct-excede-pixeles",
+        "dct-excede-lado",
+        "flate-dct-excede-pixeles",
+        "dct-sin-encabezado-jpeg"
+      })
+  void rechazaPdfConStreamsPeligrososOExcesivos(String caso) throws Exception {
+    var dct = filtros(COSName.DCT_DECODE);
+    var flateDct = filtros(COSName.FLATE_DECODE, COSName.DCT_DECODE);
+    byte[] pdf =
+        switch (caso) {
+          case "bomba-previa-a-dct" -> pdfConStream(flateDct, deflate(400_000_000L), false);
+          case "previa-a-dct-excedida" -> pdfConStream(flateDct, deflate(40_000_000L), false);
+          case "flate-excedido" ->
+              pdfConStream(filtros(COSName.FLATE_DECODE), deflate(40_000_000L), false);
+          case "jbig2" -> pdfConStream(filtros(COSName.JBIG2_DECODE), new byte[1024], false);
+          case "dct-excede-pixeles" -> pdfConStream(dct, jpegQueDeclara(4001, 4000), false);
+          case "dct-excede-lado" -> pdfConStream(dct, jpegQueDeclara(16001, 1), false);
+          case "flate-dct-excede-pixeles" ->
+              pdfConStream(flateDct, flate(jpegQueDeclara(16000, 16000)), false);
+          case "dct-sin-encabezado-jpeg" -> pdfConStream(dct, new byte[4096], false);
+          default -> pdfConStream(dct, imagen("jpeg", 64, 64), true);
+        };
+    rechaza("documento.pdf", "application/pdf", pdf);
+  }
+
+  /** Compatibilidad Ultra HDR/MPF diferida: cualquier byte posterior al EOI principal se sigue rechazando. */
+  static byte[] jpegConMpf(byte[] anexo) throws Exception {
+    byte[] principal = imagen("jpeg", 1600, 1200);
+    byte[] mpf = {(byte) 0xff, (byte) 0xe2, 0, 10, 'M', 'P', 'F', 0, 0, 0, 0, 0};
+    var salida = new ByteArrayOutputStream();
+    salida.write(principal, 0, 2);
+    salida.write(mpf);
+    salida.write(principal, 2, principal.length - 2);
+    salida.write(anexo);
+    return salida.toByteArray();
+  }
+
+  @Test
+  void aceptaJpegConSegmentoMpfSinDatosAnexados() throws Exception {
+    acepta("foto.jpg", "image/jpeg", jpegConMpf(new byte[0]));
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {"mpf-con-imagen-anexada", "mpf-con-video-anexado", "imagen-concatenada"})
+  void rechazaJpegConDatosDespuesDelFinDeImagen(String caso) throws Exception {
+    byte[] anexo = imagen("jpeg", 400, 300);
+    byte[] data =
+        switch (caso) {
+          case "mpf-con-imagen-anexada" -> jpegConMpf(anexo);
+          case "mpf-con-video-anexado" ->
+              jpegConMpf(new byte[] {0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'});
+          default -> {
+            var salida = new ByteArrayOutputStream();
+            salida.write(imagen("jpeg", 1600, 1200));
+            salida.write(anexo);
+            yield salida.toByteArray();
+          }
+        };
+    rechaza("foto.jpg", "image/jpeg", data);
+  }
+}

@@ -1,4 +1,7 @@
 spring:
+  servlet:
+    multipart:
+      resolve-lazily: true
   application:
     name: backend
   datasource:
@@ -92,6 +95,8 @@ banfield:
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
   documentos:
+    carga:
+      habilitada: ${DOCUMENTOS_CARGA_HABILITADA:false}
     storage:
       habilitado: ${DOCUMENTOS_STORAGE_HABILITADO:false}
       url: ${SUPABASE_URL:}
