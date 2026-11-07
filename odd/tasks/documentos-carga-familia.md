@@ -385,3 +385,43 @@ Alcance aprobado (textual): «Establecer el límite predeterminado de archivo en
 Evidencia: suite normal `./mvnw -o clean verify` 1083/1083 sobre el árbol final (sin archivos de backend más nuevos que esa compilación); RED observado antes de cada corrección; comparación diferencial base vs final sobre 25 archivos sintéticos, sólo cambian los PDF escaneados. Verificador independiente: bloqueante B1 (JPEG de 16000×16000 dentro de PDF pasaba al no decodificar DCT), corregido con una verificación del encabezado de cuadro y recheck limitado: cerrado. Advertencias sin bloqueo: DCT con encabezado válido seguido de basura se acepta (diseño sin decodificar ráster); cadenas Flate duplicadas pasan también en la base. Suite PostgreSQL y el test HTTP de 5.000.000/5.000.001 bytes NO ejecutados localmente (sin Docker): pendientes de CI. Conteos esperados: normal 1083; PG 534 si no cambia nada más (533 + 1 prueba nueva).
 
 Estado: sin commit, push, PR ni RDD. La publicación de una rama nueva para CI NO está cubierta por L11 (rama exclusiva `test/carga-documental-ci`) y requiere autorización nueva. Risk: ítem 2 (validación de archivos y política CORS); ítem 3 no aplica (se amplía una cabecera permitida; no se retira ni cambia un contrato consumido).
+
+### L16 — Validación en GitHub Actions de las correcciones; RDD pendiente, 2026-11-06
+Rama `test/carga-documental-correcciones-ci`, HEAD `25152854f6ead6ed936636047286c075477127df`. CI: https://github.com/gonzav104/banfield-patin/actions/runs/42314234361
+
+Resultados: suite normal 1083/1083; PostgreSQL 17 534/534; HTTP documental (`CargaDocumentalHttpDbTest`) 26/26. Cero fallos, errores y omisiones. Un primer run falló por la prueba obsoleta `limiteRealDelServletNoPublicaNiEscanea` (payload de 15.000.001 bytes); corregida con 5.000.001 bytes en el séptimo commit.
+
+Estado de RDD: pendiente, sin aprobación integral. Un CI en verde no sustituye la revisión nativa; ningún consentimiento individual concedido todavía.
+
+Riesgos abiertos: B1-C; Supabase y ClamAV reales sin validar; revisión C3 bloqueada por el contexto de dependencias.
+
+Estado: L16 registrado sólo localmente, sin commit ni push.
+
+### L17 — RDD por corte aprobados y reconocidos: d59427c y a3f2ba8, 2026-11-06
+Consentimiento individual `granted` del usuario para ambos commits. Cada uno se revisó solo, en un worktree desprendido en ese commit, con `--committed-only`. El sobre nativo marcó ambos como riesgo medio.
+
+- `d59427c` (PDF/DCT): lineage `review-5a4b5d23e305ace8`, target `sha256:04b113b9e761d02b10c47ba66db9b2df6985ecf82ae6416f0a670c761c749be2`, base tree `39a528867a41125e4c3f91737e939676f4e97161` (`e9bb855`), candidate tree `3b1081d047f05214f8d733de34695e443f95b3ed`. Lentes review-risk, review-resilience y review-reliability: 0 hallazgos, `approved`. Reconocido (`gentle-ai.review-acknowledged/v1`): consumed revision `sha256:fb0c2c9edcb1da192737a92c1c77632be1234a16f2110dca28a6856db1fd37e0`, authority `burned`.
+- `a3f2ba8` (CORS): lineage `review-0c9d8cd29a2f4b91`, target `sha256:113fb5fdcd9c788e268d42db49066d00381dc69b4273ef5392ea75b588c15af9`, base tree `ff9b593c3f5bd3359913e9a290aedc0e4d742f69` (`05743c6`), candidate tree `874ed03be72a3c33512c4dcc276f19c299ce0298`. Lentes review-risk y review-reliability: 0 hallazgos, `approved`. Reconocido: consumed revision `sha256:7d56200b82521d060cbfd6e8f1ab98bf1ef70c6244388f8e7aef12e6d225410b`, authority `burned`.
+
+Worktrees de revisión, conservados: `/tmp/banfield-rdd-d59-6lbeco/wt` y `/tmp/banfield-rdd-a3f-VnUtJ9/wt`. No hay aprobación integral: C1, C3 y C4 siguen pendientes. Ninguna aprobación autoriza la entrega. L17 se registró solo en local, sin commit ni push.
+
+### L18 — C3 reconstruida aprobada y reconocida; C5 y C6 cerrados (passive), 2026-11-07
+Autorización del usuario: registrar L18 y evaluar C5/C6 por el mecanismo nativo. La reconstrucción de C3 usó un único intento, con el rango Git real y consentimiento `granted`. Sin cambios de código, pruebas ni migraciones; sin commit, push, PR ni merge.
+
+**C3 (reconstruida)**: base `64cf0abd5d3a3eece22c260cff85819856dd1b41` (árbol `69747c917f29c39c96400aef5d110a8f5beeb849`), candidato `8fbc2547b31ff43c503290fa8b38c8f540b86f67` (árbol `3a288a2b0f2e6c1164f37daac7de02d971d8dbad`, idéntico al congelado de la C3 anterior). Selectores `--base-ref 64cf0ab --committed-only`; 33 archivos, 2862 líneas; riesgo nativo alto (escalación ítem 2 y frontera de procesos en `PreparadorDocumento.java`).
+- Lineage `review-7feead3b7d6c7d1f`; target `sha256:6a4edc422769eef45f18ec77661bdb1f0b245a488f81c543ae4ba8a5a0371613`; manifiesto `sha256:9569e6f4527cca55432739b741bceab03bc707d43faa72fdaaf1dfcc80ebab51`; presupuesto de lente 204800 bytes, no excedido; presupuesto de corrección 200 líneas, sin uso.
+- Lentes `review-risk`, `review-resilience`, `review-readability` y `review-reliability`: las cuatro admitidas como `completed`, 33 parches inspeccionados, 0 hallazgos bloqueantes. Cierre `approved`.
+- Reconocimiento (`gentle-ai.review-acknowledged/v1`): consumed revision `sha256:f1e2eb25542f408fbce06958fcc05bed3bfd67447077296eae4e371f934db240`, `authority: burned`.
+- 19 hallazgos informativos (ninguno abrió corrección): readability R2-001…R2-008; resilience R4-001…R4-005; reliability R3-cierre-temporal-enmascara-exito, R3-idempotencia-sin-salida, R3-jpeg-movil-rechazado, R3-manejador-global-cabecera, R3-multipart-global-415, R3-pruebas-sin-comportamiento.
+- **Exclusión explícita**: `SupabaseAlmacenDocumentos` y su puerto `AlmacenDocumentos` quedaron fuera del diff (dependencia preexistente de B2). Ninguna lente pidió inspeccionarlos ni declaró inspección no disponible. Las cuatro afirmaron que lo evaluaron solo desde sus puntos de llamada en `CargaDocumentalService` y el stub HTTP sintético, y que NO lo dan por verificado. La interacción real con Supabase Storage sigue sin verificar.
+- La C3 anterior (`review-e4f837aa8e82021a`) queda intacta en `reviewing`; sin abandon, reset ni repair.
+- Evidencia exacta con `SHA256SUMS`: `.git/codex-evidence/carga-rdd/C3R/`. Worktree: `/tmp/banfield-rdd-c3r-wbcNAw/wt`.
+
+**C5** (`027a671`, base `b466420`, 2 archivos, 351 líneas): `assess` passive (`non_executable_only`, `review_due=false`). START cerró `approved` (riesgo bajo) sin consentimiento ni lentes. Lineage `review-c8f1412f92e88ed4`, target `sha256:3439fc3e3042448aade951213b10496721fb7efbbf3e2d01caea151fb80fe70d`, consumed revision `sha256:e3a73f0e45c83f692eaa063ae2052d70d3a2a4781e4556be52f2431b0a10e2b1`, `burned`.
+
+**C6** (`e201247`, base `027a671`, 2 archivos, 40 líneas): `assess` passive, igual procedimiento. Lineage `review-f660631a3565ed18`, target `sha256:42f5e7d14cde4a56b5d796363a58b63b31412b5df559eba686fc044174e38c50`, consumed revision `sha256:bcebe0f4aafd9000edd569641e1bbc1cc938cb6618169dd9731fbd8889cff408`, `burned`.
+- Evidencia en `.git/codex-evidence/carga-rdd/C5/` y `C6/`. Worktree: `/tmp/banfield-rdd-c56-WFCvIM/wt` (hoy detached en `2515285`).
+
+**Identidad de código**: `git diff 8fbc254 2f5b9a2 -- backend` es vacío; los dos únicos desacuerdos entre ambos árboles son docs/ODD. La evidencia de CI (1054/533 y luego 1083/534/26) sigue siendo válida para el código revisado. No se repitieron suites.
+
+**Sin revisión nativa**: `e9bb855`, `05743c6`, `73779e7`, `60aceea` y `2515285` (el rango `2f5b9a2..2515285` es medio, 487 líneas, `review_due=false`/`under_budget`, no consumido). Solo `d59427c` y `a3f2ba8` están reconocidos dentro de ese rango. B1-C sigue abierta; Supabase y ClamAV reales siguen sin validarse. Esta entrada se registró solo en local.
