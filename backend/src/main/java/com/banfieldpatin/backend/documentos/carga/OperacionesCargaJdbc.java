@@ -267,6 +267,7 @@ final class OperacionesCargaJdbc {
       tx.executeWithoutResult(s -> cambiar(o, "CERRADA", true));
     } catch (RuntimeException ex) {
       /* Se conserva el registro; no se afirma cierre si falló el commit. */
+      DiagnosticoCarga.fallo(o.id(), "cierre", ex);
     }
   }
 
@@ -275,6 +276,7 @@ final class OperacionesCargaJdbc {
       tx.executeWithoutResult(s -> cambiar(o, "RECONCILIANDO", false));
     } catch (RuntimeException ex) {
       /* No recarga versión ni borra; incluso PUBLICADA puede haber confirmado un commit incierto. */
+      DiagnosticoCarga.fallo(o.id(), "reconciliacion", ex);
     }
   }
 

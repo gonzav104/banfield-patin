@@ -10,12 +10,15 @@ Objetivo: resolver los defectos y riesgos conocidos de la carga documental integ
 - S6: «Creá un commit en español, sin `Co-Authored-By`.»
 - S7: «No avances automáticamente a U2 ni a otras unidades.»
 - S8: «Mantené `DOCUMENTOS_CARGA_HABILITADA=false`. No modifiques migraciones ni utilices servicios o credenciales reales.»
+- S10 (U2): «Autorizo exclusivamente **U2 — Observabilidad sin datos sensibles**, siguiendo el plan ODD registrado en `odd/tasks/documentos-carga-habilitable.md`.»
+- S11 (U2): «Registrar solamente `operacionId`, fase, clase de excepción y código saneado cuando corresponda.»; «No registrar mensajes de excepciones, rutas, nombres, SHA ni identificadores personales.»
+- S12 (U2): «Incorporar pruebas que verifiquen la presencia de los campos permitidos y la ausencia de información sensible.»; «Mantener el alcance estrictamente limitado a U2.»; «No avanzar a U3 sin autorización.»
 - S9 (hoja de ruta): «Apruebo el plan general U1–U8 como hoja de ruta, pero autorizo únicamente la implementación de **U1 — Limpieza best-effort**.»
 
 ## Tasks
 Solo U1 está autorizada; las demás son hoja de ruta aprobada, sin autorización de implementación.
 - [x] U1 · S1–S8 · inline · Limpieza best-effort del temporal. Riesgo: ninguno (sin contrato, permisos ni concurrencia modificados). Commit: el de esta unidad (`test(documentos)`/`fix(documentos)` de limpieza best-effort).
-- [ ] U2 · Observabilidad sin datos sensibles (logs de recuperación con id de operación, fase y causa saneada). Pendiente de autorización.
+- [x] U2 · S10–S12 · inline · Observabilidad sin datos sensibles: `DiagnosticoCarga`, WARN con operación, fase, clase de causa y código saneado. Risk: none (solo agrega logs). Commit: el de esta unidad (`feat(documentos)` de diagnóstico).
 - [ ] U3 · Clasificación de timeout de la inspección (503 en vez de 422). Pendiente de autorización.
 - [ ] U4 · El reintento retoma operaciones RESERVADA/ALMACENADA vencidas. Ítem de riesgo 4. Pendiente de autorización.
 - [ ] U5 · Reconciliación con Storage (TRANSFIRIENDO/RECONCILIANDO) y guarda de configuración de la reserva. Ítems 1 y 4. Pendiente de autorización.
@@ -120,3 +123,27 @@ Mantené `DOCUMENTOS_CARGA_HABILITADA=false`. No modifiques migraciones ni utili
 - U1, RED: `LimpiezaTemporalesCargaTest` falló 3/4 (cierre con fallo lanzaba 503; el rechazo 422 se reemplazaba por 503; una publicación confirmada respondía 503). GREEN tras `ArchivoPreparado.eliminar`, helper compartido de mejor esfuerzo que no lanza y registra una advertencia con solo la clase de la causa.
 - Riesgo residual documentado en `docs/DOCUMENTOS.md`: temporales huérfanos hasta contar con purga (barrido acotado, trabajo futuro, no autorizado aún).
 - Verificación de U1 (una ejecución cada una, sin repetir): `./mvnw -o -Dtest='*CargaTest,PreparadorDocumentoTest,ClamAvPrivadoTest,ServicioCargaFalloTest,CargaDocumentalSeguridadWebMvcTest,CargaDeshabilitadaWebMvcTest' test` → 73/73; `-Pdb-tests -Dtest=CargaDocumentalHttpDbTest test` (PostgreSQL 17 y HTTP) → 26/26. `DOCUMENTOS_CARGA_HABILITADA=false`; sin migraciones, servicios ni credenciales reales. Suite completa: la valida CI al publicar.
+
+### L4 — Autorización de U2 (textual), 2026-11-09
+U1 queda aceptada como completada localmente.
+
+Autorizo exclusivamente **U2 — Observabilidad sin datos sensibles**, siguiendo el plan ODD registrado en `odd/tasks/documentos-carga-habilitable.md`.
+
+Condiciones:
+- Implementar los logs WARN previstos para errores de recuperación.
+- Registrar solamente `operacionId`, fase, clase de excepción y código saneado cuando corresponda.
+- No registrar mensajes de excepciones, rutas, nombres, SHA ni identificadores personales.
+- Incorporar pruebas que verifiquen la presencia de los campos permitidos y la ausencia de información sensible.
+- Mantener el alcance estrictamente limitado a U2.
+- Ejecutar las pruebas pertinentes y `review assess`, respetando los requisitos de consentimiento.
+- Registrar la evidencia en ODD y Engram sin sobrescribir entradas anteriores.
+- Crear un commit independiente, en español y sin `Co-Authored-By`.
+
+No realizar push, PR ni merge. No avanzar a U3 sin autorización.
+
+Al finalizar, informar los cambios, pruebas, riesgos residuales y resultado de revisión.
+
+### L5 — Ejecución de U2, 2026-11-09
+- RED: `DiagnosticoCargaTest` falló 4 de 6 (los que exigen log; los dos que exigen silencio ya pasaban). GREEN con `DiagnosticoCarga` y las fases en `CargaDocumentalService`/`OperacionesCargaJdbc` (compensaciones `cierre` y `reconciliacion`, antes `catch` vacíos). Se añadió el registro de 409 con operación ya reservada (pérdida de CAS) y su prueba (7 pruebas).
+- Verificación (una ejecución cada una): focalizada 80/80 (incluye las 7 nuevas); `CargaDocumentalHttpDbTest` 26/26. En esa corrida real se emitieron 8 advertencias, todas con solo UUID de operación, fase, clase y código. `DOCUMENTOS_CARGA_HABILITADA=false`; sin migraciones, servicios ni credenciales reales.
+- Residual: los componentes inferiores ya descartan la causa (`ErrorCarga.indisponible()`), por lo que el log indica fase y código genérico, no el detalle interno; sin métricas (el proyecto no tiene Micrometer); sin alerta ni agregación.

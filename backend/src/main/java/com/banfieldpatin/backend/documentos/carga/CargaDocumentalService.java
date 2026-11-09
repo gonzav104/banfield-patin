@@ -45,6 +45,7 @@ public final class CargaDocumentalService {
     } catch (ExcepcionNegocio ex) {
       throw ex;
     } catch (RuntimeException ex) {
+      DiagnosticoCarga.fallo(null, "preautorizar", ex);
       throw ErrorCarga.indisponible();
     }
   }
@@ -59,30 +60,41 @@ public final class CargaDocumentalService {
       DatosSolicitud datos) {
     OperacionesCargaJdbc.Operacion op = null;
     boolean transferencia = false;
+    String fase = "preparar";
     try {
       if (TransactionSynchronizationManager.isActualTransactionActive())
         throw ErrorCarga.indisponible();
       try (var a = preparador.preparar(archivo)) {
+        fase = "reservar";
         var reserva =
             operaciones.reservar(c, atleta, tipo, temporada, idem, almacen.prepararDestino(), a);
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
+        fase = "escanear";
         scanner.escanear(a.ruta);
+        fase = "iniciar";
         op = operaciones.iniciar(c, op);
         transferencia = true;
+        fase = "transferir";
         try (var contenido = java.nio.file.Files.newInputStream(a.ruta)) {
           almacen.crear(op.destino(), contenido, a.bytes, a.mime);
         }
+        fase = "almacenada";
         op = operaciones.almacenada(op);
+        fase = "publicar";
         return new Resultado(operaciones.publicar(c, op, datos), false);
       }
     } catch (ExcepcionNegocio ex) {
+      // Un 409 con la operación ya reservada es una pérdida de CAS: anómalo, a diferencia de un 4xx del cliente.
+      if (ex.getEstado().is5xxServerError() || op != null && ex.getEstado().value() == 409)
+        DiagnosticoCarga.fallo(op == null ? null : op.id(), fase, ex);
       if (op != null) {
         if (transferencia) operaciones.incierta(op);
         else operaciones.cerrarAntesDeTransferir(op);
       }
       throw ex;
     } catch (Exception ex) {
+      DiagnosticoCarga.fallo(op == null ? null : op.id(), fase, ex);
       if (op != null) {
         if (transferencia) operaciones.incierta(op);
         else operaciones.cerrarAntesDeTransferir(op);
