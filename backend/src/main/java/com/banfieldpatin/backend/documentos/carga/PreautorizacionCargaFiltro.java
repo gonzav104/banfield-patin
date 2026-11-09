@@ -60,8 +60,9 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
       return;
     }
     CargaDocumentalService servicio = proveedor.getIfAvailable();
-    // Sólo seguridad antes del cuerpo: el permiso de procesamiento se toma en el servicio, con el
-    // archivo ya recibido, para que un cliente lento no lo retenga mientras envía.
+    // Antes del cuerpo: seguridad y cuota de recepción (U6b). El permiso de procesamiento se toma
+    // en el servicio, con el archivo ya recibido, para que un cliente lento no lo retenga (U6).
+    boolean recibiendo = false;
     try {
       if (servicio == null) throw ErrorCarga.indisponible();
       if (!(SecurityContextHolder.getContext().getAuthentication()
@@ -76,10 +77,15 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
       }
       var contexto = ContextoCarga.desde(auth.getToken());
       servicio.preautorizar(contexto, atleta);
+      // Con resolve-lazily el multipart solo se lee en el controlador: sin cuota, 429 sin cuerpo.
+      if (!servicio.entrarRecepcion()) throw ErrorCarga.ocupada();
+      recibiendo = true;
       request.setAttribute(CONTEXTO, contexto);
       chain.doFilter(request, response);
     } catch (ExcepcionNegocio ex) {
       responder(response, ex);
+    } finally {
+      if (recibiendo) servicio.salirRecepcion();
     }
   }
 

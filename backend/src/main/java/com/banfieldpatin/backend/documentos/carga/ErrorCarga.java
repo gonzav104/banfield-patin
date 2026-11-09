@@ -34,6 +34,11 @@ final class ErrorCarga {
         "No se puede confirmar el resultado; conserve la clave de idempotencia.");
   }
 
+  static ExcepcionNegocio ocupada() {
+    return new ExcepcionNegocio(
+        HttpStatus.TOO_MANY_REQUESTS, "CARGA_OCUPADA", "No hay capacidad de carga disponible.");
+  }
+
   static ExcepcionNegocio grande() {
     return new ExcepcionNegocio(
         HttpStatus.PAYLOAD_TOO_LARGE,

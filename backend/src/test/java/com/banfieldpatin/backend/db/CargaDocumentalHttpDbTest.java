@@ -1521,11 +1521,30 @@ class CargaDocumentalHttpDbTest {
     return ((Semaphore) campo.get(servicio)).availablePermits();
   }
 
+  int recepcionesLibres() throws Exception {
+    Object servicio =
+        contexto.getBean(
+            Class.forName("com.banfieldpatin.backend.documentos.carga.CargaDocumentalService"));
+    var campo = servicio.getClass().getDeclaredField("recepciones");
+    campo.setAccessible(true);
+    return ((Semaphore) campo.get(servicio)).availablePermits();
+  }
+
+  void esperarRecepcionesLibres(int esperado) throws Exception {
+    long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (recepcionesLibres() != esperado && System.nanoTime() < fin) Thread.sleep(25);
+    assertThat(recepcionesLibres()).isEqualTo(esperado);
+  }
+
   /** Archivos del spool multipart de Tomcat y temporales de carga presentes ahora. */
   long spool() throws Exception {
-    try (var w = Files.walk(TEMPORAL)) {
-      return w.filter(Files::isRegularFile).count();
-    }
+    // Tomcat borra su spool en paralelo: un archivo puede desaparecer durante el recorrido.
+    for (int intento = 0; ; intento++)
+      try (var w = Files.walk(TEMPORAL)) {
+        return w.filter(Files::isRegularFile).count();
+      } catch (UncheckedIOException ex) {
+        if (!(ex.getCause() instanceof NoSuchFileException) || intento >= 50) throw ex;
+      }
   }
 
   void esperarSinTemporales() throws Exception {
@@ -1622,8 +1641,10 @@ class CargaDocumentalHttpDbTest {
       long conUno = spool();
       try (var lento2 = clienteLento(atleta, token, grande, 64 * 1024)) {
         esperarSpool(conUno + 1);
-        // Ambos superaron la preautorización y están recibiendo el cuerpo: ningún permiso tomado.
+        // Ambos superaron la preautorización y están recibiendo el cuerpo: ningún permiso de
+        // procesamiento tomado; cada uno ocupa una recepción (U6b).
         assertThat(permisosLibres()).isEqualTo(2);
+        assertThat(recepcionesLibres()).isEqualTo(6);
         // Una carga completa se procesa mientras los lentos siguen enviando datos.
         lento1.enviarMas(1024);
         lento2.enviarMas(1024);
@@ -1635,6 +1656,7 @@ class CargaDocumentalHttpDbTest {
     }
     // Los lentos abandonan: no quedan permisos tomados ni spool ni temporales de carga.
     esperarSinTemporales();
+    esperarRecepcionesLibres(8);
     assertThat(permisosLibres()).isEqualTo(2);
     assertThat(documentos()).isEqualTo(1);
     assertThat(POSTS.get()).isEqualTo(1);
@@ -1675,6 +1697,7 @@ class CargaDocumentalHttpDbTest {
       var b = pool.submit(() -> cargar(UUID.randomUUID(), file));
       assertThat(entraron.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(permisosLibres()).isZero();
+      assertThat(recepcionesLibres()).isEqualTo(6);
       long directorios;
       try (var w = Files.list(TEMPORAL)) {
         directorios = w.filter(p -> p.getFileName().toString().startsWith("c-")).count();
@@ -1714,6 +1737,72 @@ class CargaDocumentalHttpDbTest {
     ESTADO_STORAGE.set(503);
     assertThat(cargar(UUID.randomUUID(), png()).statusCode()).isEqualTo(503);
     assertThat(permisosLibres()).isEqualTo(2);
+    esperarRecepcionesLibres(8);
     esperarSinTemporales();
+  }
+
+  // ---- U6b: cuota independiente de recepciones multipart simultáneas ----
+
+  @Test
+  void elPermisoDeRecepcionSeTomaAntesDeLeerElCuerpo() throws Exception {
+    try (var soloCabeceras = clienteLento(atleta, token, png(), -1)) {
+      // Superó la seguridad y tomó la recepción sin que exista ningún byte del cuerpo en disco.
+      esperarRecepcionesLibres(7);
+      assertThat(spool()).isZero();
+      assertThat(permisosLibres()).isEqualTo(2);
+    }
+    esperarRecepcionesLibres(8);
+    esperarSinTemporales();
+  }
+
+  @Test
+  void cuotaDeRecepcionAgotadaResponde429SinConsumirElMultipart() throws Exception {
+    var abiertos = new ArrayList<ClienteLento>();
+    try {
+      for (int i = 0; i < 8; i++) abiertos.add(clienteLento(atleta, token, png(), -1));
+      esperarRecepcionesLibres(0);
+      // Sin cuota: 429 inmediato aunque el cliente no haya enviado el cuerpo.
+      try (var excedente = clienteLento(atleta, token, png(), -1)) {
+        assertThat(excedente.estado()).startsWith("HTTP/1.1 429");
+      }
+      // La seguridad sigue antes que la cuota.
+      try (var ajeno = clienteLento(UUID.randomUUID(), token, png(), -1)) {
+        assertThat(ajeno.estado()).startsWith("HTTP/1.1 404");
+      }
+      try (var anonimo = clienteLento(atleta, null, png(), -1)) {
+        assertThat(anonimo.estado()).startsWith("HTTP/1.1 401");
+      }
+      assertThat(spool()).as("ningún cuerpo consumido").isZero();
+      assertThat(recepcionesLibres()).isZero();
+      assertThat(permisosLibres()).isEqualTo(2);
+    } finally {
+      for (var c : abiertos) c.close();
+    }
+    // Desconexiones: cada recepción vuelve exactamente una vez.
+    esperarRecepcionesLibres(8);
+    esperarSinTemporales();
+    var normal = cargar(UUID.randomUUID(), png());
+    assertThat(normal.statusCode()).as(normal.body()).isEqualTo(201);
+    esperarRecepcionesLibres(8);
+    assertThat(permisosLibres()).isEqualTo(2);
+  }
+
+  @Test
+  void elCuerpoDel429DeRecepcionConservaElContrato() throws Exception {
+    var abiertos = new ArrayList<ClienteLento>();
+    try {
+      for (int i = 0; i < 8; i++) abiertos.add(clienteLento(atleta, token, png(), -1));
+      esperarRecepcionesLibres(0);
+      var r = cargar(UUID.randomUUID(), png());
+      assertThat(r.statusCode()).isEqualTo(429);
+      assertThat(JsonPath.<String>read(r.body(), "$.codigo")).isEqualTo("CARGA_OCUPADA");
+      assertThat(JsonPath.<String>read(r.body(), "$.mensaje"))
+          .isEqualTo("No hay capacidad de carga disponible.");
+      assertThat(r.headers().firstValue("cache-control").orElse("")).contains("no-store");
+      sinFugas(r);
+    } finally {
+      for (var c : abiertos) c.close();
+    }
+    esperarRecepcionesLibres(8);
   }
 }

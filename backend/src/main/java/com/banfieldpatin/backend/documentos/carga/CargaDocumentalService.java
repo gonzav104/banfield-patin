@@ -21,6 +21,7 @@ public final class CargaDocumentalService {
   private final ClamAvPrivado scanner;
   private final AlmacenDocumentos almacen;
   private final Semaphore cupos;
+  private final Semaphore recepciones;
 
   CargaDocumentalService(
       OperacionesCargaJdbc operaciones, CargaPropiedades p, AlmacenDocumentos almacen) {
@@ -29,8 +30,21 @@ public final class CargaDocumentalService {
     this.scanner = new ClamAvPrivado(p);
     this.almacen = almacen;
     this.cupos = new Semaphore(p.concurrencia());
+    this.recepciones = new Semaphore(p.recepciones());
   }
 
+
+  /**
+   * Cuota de recepción (U6b), separada del procesamiento: la toma el filtro después de la seguridad
+   * y antes de que se lea el cuerpo; la libera el mismo filtro al terminar la solicitud.
+   */
+  boolean entrarRecepcion() {
+    return recepciones.tryAcquire();
+  }
+
+  void salirRecepcion() {
+    recepciones.release();
+  }
 
   void preautorizar(ContextoCarga c, UUID atleta) {
     try {
@@ -56,11 +70,7 @@ public final class CargaDocumentalService {
       UUID idem,
       MultipartFile archivo,
       DatosSolicitud datos) {
-    if (!cupos.tryAcquire())
-      throw new ExcepcionNegocio(
-          org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
-          "CARGA_OCUPADA",
-          "No hay capacidad de carga disponible.");
+    if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
       return procesar(c, atleta, tipo, temporada, idem, archivo, datos);
     } finally {

@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.documentos.carga;
 import java.nio.file.Path;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties("banfield.documentos.carga")
@@ -16,7 +17,13 @@ public record CargaPropiedades(
     @DefaultValue("127.0.0.1") String scannerHost,
     @DefaultValue("3310") int scannerPuerto,
     @DefaultValue("2") int concurrencia,
-    @DefaultValue("PT3M") Duration reserva) {
+    @DefaultValue("PT3M") Duration reserva,
+    @DefaultValue("8") int recepciones) {
+  /**
+   * {@code recepciones}: cuota de solicitudes de carga simultáneas desde la preautorización hasta
+   * la respuesta (recepción del cuerpo y procesamiento), independiente de {@code concurrencia}.
+   */
+  @ConstructorBinding
   public CargaPropiedades {
     if (maxBytes < 1
         || maxBytes > 50000000
@@ -29,7 +36,9 @@ public record CargaPropiedades(
         || scannerPuerto < 1
         || scannerPuerto > 65535
         || concurrencia < 1
-        || concurrencia > 8)
+        || concurrencia > 8
+        || recepciones < concurrencia
+        || recepciones > 64)
       throw new IllegalStateException("Configuración de carga documental inválida");
     temporales =
         (temporales == null
@@ -39,6 +48,32 @@ public record CargaPropiedades(
                 : temporales)
             .toAbsolutePath()
             .normalize();
+  }
+
+  /** Con la cuota de recepciones por defecto (8). */
+  public CargaPropiedades(
+      boolean habilitada,
+      long maxBytes,
+      Path temporales,
+      long maxPixeles,
+      Duration procesamiento,
+      Duration scannerPlazo,
+      String scannerHost,
+      int scannerPuerto,
+      int concurrencia,
+      Duration reserva) {
+    this(
+        habilitada,
+        maxBytes,
+        temporales,
+        maxPixeles,
+        procesamiento,
+        scannerPlazo,
+        scannerHost,
+        scannerPuerto,
+        concurrencia,
+        reserva,
+        8);
   }
 
   private static boolean plazo(Duration d) {
