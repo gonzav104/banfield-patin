@@ -13,13 +13,16 @@ Objetivo: resolver los defectos y riesgos conocidos de la carga documental integ
 - S10 (U2): «Autorizo exclusivamente **U2 — Observabilidad sin datos sensibles**, siguiendo el plan ODD registrado en `odd/tasks/documentos-carga-habilitable.md`.»
 - S11 (U2): «Registrar solamente `operacionId`, fase, clase de excepción y código saneado cuando corresponda.»; «No registrar mensajes de excepciones, rutas, nombres, SHA ni identificadores personales.»
 - S12 (U2): «Incorporar pruebas que verifiquen la presencia de los campos permitidos y la ausencia de información sensible.»; «Mantener el alcance estrictamente limitado a U2.»; «No avanzar a U3 sin autorización.»
+- S13 (U3): «Un timeout de inspección debe devolver `503 CARGA_NO_DISPONIBLE`, por tratarse de un fallo temporal de infraestructura, no de un documento inválido.»; «Mantener `422` para los documentos realmente inválidos, incluyendo el comportamiento del exit code 42.»
+- S14 (U3): «Garantizar que la JVM hija sea terminada correctamente cuando ocurra un timeout, sin dejar procesos vivos.»; «Comprobar que los recursos temporales se limpien con las garantías establecidas en U1.»
+- S15 (U3): «Utilizar la observabilidad incorporada en U2, sin registrar datos sensibles.»; «Implementar pruebas de regresión que distingan timeout, documento inválido y funcionamiento normal.»; «No avanzar a U4 ni realizar cambios fuera del alcance de U3.»
 - S9 (hoja de ruta): «Apruebo el plan general U1–U8 como hoja de ruta, pero autorizo únicamente la implementación de **U1 — Limpieza best-effort**.»
 
 ## Tasks
 Solo U1 está autorizada; las demás son hoja de ruta aprobada, sin autorización de implementación.
 - [x] U1 · S1–S8 · inline · Limpieza best-effort del temporal. Riesgo: ninguno (sin contrato, permisos ni concurrencia modificados). Commit: el de esta unidad (`test(documentos)`/`fix(documentos)` de limpieza best-effort).
 - [x] U2 · S10–S12 · inline · Observabilidad sin datos sensibles: `DiagnosticoCarga`, WARN con operación, fase, clase de causa y código saneado. Risk: none (solo agrega logs). Commit: el de esta unidad (`feat(documentos)` de diagnóstico).
-- [ ] U3 · Clasificación de timeout de la inspección (503 en vez de 422). Pendiente de autorización.
+- [x] U3 · S13–S15 · inline · Clasificación de timeout: el vencimiento de la JVM hija es `503 CARGA_NO_DISPONIBLE`; exit 42 sigue siendo `422`. Risk: none (cambia el código de error de una condición de fallo, dentro del contrato OpenAPI ya publicado que declara 503). Commit: el de esta unidad (`fix(documentos)` de timeout).
 - [ ] U4 · El reintento retoma operaciones RESERVADA/ALMACENADA vencidas. Ítem de riesgo 4. Pendiente de autorización.
 - [ ] U5 · Reconciliación con Storage (TRANSFIRIENDO/RECONCILIANDO) y guarda de configuración de la reserva. Ítems 1 y 4. Pendiente de autorización.
 - [ ] U6 · Permiso de carga después del spool del cuerpo. Ítem 4. Pendiente de autorización.
@@ -147,3 +150,34 @@ Al finalizar, informar los cambios, pruebas, riesgos residuales y resultado de r
 - RED: `DiagnosticoCargaTest` falló 4 de 6 (los que exigen log; los dos que exigen silencio ya pasaban). GREEN con `DiagnosticoCarga` y las fases en `CargaDocumentalService`/`OperacionesCargaJdbc` (compensaciones `cierre` y `reconciliacion`, antes `catch` vacíos). Se añadió el registro de 409 con operación ya reservada (pérdida de CAS) y su prueba (7 pruebas).
 - Verificación (una ejecución cada una): focalizada 80/80 (incluye las 7 nuevas); `CargaDocumentalHttpDbTest` 26/26. En esa corrida real se emitieron 8 advertencias, todas con solo UUID de operación, fase, clase y código. `DOCUMENTOS_CARGA_HABILITADA=false`; sin migraciones, servicios ni credenciales reales.
 - Residual: los componentes inferiores ya descartan la causa (`ErrorCarga.indisponible()`), por lo que el log indica fase y código genérico, no el detalle interno; sin métricas (el proyecto no tiene Micrometer); sin alerta ni agregación.
+
+### L6 — Autorización de U3 (textual), 2026-11-09
+U2 queda aceptada como completada localmente.
+
+Autorizo exclusivamente **U3 — Clasificación de timeout**, según el plan ODD registrado.
+
+Objetivo: corregir la clasificación del timeout de la JVM hija utilizada durante la inspección documental.
+
+Condiciones:
+
+1. Un timeout de inspección debe devolver `503 CARGA_NO_DISPONIBLE`, por tratarse de un fallo temporal de infraestructura, no de un documento inválido.
+2. Mantener `422` para los documentos realmente inválidos, incluyendo el comportamiento del exit code 42.
+3. Garantizar que la JVM hija sea terminada correctamente cuando ocurra un timeout, sin dejar procesos vivos.
+4. Comprobar que los recursos temporales se limpien con las garantías establecidas en U1.
+5. Utilizar la observabilidad incorporada en U2, sin registrar datos sensibles.
+6. Implementar pruebas de regresión que distingan timeout, documento inválido y funcionamiento normal.
+7. Ejecutar pruebas focalizadas y respetar `review assess`, sin iniciar revisiones nativas que requieran autorización.
+8. Actualizar ODD y Engram, preservando los registros anteriores.
+
+Crear un commit independiente en español, sin `Co-Authored-By`.
+
+No hacer push, PR ni merge. Mantener la carga documental deshabilitada.
+
+No avanzar a U4 ni realizar cambios fuera del alcance de U3.
+
+Al finalizar, presentar evidencia de implementación, pruebas y revisión.
+
+### L7 — Ejecución de U3, 2026-11-09
+- RED: `ClasificacionInspeccionTest` (3 pruebas) falló solo en el timeout (devolvía 422); inválido (422, exit 42) y válido ya pasaban. GREEN con el cambio de `PreparadorDocumento.inspeccionar`: el vencimiento del plazo registra `fase=inspeccionar causa=TimeoutException` (U2) y responde `ErrorCarga.indisponible()`. La terminación de la JVM hija (`destroyForcibly` + espera de 5 s en `finally`) no cambió: la prueba comprueba que no queda ningún hijo vivo y que el temporal se elimina (U1).
+- Verificación (una ejecución cada una): focalizada 83/83; `CargaDocumentalHttpDbTest` 26/26 (ninguna línea `inspeccionar` en una corrida sana). `DOCUMENTOS_CARGA_HABILITADA=false`; sin migraciones ni servicios reales. Sin cambios en OpenAPI: el contrato ya declara `503 CARGA_NO_DISPONIBLE`.
+- Residual: un archivo malicioso que consuma todo el plazo también devuelve 503 (reintentable), por lo que el semáforo de concurrencia sigue siendo la defensa contra el abuso (U6); salidas no nulas distintas de 42 (caída de la JVM hija) ya eran 503. El plazo de 10 s sigue siendo configurable (`procesamiento`) y debe dimensionarse para el arranque de la JVM bajo carga.

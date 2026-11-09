@@ -7,6 +7,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -127,8 +128,11 @@ final class PreparadorDocumento {
     pb.environment().put("LANG", "C");
     Process proceso = pb.start();
     try {
-      if (!proceso.waitFor(p.procesamiento().toMillis(), TimeUnit.MILLISECONDS))
-        throw ErrorCarga.invalido();
+      if (!proceso.waitFor(p.procesamiento().toMillis(), TimeUnit.MILLISECONDS)) {
+        // El plazo vencido indica un host exigido, no un documento inválido: es un fallo temporal.
+        DiagnosticoCarga.fallo(null, "inspeccionar", new TimeoutException());
+        throw ErrorCarga.indisponible();
+      }
       if (proceso.exitValue() == 42) throw ErrorCarga.invalido();
       if (proceso.exitValue() != 0) throw ErrorCarga.indisponible();
     } finally {
