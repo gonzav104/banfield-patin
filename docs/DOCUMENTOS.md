@@ -248,6 +248,40 @@ Hallazgo de método, no un defecto: la firma EICAR de ClamAV se reconoce solo cu
 
 Límites de esta verificación: `StreamMaxLength` de clamd (100 MB por defecto, superior al máximo configurable de 50 MB) no se ejercitó con una configuración reducida; la respuesta `INSTREAM size limit exceeded. ERROR` ya se trata como fallo cerrado (`503`) en `ClamAvPrivadoTest`. No se probó el comportamiento ante una base de firmas desactualizada ni la carga concurrente sobre un mismo clamd (el límite de procesamiento es de 2).
 
+### Verificación real de Supabase Storage (opt-in, local y aislada)
+
+`SupabaseStorageRealTest` (`@Tag("supabase-real")`, 15 pruebas) ejercita el adaptador real `SupabaseAlmacenDocumentos` contra un Storage local y aislado, con contenido sintético y claves generadas por el entorno. Está excluida de las suites predeterminadas y de CI y solo corre con `-Psupabase-real`. Falla, y no se omite, si el entorno no está levantado.
+
+**Entorno.** `backend/scripts/storage-local-u7b.sh` levanta únicamente componentes oficiales de Supabase, con las imágenes ya fijadas en el script: Postgres `supabase/postgres:17.11.0.002`, `supabase/storage-api:v1.79.28` y Kong `2.8.1` como pasarela `/storage/v1` (la ruta que usa el adaptador). Usa una red propia (`banfield-u7b-red`), contenedores `banfield-u7b-*` con la etiqueta `proyecto=banfield-patin-u7b` y un único puerto en `127.0.0.1:15321` (`U7B_PUERTO` lo cambia); crea el bucket privado `banfield-storage-test`. No toca ningún otro contenedor, red ni volumen. Las claves (secreto JWT, claves `anon` y `service_role`, contraseña de la base) se generan en cada `up` y se guardan en un archivo `0600` fuera del repositorio; nunca se imprimen ni se versionan.
+
+```bash
+backend/scripts/storage-local-u7b.sh up                    # crear (≈ 30 s)
+set -a; eval "$(backend/scripts/storage-local-u7b.sh env)"; set +a
+cd backend && ./mvnw -o -Psupabase-real -Dtest=SupabaseStorageRealTest test
+backend/scripts/storage-local-u7b.sh down                  # elimina solo lo etiquetado y el archivo de claves
+```
+
+**Limitación del entorno.** No es el stack completo de la CLI de Supabase: no se instaló la CLI (no estaba disponible y no se instala software global), por lo que faltan Auth, PostgREST, Studio y las políticas RLS de un proyecto real. Se usan las mismas imágenes oficiales de Postgres, Storage y Kong. Los roles `anon` y `service_role` se derivan del secreto local; no se probaron políticas de un proyecto concreto ni el comportamiento de una versión distinta de Storage.
+
+| Verificación (adaptador real vs Storage real) | Resultado |
+|---|---|
+| Crear y confirmar el `Key`; leer los bytes por una vía independiente | idénticos |
+| Inspeccionar un objeto existente | `EXISTENCIA_CONFIRMADA` con tamaño y `image/png` |
+| Duplicado con `x-upsert=false` | no sobrescribe; el original queda intacto |
+| Credencial basura, firmada con otro secreto, vencida y rol `anon` | `inspeccionar` → `INCIERTA`, `crear` falla sin POST ni objeto creado |
+| Bucket marcado público | `crear` rechaza antes de transferir; no se crea objeto |
+| Storage caído (502), puerto cerrado, respuesta más lenta que el plazo | `RESPUESTA_INESPERADA`, `RED`, `TIMEOUT`: siempre incertidumbre |
+| POST cuya respuesta llega tarde | `TIMEOUT` con resultado incierto; el objeto igualmente queda creado y luego se confirma su existencia |
+| Compensación `eliminarCreado` | borra, consume el recibo y un segundo intento es `ENTRADA_INVALIDA` |
+| Logs y salida de las pruebas | sin claves, secreto ni contenido |
+
+**Hallazgos (no se modificó código productivo).** Este Storage responde `HTTP 400`, con el código real dentro del cuerpo JSON, a casi todo error lógico:
+1. **Una ausencia nunca se confirma.** Un `HEAD` de un objeto inexistente devuelve 400 (no 404); el adaptador solo reconoce el 404, así que `AUSENCIA_OBSERVADA` es inalcanzable y el resultado es `INCIERTA(RECHAZADO)`. Es seguro (jamás se toma por ausente un objeto que existe), pero la reconciliación de U5 solo puede cerrar por **existencia**: una operación en `RECONCILIANDO` cuyo objeto no existe queda indefinidamente en `503 RESULTADO_CARGA_INCIERTO` hasta resolverla de forma supervisada. Que el HEAD no tenga cuerpo impide distinguir "ausente" de "sin permiso": un rol no autorizado también recibe `not_found` para un objeto que existe, por lo que un 404 nunca podría ser prueba de ausencia sin una consulta de estado con cuerpo (`GET /object/info/...`) y credenciales de servicio.
+2. **El duplicado se clasifica `RECHAZADO`, no `CONFLICTO`.** Llega como 400 con `statusCode:"409"` en el cuerpo. No hay riesgo (no sobrescribe y no es incierto), pero el código documentado como `CONFLICTO` no se produce con este Storage.
+3. **Autenticación como `RECHAZADO`.** Las credenciales inválidas llegan también como 400 con el 403 en el cuerpo, de modo que `AUTENTICACION` (solo para HTTP 401/403) tampoco se produce. Sigue siendo incertidumbre y falla antes de cualquier POST, porque la lectura previa del bucket falla primero.
+
+Las decisiones sobre los tres puntos (leer el estado del cuerpo JSON, o aceptar la limitación) requieren ampliar el contrato de Storage y quedan para una unidad autorizada aparte.
+
 ### Configuración y demostración aislada
 
 `DOCUMENTOS_CARGA_HABILITADA=false` por defecto; además requiere el adaptador Storage habilitado y configurado explícitamente. Propiedades externas `banfield.documentos.carga.*`: `max-bytes`, `temporales`, `max-pixeles`, `procesamiento`, `scanner-plazo`, `scanner-host`, `scanner-puerto`, `concurrencia`, `reserva`, `recepciones`. Valores iniciales: 5 MB decimales, 16 millones de píxeles, 10 s parser, 20 s scanner, loopback:3310, dos plazas de procesamiento, ocho recepciones y reserva de tres minutos. Dos plazas constituyen una guarda de recursos probada, **no** una capacidad definitiva/benchmark de producción. Ajustar infraestructura, timeouts, reserva, límites del servlet y protección ante clientes lentos antes de habilitar tráfico real; una reserva vencida nunca habilita reenvíos: `RESERVADA`/`ALMACENADA` se retoman (U4) y `TRANSFIRIENDO`/`RECONCILIANDO` se reconcilian sin publicar (U5).

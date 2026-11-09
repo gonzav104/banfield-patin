@@ -152,8 +152,9 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<!-- Las pruebas con etiqueta "db" necesitan una PostgreSQL local descartable: solo con -Pdb-tests.
-					     Las "clamav-real" necesitan un ClamAV local en Docker: solo con -Pclamav-real. -->
-					<excludedGroups>db,clamav-real</excludedGroups>
+					     Las "clamav-real" necesitan un ClamAV local en Docker: solo con -Pclamav-real.
+					     Las "supabase-real" necesitan un Supabase Storage local y aislado: solo con -Psupabase-real. -->
+					<excludedGroups>db,clamav-real,supabase-real</excludedGroups>
 				</configuration>
 			</plugin>
 		</plugins>
@@ -184,6 +185,21 @@
 						<artifactId>maven-surefire-plugin</artifactId>
 						<configuration>
 							<groups>clamav-real</groups>
+							<excludedGroups combine.self="override"/>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<profile>
+			<id>supabase-real</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<groups>supabase-real</groups>
 							<excludedGroups combine.self="override"/>
 						</configuration>
 					</plugin>
