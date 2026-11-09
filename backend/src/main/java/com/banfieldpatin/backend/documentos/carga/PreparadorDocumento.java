@@ -140,12 +140,6 @@ final class PreparadorDocumento {
   }
 
   private static void limpiar(Path dir) {
-    if (dir != null)
-      try (var files = Files.list(dir)) {
-        for (Path p : files.toList()) Files.deleteIfExists(p);
-        Files.deleteIfExists(dir);
-      } catch (IOException ex) {
-        throw ErrorCarga.indisponible();
-      }
+    ArchivoPreparado.eliminar(dir);
   }
 }
