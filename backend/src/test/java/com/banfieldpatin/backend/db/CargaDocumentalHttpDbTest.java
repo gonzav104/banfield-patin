@@ -1507,4 +1507,213 @@ class CargaDocumentalHttpDbTest {
     assertThat(POSTS.get()).isEqualTo(1);
     assertThat(documentos()).isEqualTo(1);
   }
+
+  // ---- U6: permiso de procesamiento después del spool ----
+
+  @Autowired org.springframework.context.ApplicationContext contexto;
+
+  int permisosLibres() throws Exception {
+    Object servicio =
+        contexto.getBean(
+            Class.forName("com.banfieldpatin.backend.documentos.carga.CargaDocumentalService"));
+    var campo = servicio.getClass().getDeclaredField("cupos");
+    campo.setAccessible(true);
+    return ((Semaphore) campo.get(servicio)).availablePermits();
+  }
+
+  /** Archivos del spool multipart de Tomcat y temporales de carga presentes ahora. */
+  long spool() throws Exception {
+    try (var w = Files.walk(TEMPORAL)) {
+      return w.filter(Files::isRegularFile).count();
+    }
+  }
+
+  void esperarSinTemporales() throws Exception {
+    long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (spool() > 0 && System.nanoTime() < fin) Thread.sleep(25);
+    assertThat(spool()).as("sin temporales ni spool residual").isZero();
+    try (var w = Files.list(TEMPORAL)) {
+      assertThat(w.filter(p -> p.getFileName().toString().startsWith("c-")).toList()).isEmpty();
+    }
+  }
+
+  void esperarSpool(long minimo) throws Exception {
+    long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (spool() < minimo && System.nanoTime() < fin) Thread.sleep(25);
+    assertThat(spool()).isGreaterThanOrEqualTo(minimo);
+  }
+
+  /** Cliente HTTP crudo que envía cabeceras y una parte del cuerpo, y queda esperando. */
+  record ClienteLento(Socket socket, OutputStream salida, byte[] resto) implements AutoCloseable {
+    void enviarMas(int bytes) throws IOException {
+      salida.write(resto, 0, Math.min(bytes, resto.length));
+      salida.flush();
+    }
+
+    String estado() throws IOException {
+      var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+      return in.readLine();
+    }
+
+    @Override
+    public void close() throws IOException {
+      socket.close();
+    }
+  }
+
+  ClienteLento clienteLento(UUID deportista, String sesion, byte[] file, int prefijo)
+      throws Exception {
+    var c =
+        HttpClient.newHttpClient()
+            .send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + "/api/auth/csrf"))
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+    String cabecera = JsonPath.read(c.body(), "$.headerName");
+    String cookie =
+        c.headers().allValues("set-cookie").stream()
+            .map(x -> x.split(";", 2)[0])
+            .filter(x -> x.startsWith("XSRF-TOKEN="))
+            .findFirst()
+            .orElseThrow();
+    // Como en cargarArchivo: la cabecera repite el valor de la cookie.
+    String valor = cookie.substring(cookie.indexOf('=') + 1);
+    String limite = "sintetico-lento";
+    var cuerpo = new ByteArrayOutputStream();
+    cuerpo.write(
+        ("--" + limite + "\r\nContent-Disposition: form-data; name=\"tipo\"\r\n\r\nOTRO\r\n--" + limite
+                + "\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"sintetico.png\""
+                + "\r\nContent-Type: image/png\r\n\r\n")
+            .getBytes());
+    int inicioArchivo = cuerpo.size();
+    cuerpo.write(file);
+    cuerpo.write(("\r\n--" + limite + "--\r\n").getBytes());
+    byte[] total = cuerpo.toByteArray();
+    var socket = new Socket("127.0.0.1", puerto);
+    socket.setSoTimeout(15000);
+    var salida = socket.getOutputStream();
+    String cabeceras =
+        "POST /api/familia/deportistas/" + deportista + "/documentos HTTP/1.1\r\n"
+            + "Host: 127.0.0.1:" + puerto + "\r\n"
+            + "Content-Type: multipart/form-data; boundary=" + limite + "\r\n"
+            + "Content-Length: " + total.length + "\r\n"
+            + "Idempotency-Key: " + UUID.randomUUID() + "\r\n"
+            + "Cookie: " + cookie + (sesion == null ? "" : "; BP_SESION=" + sesion) + "\r\n"
+            + cabecera + ": " + valor + "\r\n"
+            + "Connection: close\r\n\r\n";
+    salida.write(cabeceras.getBytes(StandardCharsets.US_ASCII));
+    int enviados = prefijo < 0 ? 0 : Math.min(total.length - 1, inicioArchivo + prefijo);
+    salida.write(total, 0, enviados);
+    salida.flush();
+    return new ClienteLento(
+        socket, salida, Arrays.copyOfRange(total, enviados, total.length));
+  }
+
+  @Test
+  void clientesLentosNoOcupanLosPermisosDeProcesamientoAntesDeCompletarLaRecepcion()
+      throws Exception {
+    byte[] file = png();
+    // Los lentos nunca completan su envío: basta un contenido sintético mayor que el búfer del
+    // parser, para que el spool de Tomcat aparezca en disco mientras siguen recibiendo.
+    byte[] grande = new byte[256 * 1024];
+    try (var lento1 = clienteLento(atleta, token, grande, 64 * 1024)) {
+      esperarSpool(1);
+      long conUno = spool();
+      try (var lento2 = clienteLento(atleta, token, grande, 64 * 1024)) {
+        esperarSpool(conUno + 1);
+        // Ambos superaron la preautorización y están recibiendo el cuerpo: ningún permiso tomado.
+        assertThat(permisosLibres()).isEqualTo(2);
+        // Una carga completa se procesa mientras los lentos siguen enviando datos.
+        lento1.enviarMas(1024);
+        lento2.enviarMas(1024);
+        var normal = cargar(UUID.randomUUID(), file);
+        assertThat(normal.statusCode()).as(normal.body()).isEqualTo(201);
+        assertThat(documentos()).isEqualTo(1);
+        assertThat(permisosLibres()).isEqualTo(2);
+      }
+    }
+    // Los lentos abandonan: no quedan permisos tomados ni spool ni temporales de carga.
+    esperarSinTemporales();
+    assertThat(permisosLibres()).isEqualTo(2);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void laPreautorizacionRechazaAntesDeRecibirElCuerpo() throws Exception {
+    byte[] file = png();
+    // Solo cabeceras: si el filtro esperara el cuerpo, no habría respuesta.
+    try (var ajeno = clienteLento(UUID.randomUUID(), token, file, -1)) {
+      assertThat(ajeno.estado()).startsWith("HTTP/1.1 404");
+    }
+    try (var anonimo = clienteLento(atleta, null, file, -1)) {
+      assertThat(anonimo.estado()).startsWith("HTTP/1.1 401");
+    }
+    assertThat(permisosLibres()).isEqualTo(2);
+    esperarSinTemporales();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void permisosAgotadosRechazanUnaCargaCompletaSinEncolarNiDejarTemporales() throws Exception {
+    var entraron = new CountDownLatch(2);
+    var liberar = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          entraron.countDown();
+          try {
+            if (!liberar.await(6, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    byte[] file = png();
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var a = pool.submit(() -> cargar(UUID.randomUUID(), file));
+      var b = pool.submit(() -> cargar(UUID.randomUUID(), file));
+      assertThat(entraron.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(permisosLibres()).isZero();
+      long directorios;
+      try (var w = Files.list(TEMPORAL)) {
+        directorios = w.filter(p -> p.getFileName().toString().startsWith("c-")).count();
+      }
+      var c = cargar(UUID.randomUUID(), file);
+      assertThat(c.statusCode()).as(c.body()).isEqualTo(429);
+      assertThat(JsonPath.<String>read(c.body(), "$.codigo")).isEqualTo("CARGA_OCUPADA");
+      try (var w = Files.list(TEMPORAL)) {
+        assertThat(w.filter(p -> p.getFileName().toString().startsWith("c-")).count())
+            .as("el rechazo no prepara su temporal")
+            .isEqualTo(directorios);
+      }
+      liberar.countDown();
+      assertThat(a.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
+      assertThat(b.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
+    } finally {
+      liberar.countDown();
+    }
+    esperarSinTemporales();
+    assertThat(permisosLibres()).isEqualTo(2);
+    assertThat(documentos()).isEqualTo(2);
+  }
+
+  @Test
+  void elPermisoSeLiberaTrasExitoRechazoYExcepcionEnElFlujoHttp() throws Exception {
+    assertThat(cargar(UUID.randomUUID(), png()).statusCode()).isEqualTo(201);
+    assertThat(permisosLibres()).isEqualTo(2);
+    assertThat(cargar(UUID.randomUUID(), "no es un png".getBytes()).statusCode()).isEqualTo(422);
+    assertThat(permisosLibres()).isEqualTo(2);
+    RESPUESTA.set("stream: Eicar-Sintetico FOUND\0");
+    assertThat(cargar(UUID.randomUUID(), png()).statusCode()).isEqualTo(422);
+    assertThat(permisosLibres()).isEqualTo(2);
+    RESPUESTA.set("respuesta-no-valida");
+    assertThat(cargar(UUID.randomUUID(), png()).statusCode()).isEqualTo(503);
+    assertThat(permisosLibres()).isEqualTo(2);
+    RESPUESTA.set("stream: OK\0");
+    ESTADO_STORAGE.set(503);
+    assertThat(cargar(UUID.randomUUID(), png()).statusCode()).isEqualTo(503);
+    assertThat(permisosLibres()).isEqualTo(2);
+    esperarSinTemporales();
+  }
 }

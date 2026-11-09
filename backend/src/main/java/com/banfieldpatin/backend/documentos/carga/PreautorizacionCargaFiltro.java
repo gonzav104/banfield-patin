@@ -60,7 +60,8 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
       return;
     }
     CargaDocumentalService servicio = proveedor.getIfAvailable();
-    boolean tomado = false;
+    // Sólo seguridad antes del cuerpo: el permiso de procesamiento se toma en el servicio, con el
+    // archivo ya recibido, para que un cliente lento no lo retenga mientras envía.
     try {
       if (servicio == null) throw ErrorCarga.indisponible();
       if (!(SecurityContextHolder.getContext().getAuthentication()
@@ -73,18 +74,12 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
         throw new ExcepcionNegocio(
             HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "Solicitud inválida.");
       }
-      if (!servicio.entrar())
-        throw new ExcepcionNegocio(
-            HttpStatus.TOO_MANY_REQUESTS, "CARGA_OCUPADA", "No hay capacidad de carga disponible.");
-      tomado = true;
       var contexto = ContextoCarga.desde(auth.getToken());
       servicio.preautorizar(contexto, atleta);
       request.setAttribute(CONTEXTO, contexto);
       chain.doFilter(request, response);
     } catch (ExcepcionNegocio ex) {
       responder(response, ex);
-    } finally {
-      if (tomado) servicio.salir();
     }
   }
 

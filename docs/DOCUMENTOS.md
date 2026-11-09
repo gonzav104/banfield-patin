@@ -145,10 +145,10 @@ Tipos permitidos: DNI_DEPORTISTA_FRENTE, DNI_DEPORTISTA_DORSO, SOLICITUD_LICENCI
 - `400/415`: solicitud o contenedor multipart/tipo HTTP inválido; `413`: bytes reales excedidos.
 - `422`: formato/estructura/contenido no admitido o detección positiva del scanner.
 - `409`: clave/contexto diferentes, operación en curso (reserva activa), versión perdida, DNI ya vigente u operación `CERRADA`. Una operación cerrada nunca se reabre ni reutiliza su objeto: el cliente debe reintentar con una **nueva** clave de idempotencia.
-- `429`: capacidad de procesamiento ocupada; no se encola otro archivo.
+- `429`: capacidad de procesamiento ocupada; no se encola otro archivo. Se decide con el cuerpo ya recibido: un cliente lento no ocupa un permiso mientras envía.
 - `503`: integración apagada, scanner/infraestructura no disponibles o resultado no confirmable. No significa que el objeto/documento no exista.
 
-La primera guarda de cabecera CSRF evita que el fallback a parámetros lea multipart antes de la autorización, también para métodos mutantes no implementados. Después de la autorización general, cualquier multipart fuera del único POST documental se rechaza con 415 sin llegar al procesador; no se habilitan archivos en consultas GET ni otros endpoints. Los cuerpos JSON conservan su tratamiento previo. Spring Security sigue validando el token, la sesión y el rol; después, otro filtro comprueba el alcance y adquiere capacidad **antes** del DispatcherServlet/multipart. No se confía en atributos enviados por el cliente.
+La primera guarda de cabecera CSRF evita que el fallback a parámetros lea multipart antes de la autorización, también para métodos mutantes no implementados. Después de la autorización general, cualquier multipart fuera del único POST documental se rechaza con 415 sin llegar al procesador; no se habilitan archivos en consultas GET ni otros endpoints. Los cuerpos JSON conservan su tratamiento previo. Spring Security sigue validando el token, la sesión y el rol; después, otro filtro comprueba el alcance **antes** del DispatcherServlet/multipart. El permiso de procesamiento se toma después de recibir el cuerpo, en el servicio (U6). No se confía en atributos enviados por el cliente.
 
 Al publicar se bloquean escuela → usuario → familia (SHARE), deportista (helper existente de vinculación) y vínculo (SHARE); se revalidan sesión, expiración y predicado D1. Son filas comunes a los mutadores administrativos de revocación/desactivación. Documento, transición PUBLICADA y auditoría DOCUMENTO_CARGADO confirman juntos. Se acota la espera de locks; no se promete ausencia universal de deadlocks. Se conserva la semántica vigente de JWT: el logout borra cookie pero no existe revocación persistida de jti; esta entrega no inventa invalidación servidor por logout.
 
@@ -187,6 +187,21 @@ No se interpreta un 404 como fin de una transferencia pendiente ni ETag como SHA
 Fallo al publicar una operación `ALMACENADA` (objeto ya confirmado por Storage): si es transitorio (sesión vencida, base o auditoría no disponibles) se conserva `ALMACENADA` liberando la reserva y el reintento la publica sin repetir el POST (U4); si es un conflicto permanente (sin acceso `403/404` o conflicto `409`, como un DNI ya vigente) se cierra en la misma transacción (`ALMACENADA`→`RECONCILIANDO`→`CERRADA`), sin ciclo de reintentos. Cada resultado deja una línea INFO `Reconciliación de carga: operacion=<uuid> inspeccion=<EXISTENCIA_CONFIRMADA|AUSENCIA_OBSERVADA|INCIERTA|CONFLICTO_<estado>> resultado=<CERRADA|RECONCILIANDO>`. Los objetos huérfanos (cierres, POST tardíos) requieren la purga futura, todavía no implementada.
 
 La configuración se rechaza al iniciar si `reserva` no supera `scanner-plazo` o, con Storage habilitado, `2 × (conexión + respuesta)` de Storage: la lectura del bucket más la operación principal. Así la reserva cubre los plazos configurados del cliente para cada tramo; ni su vencimiento ni un 404 prueban que el servidor no complete una escritura tardía, por lo que la reconciliación nunca publica.
+
+**Permiso de procesamiento y clientes lentos (U6).** `PreautorizacionCargaFiltro` solo aplica seguridad antes del cuerpo (CSRF por cabecera, sesión, rol, vínculo y sesión vigente): rechaza sin leerlo. El permiso de procesamiento (`concurrencia`, 2 por defecto) se toma en `CargaDocumentalService` cuando el multipart ya fue recibido, sin espera, y se libera exactamente una vez en un `finally` ante éxito, rechazo, excepción o corte del cliente. Sin permiso responde `429` antes de preparar temporales; el spool de Tomcat de esa petición se elimina al terminarla. El `429` conserva estado, código y mensaje; como ahora lo escribe el manejador global de errores, sus cabeceras de caché son las mismas que las de los demás errores del endpoint (`no-store` incluido).
+
+Límites efectivos (Spring Boot 4.1.1, Tomcat 11.0.24, sin `server.tomcat.*` configurado) y quién los protege:
+
+| Límite | Valor | Protección |
+|---|---|---|
+| Archivo / solicitud multipart | 5 MB / 5 MB + 64 KiB, hasta 50 partes | aplicación |
+| Spool multipart | umbral 0: todo el cuerpo se escribe en `temporales` (0700) | aplicación |
+| Permisos de procesamiento (inspección y scanner) | 2 | aplicación (U6) |
+| Lectura del cuerpo | 20 s **por lectura** (`connectionTimeout`); el plazo de subida está desactivado | infraestructura: no hay plazo total ni tasa mínima |
+| Hilos / conexiones | 200 hilos, 8192 conexiones, cola de 100, compartidos por toda la aplicación | infraestructura |
+| Disco del spool | hasta unos 200 × 5 MB simultáneos en `temporales` | infraestructura (volumen dedicado con cuota) |
+
+U6 impide que clientes lentos agoten los permisos de procesamiento, pero no los hilos de Tomcat: un cliente que envía un byte cada pocos segundos retiene un hilo indefinidamente, en este y en cualquier otro endpoint con cuerpo. Antes de habilitar tráfico real, el proxy o el balanceador deben imponer un plazo total y una tasa mínima para el cuerpo y limitar las conexiones por cliente; `temporales` debe estar en un volumen dedicado con cuota.
 
 ### Configuración y demostración aislada
 

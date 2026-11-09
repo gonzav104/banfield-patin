@@ -31,13 +31,6 @@ public final class CargaDocumentalService {
     this.cupos = new Semaphore(p.concurrencia());
   }
 
-  boolean entrar() {
-    return cupos.tryAcquire();
-  }
-
-  void salir() {
-    cupos.release();
-  }
 
   void preautorizar(ContextoCarga c, UUID atleta) {
     try {
@@ -50,7 +43,32 @@ public final class CargaDocumentalService {
     }
   }
 
+  /**
+   * Se invoca con el multipart ya recibido (el controlador resuelve sus partes antes): el permiso de
+   * procesamiento se toma aquí, sin espera, y se libera exactamente una vez por cualquier salida.
+   * Sin capacidad responde 429 de inmediato, antes de preparar temporales; no hay cola.
+   */
   Resultado cargar(
+      ContextoCarga c,
+      UUID atleta,
+      TipoDocumento tipo,
+      UUID temporada,
+      UUID idem,
+      MultipartFile archivo,
+      DatosSolicitud datos) {
+    if (!cupos.tryAcquire())
+      throw new ExcepcionNegocio(
+          org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+          "CARGA_OCUPADA",
+          "No hay capacidad de carga disponible.");
+    try {
+      return procesar(c, atleta, tipo, temporada, idem, archivo, datos);
+    } finally {
+      cupos.release();
+    }
+  }
+
+  private Resultado procesar(
       ContextoCarga c,
       UUID atleta,
       TipoDocumento tipo,
