@@ -42,6 +42,19 @@ final class DiagnosticoCarga {
     }
   }
 
+  /** Resultado de una reconciliación o de un cierre sin publicar. */
+  static void reconciliacion(UUID operacion, String inspeccion, String resultado) {
+    try {
+      log.info(
+          "Reconciliación de carga: operacion={} inspeccion={} resultado={}",
+          operacion,
+          inspeccion,
+          resultado);
+    } catch (RuntimeException ex) {
+      /* El diagnóstico nunca altera el resultado de la carga. */
+    }
+  }
+
   private static String codigo(Throwable causa) {
     if (causa instanceof ExcepcionNegocio e) return e.getCodigo();
     if (causa instanceof FalloAlmacenDocumentos f) return f.codigo().name();

@@ -42,6 +42,11 @@ class CargaDocumentalHttpDbTest {
   static final AtomicReference<Runnable> HOOK_STORAGE = new AtomicReference<>(() -> {}),
       HOOK_SCANNER = new AtomicReference<>(() -> {});
   static final AtomicInteger ESTADO_STORAGE = new AtomicInteger(200);
+  /** HEAD autenticado de inspección: "existe", "ausente", "error" o "lento" (supera el plazo). */
+  static final AtomicReference<String> MODO_HEAD = new AtomicReference<>("ausente");
+  static final AtomicLong TAMANIO_HEAD = new AtomicLong();
+  static final AtomicInteger HEADS = new AtomicInteger();
+  static final AtomicReference<Runnable> HOOK_HEAD = new AtomicReference<>(() -> {});
   static final Path TEMPORAL;
   static final AtomicLong DESFASE = new AtomicLong();
 
@@ -78,6 +83,24 @@ class CargaDocumentalHttpDbTest {
           x -> {
             String path = x.getRequestURI().getPath();
             String body;
+            if (x.getRequestMethod().equals("HEAD")) {
+              HEADS.incrementAndGet();
+              HOOK_HEAD.get().run();
+              String modo = MODO_HEAD.get();
+              if (modo.equals("lento"))
+                try {
+                  Thread.sleep(3500);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+              if (modo.equals("existe") || modo.equals("lento")) {
+                x.getResponseHeaders().set("Content-Type", "image/png");
+                x.getResponseHeaders().set("Content-Length", Long.toString(TAMANIO_HEAD.get()));
+                x.sendResponseHeaders(200, -1);
+              } else x.sendResponseHeaders(modo.equals("ausente") ? 404 : 500, -1);
+              x.close();
+              return;
+            }
             if (x.getRequestMethod().equals("GET")) {
               body = "{\"id\":\"privado\",\"public\":false}";
             } else {
@@ -167,6 +190,10 @@ class CargaDocumentalHttpDbTest {
     RESPUESTA.set("stream: OK\0");
     HOOK_STORAGE.set(() -> {});
     HOOK_SCANNER.set(() -> {});
+    MODO_HEAD.set("ausente");
+    TAMANIO_HEAD.set(0);
+    HEADS.set(0);
+    HOOK_HEAD.set(() -> {});
     var d = new DatosDb(jdbc);
     escuela = d.escuela("carga-" + UUID.randomUUID());
     familia = d.familia(escuela, "Familia sintética", true);
@@ -393,7 +420,8 @@ class CargaDocumentalHttpDbTest {
     var r = cargar(key, png());
     assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
     assertThat(documentos()).isZero();
-    assertThat(fase(key)).isEqualTo("RECONCILIANDO");
+    // U5: sin acceso al publicar es un conflicto permanente; se cierra sin publicar el objeto.
+    assertThat(fase(key)).isEqualTo("CERRADA");
     assertThat(POSTS.get()).isEqualTo(1);
   }
 
@@ -582,7 +610,9 @@ class CargaDocumentalHttpDbTest {
     var r = cargar(key, png());
     assertThat(r.statusCode()).as(r.body()).isEqualTo(503);
     assertThat(documentos()).isZero();
-    assertThat(fase(key)).isEqualTo("RECONCILIANDO");
+    // U5: fallo transitorio con el objeto confirmado: conserva ALMACENADA y libera la reserva.
+    assertThat(fase(key)).isEqualTo("ALMACENADA");
+    assertThat(reservaLibre(key)).isTrue();
     assertThat(POSTS.get()).isEqualTo(1);
     sinFugas(r);
     assertThat(out.getAll())
@@ -820,18 +850,24 @@ class CargaDocumentalHttpDbTest {
    * trigger permite para adelantar el vencimiento). Equivale a una interrupción del proceso.
    */
   UUID operacionPrevia(UUID key, byte[] file, String estado, boolean vencida) throws Exception {
+    return operacionPrevia(key, file, estado, vencida, "OTRO");
+  }
+
+  UUID operacionPrevia(UUID key, byte[] file, String estado, boolean vencida, String tipo)
+      throws Exception {
     UUID id = UUID.randomUUID();
     jdbc.sql(
             """
             INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tipo,
               storage_bucket,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta)
-            VALUES(:id,:e,:u,:d,'OTRO','privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes')
+            VALUES(:id,:e,:u,:d,:tipo,'privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes')
             """)
         .param("id", id)
         .param("e", escuela)
         .param("u", usuario)
         .param("d", atleta)
         .param("k", key)
+        .param("tipo", tipo)
         .param("sha", java.security.MessageDigest.getInstance("SHA-256").digest(file))
         .param("n", (long) file.length)
         .update();
@@ -893,7 +929,8 @@ class CargaDocumentalHttpDbTest {
   }
 
   @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.ValueSource(strings = {"RESERVADA", "ALMACENADA"})
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {"RESERVADA", "ALMACENADA", "TRANSFIRIENDO", "RECONCILIANDO"})
   void reservaActivaImpideQueOtraSolicitudSeApropie(String estado) throws Exception {
     var key = UUID.randomUUID();
     byte[] file = png();
@@ -1166,19 +1203,308 @@ class CargaDocumentalHttpDbTest {
     assertThat(documentos()).isZero();
   }
 
-  @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.ValueSource(
-      strings = {"TRANSFIRIENDO", "RECONCILIANDO", "CERRADA"})
-  void estadosFueraDeU4SiguenSinRetomarse(String estado) throws Exception {
+  @Test
+  void operacionCerradaNuncaSeRetomaNiReutilizaSuObjeto() throws Exception {
     var key = UUID.randomUUID();
     byte[] file = png();
-    operacionPrevia(key, file, estado, true);
+    operacionPrevia(key, file, "CERRADA", true);
     long antes = version(key);
     var r = cargar(key, file);
     assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
-    assertThat(fase(key)).isEqualTo(estado);
+    assertThat(fase(key)).isEqualTo("CERRADA");
     assertThat(version(key)).isEqualTo(antes);
+    assertThat(HEADS.get()).isZero();
     assertThat(POSTS.get()).isZero();
     assertThat(documentos()).isZero();
+  }
+
+  // ---- U5: reconciliación conservadora con Storage (nunca publica una transferencia incierta) ----
+
+  boolean reservaLibre(UUID key) {
+    return jdbc.sql(
+            "SELECT reserva_hasta IS NOT NULL AND reserva_hasta <= clock_timestamp() FROM"
+                + " gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND idempotencia=:k")
+        .param("e", escuela)
+        .param("k", key)
+        .query(Boolean.class)
+        .single();
+  }
+
+  UUID objeto(UUID key) {
+    return jdbc.sql(
+            "SELECT objeto_id FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
+                + " idempotencia=:k")
+        .param("e", escuela)
+        .param("k", key)
+        .query(UUID.class)
+        .single();
+  }
+
+  UUID operacion(UUID key) {
+    return jdbc.sql(
+            "SELECT id FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
+                + " idempotencia=:k")
+        .param("e", escuela)
+        .param("k", key)
+        .query(UUID.class)
+        .single();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({
+    "TRANSFIRIENDO, existe, true",
+    "TRANSFIRIENDO, ausente, true",
+    "TRANSFIRIENDO, existe, false",
+    "RECONCILIANDO, existe, true",
+    "RECONCILIANDO, ausente, true"
+  })
+  void reconciliacionConExistenciaOAusenciaCierraSinPublicar(
+      String estado, String modo, boolean mismoTamanio,
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = operacionPrevia(key, file, estado, true);
+    MODO_HEAD.set(modo);
+    // Un objeto de otro tamaño es incompatible; uno del mismo tamaño tampoco prueba integridad.
+    TAMANIO_HEAD.set(mismoTamanio ? file.length : file.length + 1);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    sinFugas(r);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(documentos()).isZero();
+    assertThat(auditoriasDeCarga()).isZero();
+    assertThat(POSTS.get()).as("no se reenvía").isZero();
+    assertThat(HEADS.get()).isEqualTo(1);
+    assertThat(out.getAll())
+        .contains("operacion=" + id + " inspeccion=")
+        .contains("resultado=CERRADA")
+        .doesNotContain(token, "solo-sintetico-storage", "sintetico.png", atleta.toString());
+    // Cerrada es terminal: la misma clave ya no consulta Storage ni se reabre.
+    assertThat(cargar(key, file).statusCode()).isEqualTo(409);
+    assertThat(HEADS.get()).isEqualTo(1);
+    // El reintento correcto usa otra clave de idempotencia y un objeto nuevo, nunca el cerrado.
+    var otraClave = UUID.randomUUID();
+    var nueva = cargar(otraClave, file);
+    assertThat(nueva.statusCode()).as(nueva.body()).isEqualTo(201);
+    assertThat(objeto(otraClave)).isNotEqualTo(objeto(key));
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+  }
+
+  @Test
+  void resultadoInciertoOTardioConservaReconciliandoYEsReintentable() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "RECONCILIANDO", true);
+    MODO_HEAD.set("error");
+    var error = cargar(key, file);
+    assertThat(error.statusCode()).as(error.body()).isEqualTo(503);
+    assertThat(JsonPath.<String>read(error.body(), "$.codigo")).isEqualTo("RESULTADO_CARGA_INCIERTO");
+    assertThat(fase(key)).isEqualTo("RECONCILIANDO");
+    assertThat(reservaLibre(key)).as("libera la reserva para reintentar").isTrue();
+    // Respuesta tardía: el HEAD supera el plazo del cliente (2 s) y se trata como incierta.
+    MODO_HEAD.set("lento");
+    TAMANIO_HEAD.set(file.length);
+    var tardia = cargar(key, file);
+    assertThat(tardia.statusCode()).as(tardia.body()).isEqualTo(503);
+    assertThat(fase(key)).isEqualTo("RECONCILIANDO");
+    assertThat(reservaLibre(key)).isTrue();
+    MODO_HEAD.set("existe");
+    assertThat(cargar(key, file).statusCode()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(HEADS.get()).isEqualTo(3);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void reintentosConcurrentesReconcilianUnaSolaVez() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "TRANSFIRIENDO", true);
+    MODO_HEAD.set("ausente");
+    var primero = new AtomicBoolean(true);
+    var enHead = new CountDownLatch(1);
+    var liberar = new CountDownLatch(1);
+    HOOK_HEAD.set(
+        () -> {
+          if (!primero.getAndSet(false)) return;
+          enHead.countDown();
+          try {
+            liberar.await(1500, TimeUnit.MILLISECONDS);
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+          }
+        });
+    var salida = new CyclicBarrier(2);
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<HttpResponse<String>> intento =
+          () -> {
+            salida.await(5, TimeUnit.SECONDS);
+            return cargar(key, file);
+          };
+      var a = pool.submit(intento);
+      var b = pool.submit(intento);
+      assertThat(enHead.await(5, TimeUnit.SECONDS)).isTrue();
+      // El otro ve la reserva renovada (o ya la operación cerrada): 409 sin otro HEAD.
+      long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      while (!(a.isDone() || b.isDone()) && System.nanoTime() < fin) Thread.sleep(20);
+      var perdedor = a.isDone() ? a : b;
+      assertThat(perdedor.isDone()).isTrue();
+      assertThat(perdedor.get().statusCode()).isEqualTo(409);
+      liberar.countDown();
+      var ganador = perdedor == a ? b : a;
+      assertThat(ganador.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(409);
+    } finally {
+      liberar.countDown();
+    }
+    assertThat(HEADS.get()).isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void perdidaDeCasDuranteLaReconciliacionNoCierraUnaOperacionAjena(
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = operacionPrevia(key, file, "RECONCILIANDO", true);
+    MODO_HEAD.set("existe");
+    TAMANIO_HEAD.set(file.length);
+    var primero = new AtomicBoolean(true);
+    // Otro actor cambia la versión mientras esta solicitud consulta Storage.
+    HOOK_HEAD.set(
+        () -> {
+          if (primero.getAndSet(false)) vencer(id);
+        });
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(fase(key)).as("el actor con la versión perdida no cierra").isEqualTo("RECONCILIANDO");
+    assertThat(out.getAll())
+        .contains("operacion=" + id + " fase=reconciliar")
+        .contains("codigo=OPERACION_NO_REPETIBLE");
+    // Con la reserva del otro actor vencida, un reintento posterior sí reconcilia.
+    assertThat(cargar(key, file).statusCode()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(documentos()).isZero();
+  }
+
+  @Test
+  void postTardioDespuesDelCierreQuedaHuerfanoYNuncaSePublica() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var completarPost = new CountDownLatch(1);
+    var postRecibido = new CountDownLatch(1);
+    // Storage recibe el POST pero lo confirma tarde, después del plazo del cliente (2 s).
+    HOOK_STORAGE.set(
+        () -> {
+          postRecibido.countDown();
+          try {
+            completarPost.await(15, TimeUnit.SECONDS);
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+          }
+        });
+    try {
+      var original = cargar(key, file);
+      assertThat(postRecibido.getCount()).isZero();
+      assertThat(original.statusCode()).as(original.body()).isEqualTo(503);
+      assertThat(fase(key)).isEqualTo("RECONCILIANDO");
+      // Vence la reserva; el HEAD todavía no ve el objeto: la ausencia no prueba el fin del POST.
+      vencerSinCambiarVersion(operacion(key));
+      MODO_HEAD.set("ausente");
+      var reintento = cargar(key, file);
+      assertThat(reintento.statusCode()).as(reintento.body()).isEqualTo(409);
+      assertThat(fase(key)).isEqualTo("CERRADA");
+    } finally {
+      // El POST tardío termina y crea el objeto después del cierre.
+      completarPost.countDown();
+    }
+    Thread.sleep(300);
+    MODO_HEAD.set("existe");
+    TAMANIO_HEAD.set(file.length);
+    assertThat(cargar(key, file).statusCode()).isEqualTo(409);
+    assertThat(fase(key)).as("cerrada es terminal; el objeto tardío queda huérfano").isEqualTo("CERRADA");
+    assertThat(documentos()).isZero();
+    assertThat(auditoriasDeCarga()).isZero();
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void almacenadaConFalloTransitorioDePublicacionSeRecuperaConLaMismaClave() throws Exception {
+    var fallar = new AtomicBoolean(true);
+    org.mockito.Mockito.doAnswer(
+            inv -> {
+              var e =
+                  inv.getArgument(
+                      0, com.banfieldpatin.backend.compartido.auditoria.EventoAuditoria.class);
+              if (e.accion()
+                      == com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria
+                          .DOCUMENTO_CARGADO
+                  && fallar.getAndSet(false))
+                throw new org.springframework.dao.DataAccessResourceFailureException("sintetico");
+              return inv.callRealMethod();
+            })
+        .when(auditoria)
+        .registrar(org.mockito.ArgumentMatchers.any());
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var primera = cargar(key, file);
+    assertThat(primera.statusCode()).as(primera.body()).isEqualTo(503);
+    assertThat(fase(key)).isEqualTo("ALMACENADA");
+    assertThat(reservaLibre(key)).isTrue();
+    var segunda = cargar(key, file);
+    assertThat(segunda.statusCode()).as(segunda.body()).isEqualTo(201);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    assertThat(POSTS.get()).as("la recuperación no repite la transferencia").isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+  }
+
+  @Test
+  void almacenadaConDniYaVigenteSeCierraSinCicloDeReintentos(
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    byte[] primero = png();
+    var vigente =
+        cargarArchivo(
+            UUID.randomUUID(), primero, token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(vigente.statusCode()).as(vigente.body()).isEqualTo(201);
+    var key = UUID.randomUUID();
+    byte[] otro = png(3);
+    UUID id = operacionPrevia(key, otro, "ALMACENADA", true, "DNI_DEPORTISTA_FRENTE");
+    var r =
+        cargarArchivo(key, otro, token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(out.getAll()).contains("operacion=" + id + " inspeccion=CONFLICTO_409 resultado=CERRADA");
+    long cerrada = version(key);
+    var otraVez =
+        cargarArchivo(key, otro, token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(otraVez.statusCode()).isEqualTo(409);
+    assertThat(version(key)).as("sin ciclo: el reintento no vuelve a tomar la operación").isEqualTo(cerrada);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(HEADS.get()).isZero();
+  }
+
+  @Test
+  void reservadaConDniYaVigenteRevierteLaRetoma() throws Exception {
+    var vigente =
+        cargarArchivo(
+            UUID.randomUUID(), png(), token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(vigente.statusCode()).as(vigente.body()).isEqualTo(201);
+    var key = UUID.randomUUID();
+    byte[] otro = png(3);
+    operacionPrevia(key, otro, "RESERVADA", true, "DNI_DEPORTISTA_FRENTE");
+    long antes = version(key);
+    var r =
+        cargarArchivo(key, otro, token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("RESERVADA");
+    assertThat(version(key)).as("el rollback deshace la retoma").isEqualTo(antes);
+    assertThat(reservaLibre(key)).as("la reserva sigue vencida").isTrue();
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
   }
 }

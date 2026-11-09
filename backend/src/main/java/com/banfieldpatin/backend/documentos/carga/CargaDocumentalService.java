@@ -61,6 +61,7 @@ public final class CargaDocumentalService {
     OperacionesCargaJdbc.Operacion op = null;
     boolean transferencia = false;
     String fase = "preparar";
+    ExcepcionNegocio resultado = null;
     try {
       if (TransactionSynchronizationManager.isActualTransactionActive())
         throw ErrorCarga.indisponible();
@@ -71,6 +72,13 @@ public final class CargaDocumentalService {
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
         if (reserva.retomada()) DiagnosticoCarga.retomada(op.id(), op.estado());
+        if (op.estado().equals("RECONCILIANDO")) {
+          // Una transferencia incierta nunca se publica: la existencia no prueba integridad.
+          transferencia = true;
+          fase = "reconciliar";
+          resultado = reconciliar(op);
+          throw resultado;
+        }
         if (op.estado().equals("ALMACENADA")) {
           // El objeto ya fue confirmado por Storage: se publica sin repetir la transferencia.
           transferencia = true;
@@ -92,21 +100,62 @@ public final class CargaDocumentalService {
         return new Resultado(operaciones.publicar(c, op, datos), false);
       }
     } catch (ExcepcionNegocio ex) {
+      if (ex == resultado) throw ex;
       // Un 409 con la operación ya reservada es una pérdida de CAS: anómalo, a diferencia de un 4xx del cliente.
       if (ex.getEstado().is5xxServerError() || op != null && ex.getEstado().value() == 409)
         DiagnosticoCarga.fallo(op == null ? null : op.id(), fase, ex);
-      if (op != null) {
-        if (transferencia) operaciones.incierta(op);
-        else operaciones.cerrarAntesDeTransferir(op);
-      }
+      compensar(op, transferencia, fase, ex);
       throw ex;
     } catch (Exception ex) {
       DiagnosticoCarga.fallo(op == null ? null : op.id(), fase, ex);
-      if (op != null) {
-        if (transferencia) operaciones.incierta(op);
-        else operaciones.cerrarAntesDeTransferir(op);
-      }
+      compensar(op, transferencia, fase, ex);
       throw transferencia ? ErrorCarga.incierto() : ErrorCarga.indisponible();
     }
+  }
+
+  /**
+   * Resuelve una operación RECONCILIANDO cuya reserva mantiene esta solicitud. Existencia o ausencia
+   * confirmadas la cierran sin publicar (409: reintentar con otra clave de idempotencia); un HEAD 404
+   * no prueba que una transferencia anterior terminó, pero un objeto tardío queda huérfano y nunca
+   * publicado. Un resultado incierto conserva RECONCILIANDO, libera la reserva y responde 503.
+   */
+  private ExcepcionNegocio reconciliar(OperacionesCargaJdbc.Operacion op) {
+    InspeccionAlmacen.Estado estado;
+    try {
+      estado = almacen.inspeccionar(op.destino()).estado();
+    } catch (RuntimeException ex) {
+      estado = InspeccionAlmacen.Estado.INCIERTA;
+    }
+    if (estado == InspeccionAlmacen.Estado.INCIERTA) {
+      DiagnosticoCarga.reconciliacion(op.id(), estado.name(), "RECONCILIANDO");
+      operaciones.liberar(op);
+      return ErrorCarga.incierto();
+    }
+    operaciones.cerrarReconciliada(op);
+    DiagnosticoCarga.reconciliacion(op.id(), estado.name(), "CERRADA");
+    return ErrorCarga.conflicto();
+  }
+
+  /**
+   * Compensación según la fase. Antes de transferir se cierra; con la transferencia incierta se
+   * marca RECONCILIANDO; con el objeto ya confirmado (publicar), un conflicto permanente cierra sin
+   * publicar y un fallo transitorio conserva ALMACENADA liberando la reserva, para que el reintento
+   * la publique (U4). La reconciliación resuelve su propio estado.
+   */
+  private void compensar(
+      OperacionesCargaJdbc.Operacion op, boolean transferencia, String fase, Exception ex) {
+    if (op == null || fase.equals("reconciliar")) return;
+    if (!transferencia) operaciones.cerrarAntesDeTransferir(op);
+    else if (!fase.equals("publicar")) operaciones.incierta(op);
+    else if (permanente(ex)) {
+      if (operaciones.cerrarConfirmada(op))
+        DiagnosticoCarga.reconciliacion(op.id(), "CONFLICTO_" + ((ExcepcionNegocio) ex).getEstado().value(), "CERRADA");
+    } else operaciones.liberar(op);
+  }
+
+  /** Sin acceso (403/404) o en conflicto (409): repetir la misma clave nunca podría publicarse. */
+  private static boolean permanente(Exception ex) {
+    return ex instanceof ExcepcionNegocio e
+        && java.util.Set.of(403, 404, 409).contains(e.getEstado().value());
   }
 }
