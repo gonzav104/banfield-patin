@@ -70,6 +70,13 @@ public final class CargaDocumentalService {
             operaciones.reservar(c, atleta, tipo, temporada, idem, almacen.prepararDestino(), a);
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
+        if (reserva.retomada()) DiagnosticoCarga.retomada(op.id(), op.estado());
+        if (op.estado().equals("ALMACENADA")) {
+          // El objeto ya fue confirmado por Storage: se publica sin repetir la transferencia.
+          transferencia = true;
+          fase = "publicar";
+          return new Resultado(operaciones.publicar(c, op, datos), false);
+        }
         fase = "escanear";
         scanner.escanear(a.ruta);
         fase = "iniciar";

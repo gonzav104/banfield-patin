@@ -811,4 +811,374 @@ class CargaDocumentalHttpDbTest {
     assertThat(documentos()).isZero();
     assertThat(fase(key)).isEqualTo("RESERVADA");
   }
+
+  // ---- U4: recuperación de operaciones vencidas mediante CAS ----
+
+  /**
+   * Simula una operación que un proceso anterior dejó en {@code estado}: la crea como RESERVADA,
+   * recorre las transiciones de V6 y, si {@code vencida}, renuncia a la reserva (lo único que el
+   * trigger permite para adelantar el vencimiento). Equivale a una interrupción del proceso.
+   */
+  UUID operacionPrevia(UUID key, byte[] file, String estado, boolean vencida) throws Exception {
+    UUID id = UUID.randomUUID();
+    jdbc.sql(
+            """
+            INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tipo,
+              storage_bucket,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta)
+            VALUES(:id,:e,:u,:d,'OTRO','privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes')
+            """)
+        .param("id", id)
+        .param("e", escuela)
+        .param("u", usuario)
+        .param("d", atleta)
+        .param("k", key)
+        .param("sha", java.security.MessageDigest.getInstance("SHA-256").digest(file))
+        .param("n", (long) file.length)
+        .update();
+    var camino =
+        switch (estado) {
+          case "RESERVADA" -> List.<String>of();
+          case "TRANSFIRIENDO" -> List.of("TRANSFIRIENDO");
+          case "ALMACENADA" -> List.of("TRANSFIRIENDO", "ALMACENADA");
+          case "RECONCILIANDO" -> List.of("TRANSFIRIENDO", "RECONCILIANDO");
+          case "CERRADA" -> List.of("CERRADA");
+          default -> throw new IllegalArgumentException(estado);
+        };
+    for (String e : camino)
+      jdbc.sql(
+              "UPDATE gestion_patin.operacion_carga_documental SET estado=:s,version=version+1,"
+                  + "reserva_hasta="
+                  + (e.equals("CERRADA") ? "NULL" : "clock_timestamp()+interval '3 minutes'")
+                  + " WHERE id=:id")
+          .param("s", e)
+          .param("id", id)
+          .update();
+    if (vencida && !estado.equals("CERRADA")) vencer(id);
+    return id;
+  }
+
+  void vencer(UUID id) {
+    assertThat(
+            jdbc.sql(
+                    "UPDATE gestion_patin.operacion_carga_documental SET version=version+1,"
+                        + "reserva_hasta=clock_timestamp()-interval '1 second' WHERE id=:id")
+                .param("id", id)
+                .update())
+        .isEqualTo(1);
+  }
+
+  long version(UUID key) {
+    return jdbc.sql(
+            "SELECT version FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
+                + " idempotencia=:k")
+        .param("e", escuela)
+        .param("k", key)
+        .query(Long.class)
+        .single();
+  }
+
+  int auditoriasDeCarga() {
+    return jdbc.sql(
+            "SELECT count(*) FROM gestion_patin.auditoria WHERE escuela_id=:e AND"
+                + " accion='DOCUMENTO_CARGADO'")
+        .param("e", escuela)
+        .query(Integer.class)
+        .single();
+  }
+
+  static byte[] png(int lado) throws Exception {
+    var out = new ByteArrayOutputStream();
+    ImageIO.write(new BufferedImage(lado, lado, BufferedImage.TYPE_INT_RGB), "png", out);
+    return out.toByteArray();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"RESERVADA", "ALMACENADA"})
+  void reservaActivaImpideQueOtraSolicitudSeApropie(String estado) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, estado, false);
+    long antes = version(key);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo(estado);
+    assertThat(version(key)).isEqualTo(antes);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+    sinFugas(r);
+  }
+
+  @Test
+  void reservadaVencidaTrasUnaInterrupcionSeRetomaYCompletaLaCarga(
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = operacionPrevia(key, file, "RESERVADA", true);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(JsonPath.<String>read(r.body(), "$.id")).isEqualTo(id.toString());
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(out.getAll())
+        .contains("Operación de carga retomada")
+        .contains("operacion=" + id)
+        .contains("estado=RESERVADA")
+        .doesNotContain(token, "solo-sintetico-storage", "sintetico.png", atleta.toString());
+    var repetida = cargar(key, file);
+    assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(200);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void almacenadaVencidaSePublicaSinRepetirLaTransferencia() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = operacionPrevia(key, file, "ALMACENADA", true);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(JsonPath.<String>read(r.body(), "$.id")).isEqualTo(id.toString());
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).as("no se repite el POST a Storage").isZero();
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(
+            jdbc.sql(
+                    "SELECT d.storage_key = o.objeto_id::text FROM gestion_patin.documento d JOIN"
+                        + " gestion_patin.operacion_carga_documental o ON o.documento_id=d.id"
+                        + " WHERE o.id=:id")
+                .param("id", id)
+                .query(Boolean.class)
+                .single())
+        .isTrue();
+  }
+
+  @Test
+  void reintentosConcurrentesSobreUnaReservaVencidaLaRetomanUnaSolaVez() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "RESERVADA", true);
+    var escaneos = new AtomicInteger();
+    var liberar = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          escaneos.incrementAndGet();
+          try {
+            if (!liberar.await(7, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    var salida = new CyclicBarrier(2);
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<HttpResponse<String>> intento =
+          () -> {
+            salida.await(5, TimeUnit.SECONDS);
+            return cargar(key, file);
+          };
+      var a = pool.submit(intento);
+      var b = pool.submit(intento);
+      // El perdedor responde en cuanto ve la reserva renovada; el ganador queda en el scanner.
+      long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(6);
+      while (!(a.isDone() || b.isDone()) && System.nanoTime() < fin) Thread.sleep(20);
+      var perdedor = a.isDone() ? a : b;
+      var ganador = perdedor == a ? b : a;
+      assertThat(perdedor.isDone()).isTrue();
+      assertThat(perdedor.get().statusCode()).as(perdedor.get().body()).isEqualTo(409);
+      // Mientras el ganador mantiene la reserva, los reintentos posteriores tampoco se apropian.
+      var tardio = cargar(key, file);
+      assertThat(tardio.statusCode()).as(tardio.body()).isEqualTo(409);
+      liberar.countDown();
+      assertThat(ganador.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
+    } finally {
+      liberar.countDown();
+    }
+    assertThat(escaneos.get()).as("solo el ganador escanea").isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+  }
+
+  @Test
+  void reintentosConcurrentesSobreAlmacenadaVencidaPublicanUnaSolaVez() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "ALMACENADA", true);
+    var salida = new CyclicBarrier(2);
+    List<Integer> estados;
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<Integer> intento =
+          () -> {
+            salida.await(5, TimeUnit.SECONDS);
+            return cargar(key, file).statusCode();
+          };
+      var a = pool.submit(intento);
+      var b = pool.submit(intento);
+      estados = List.of(a.get(15, TimeUnit.SECONDS), b.get(15, TimeUnit.SECONDS));
+    }
+    assertThat(estados).filteredOn(e -> e == 201).hasSize(1);
+    assertThat(estados).allMatch(e -> e == 201 || e == 200 || e == 409);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(POSTS.get()).isZero();
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+  }
+
+  @Test
+  void propietarioTardioPierdeElCasDespuesDeQueOtroRetomaLaOperacion(
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var primeraEntrada = new AtomicBoolean(true);
+    var enScanner = new CountDownLatch(1);
+    var liberar = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          if (!primeraEntrada.getAndSet(false)) return;
+          enScanner.countDown();
+          try {
+            if (!liberar.await(7, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var lento = pool.submit(() -> cargar(key, file));
+      assertThat(enScanner.await(5, TimeUnit.SECONDS)).isTrue();
+      // El propietario sigue vivo, pero su reserva vence: vencida no implica terminado.
+      UUID id =
+          jdbc.sql(
+                  "SELECT id FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
+                      + " idempotencia=:k")
+              .param("e", escuela)
+              .param("k", key)
+              .query(UUID.class)
+              .single();
+      vencer(id);
+      var reintento = cargar(key, file);
+      assertThat(reintento.statusCode()).as(reintento.body()).isEqualTo(201);
+      liberar.countDown();
+      var tardio = lento.get(10, TimeUnit.SECONDS);
+      assertThat(tardio.statusCode()).as(tardio.body()).isEqualTo(409);
+      assertThat(out.getAll())
+          .contains("operacion=" + id + " fase=iniciar")
+          .contains("codigo=OPERACION_NO_REPETIBLE");
+    } finally {
+      liberar.countDown();
+    }
+    assertThat(POSTS.get()).as("el propietario tardío no transfiere").isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+  }
+
+  @Autowired org.springframework.transaction.PlatformTransactionManager transacciones;
+
+  /**
+   * Vencimiento real, sin incrementar la versión: simula sólo el paso del tiempo. El trigger exige
+   * versión+1 en cada UPDATE, así que se lo omite únicamente dentro de esta transacción de prueba.
+   */
+  void vencerSinCambiarVersion(UUID id) {
+    new org.springframework.transaction.support.TransactionTemplate(transacciones)
+        .executeWithoutResult(
+            s -> {
+              jdbc.sql("SET LOCAL session_replication_role = replica").update();
+              assertThat(
+                      jdbc.sql(
+                              "UPDATE gestion_patin.operacion_carga_documental SET"
+                                  + " reserva_hasta=clock_timestamp()-interval '1 second' WHERE id=:id")
+                          .param("id", id)
+                          .update())
+                  .isEqualTo(1);
+            });
+  }
+
+  @Test
+  void propietarioTardioConReservaRealmenteVencidaPierdeElCasPorLaRetoma(
+      org.springframework.boot.test.system.CapturedOutput out) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var primeraEntrada = new AtomicBoolean(true);
+    var enScanner = new CountDownLatch(1);
+    var liberar = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          if (!primeraEntrada.getAndSet(false)) return;
+          enScanner.countDown();
+          try {
+            if (!liberar.await(7, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    UUID id;
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var lento = pool.submit(() -> cargar(key, file));
+      assertThat(enScanner.await(5, TimeUnit.SECONDS)).isTrue();
+      id =
+          jdbc.sql(
+                  "SELECT id FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
+                      + " idempotencia=:k")
+              .param("e", escuela)
+              .param("k", key)
+              .query(UUID.class)
+              .single();
+      long versionDelPropietario = version(key);
+      vencerSinCambiarVersion(id);
+      assertThat(version(key)).isEqualTo(versionDelPropietario);
+      var reintento = cargar(key, file);
+      assertThat(reintento.statusCode()).as(reintento.body()).isEqualTo(201);
+      liberar.countDown();
+      var tardio = lento.get(10, TimeUnit.SECONDS);
+      assertThat(tardio.statusCode()).as(tardio.body()).isEqualTo(409);
+    } finally {
+      liberar.countDown();
+    }
+    assertThat(out.getAll())
+        .contains("operacion=" + id + " fase=iniciar")
+        .contains("operacion=" + id + " fase=cierre");
+    assertThat(POSTS.get()).as("el propietario tardío no transfiere").isEqualTo(1);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+  }
+
+  @Test
+  void reintentoConManifiestoOContextoIncompatibleNoSeApropiaDeLaOperacion() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "RESERVADA", true);
+    long antes = version(key);
+    var otroArchivo = cargar(key, png(3));
+    assertThat(otroArchivo.statusCode()).as(otroArchivo.body()).isEqualTo(409);
+    var otroTipo =
+        cargarArchivo(key, file, token, true, "sintetico.png", "image/png", "SOLICITUD_LICENCIA");
+    assertThat(otroTipo.statusCode()).as(otroTipo.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("RESERVADA");
+    assertThat(version(key)).as("no se renovó la reserva").isEqualTo(antes);
+    assertThat(POSTS.get()).isZero();
+    assertThat(documentos()).isZero();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {"TRANSFIRIENDO", "RECONCILIANDO", "CERRADA"})
+  void estadosFueraDeU4SiguenSinRetomarse(String estado) throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, estado, true);
+    long antes = version(key);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo(estado);
+    assertThat(version(key)).isEqualTo(antes);
+    assertThat(POSTS.get()).isZero();
+    assertThat(documentos()).isZero();
+  }
 }

@@ -42,7 +42,18 @@ final class OperacionesCargaJdbc {
     }
   }
 
-  record Reserva(Operacion operacion, DocumentoMetadatos publicada) {}
+  /**
+   * {@code retomada}: la clave ya existía en RESERVADA o ALMACENADA con la reserva vencida y esta
+   * solicitud la adquirió por CAS; {@code operacion} lleva la versión renovada.
+   */
+  record Reserva(Operacion operacion, DocumentoMetadatos publicada, boolean retomada) {
+    Reserva(Operacion operacion, DocumentoMetadatos publicada) {
+      this(operacion, publicada, false);
+    }
+  }
+
+  /** Estados que un reintento puede retomar; TRANSFIRIENDO y RECONCILIANDO requieren reconciliar. */
+  private static final Set<String> RETOMABLES = Set.of("RESERVADA", "ALMACENADA");
 
   private final JdbcClient jdbc;
   private final TransactionTemplate tx;
@@ -200,10 +211,37 @@ final class OperacionesCargaJdbc {
               || op.bytes() != a.bytes
               || !op.mime().equals(a.mime)
               || !MessageDigest.isEqual(op.sha(), a.sha)) throw ErrorCarga.conflicto();
-          if (!nueva && !op.estado().equals("PUBLICADA")) throw ErrorCarga.conflicto();
-          if (nueva) comprobarPrimera(u.escuelaId(), atleta, tipo.name());
-          return new Reserva(op, nueva ? null : metadatos(op.id()));
+          // El manifiesto ya coincide: sólo entonces un reintento puede retomar la operación.
+          boolean retomada = false;
+          if (!nueva && !op.estado().equals("PUBLICADA")) {
+            if (!RETOMABLES.contains(op.estado()) || !retomar(op)) throw ErrorCarga.conflicto();
+            op = conEstado(op, op.estado());
+            retomada = true;
+          }
+          if (nueva || retomada && op.estado().equals("RESERVADA"))
+            comprobarPrimera(u.escuelaId(), atleta, tipo.name());
+          return new Reserva(op, nueva || retomada ? null : metadatos(op.id()), retomada);
         });
+  }
+
+  /**
+   * Adquiere por CAS una reserva vencida, en el mismo estado y bajo el FOR UPDATE de la reserva. El
+   * vencimiento se mide con el reloj de PostgreSQL, el mismo que usa el trigger. No supone que el
+   * propietario anterior terminó: la versión incrementada hace fallar cualquier transición tardía
+   * suya (iniciar, almacenada, publicar, cierre o reconciliación).
+   */
+  private boolean retomar(Operacion o) {
+    return jdbc.sql(
+                "UPDATE gestion_patin.operacion_carga_documental SET version=version+1,"
+                    + "reserva_hasta=clock_timestamp()+(:ms * interval '1 millisecond')"
+                    + " WHERE id=:id AND version=:v AND estado=:e AND reserva_hasta IS NOT NULL"
+                    + " AND reserva_hasta <= clock_timestamp()")
+            .param("ms", p.reserva().toMillis())
+            .param("id", o.id())
+            .param("v", o.version())
+            .param("e", o.estado())
+            .update()
+        == 1;
   }
 
   Operacion iniciar(ContextoCarga c, Operacion o) {

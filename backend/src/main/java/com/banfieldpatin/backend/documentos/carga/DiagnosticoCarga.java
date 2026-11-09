@@ -30,6 +30,18 @@ final class DiagnosticoCarga {
     }
   }
 
+  /** Un reintento adquirió una operación cuya reserva había vencido. */
+  static void retomada(UUID operacion, String estado) {
+    try {
+      log.info(
+          "Operación de carga retomada tras vencer su reserva: operacion={} estado={}",
+          operacion,
+          estado);
+    } catch (RuntimeException ex) {
+      /* El diagnóstico nunca altera el resultado de la carga. */
+    }
+  }
+
   private static String codigo(Throwable causa) {
     if (causa instanceof ExcepcionNegocio e) return e.getCodigo();
     if (causa instanceof FalloAlmacenDocumentos f) return f.codigo().name();
