@@ -206,6 +206,48 @@ Límites efectivos (Spring Boot 4.1.1, Tomcat 11.0.24, sin `server.tomcat.*` con
 
 **La cuota no reemplaza los límites del proxy ni del volumen.** Solo cuenta solicitudes que ya superaron la seguridad del filtro: no protege contra conexiones lentas que nunca llegan a él (cabeceras enviadas lentamente, solicitudes sin sesión, sin CSRF o a otros endpoints con cuerpo, incluido el login), que retienen un hilo de Tomcat con su plazo de 20 s por lectura y sin plazo total. Antes de habilitar tráfico real siguen siendo **obligatorios**: plazo total y tasa mínima para cabeceras y cuerpo en el proxy o balanceador, límite de conexiones por cliente y un volumen dedicado con cuota para `temporales`.
 
+### Verificación real de ClamAV (opt-in, local)
+
+`ClamAvRealTest` (`@Tag("clamav-real")`, 12 pruebas) comprueba `ClamAvPrivado` y el servicio contra un clamd **real** en Docker local, con contenido sintético y la cadena de prueba EICAR; no usa documentos reales ni servicios externos. Está excluida de las suites predeterminadas y de CI (`excludedGroups` en `pom.xml`) y solo corre con `-Pclamav-real`. Falla, y no se omite, si el servicio no responde: una verificación sin ClamAV sería falsa.
+
+Requisitos: Docker y la imagen oficial fijada `clamav/clamav:1.4.6` (digest `sha256:cbc30de94b6e9b33ac14136ff45306cee02a1f9ae522394a3cc5b9215d1affe9`, firmas incluidas en la imagen). `freshclam` se desactiva, así que las pruebas no dependen de la red tras descargar la imagen.
+
+```bash
+# 1. Levantar (puerto solo en loopback; sin volúmenes ni red compartida)
+docker run -d --name banfield-clamav-test --label proyecto=banfield-patin-u7a \
+  -p 127.0.0.1:13310:3310 -e CLAMAV_NO_FRESHCLAMD=true clamav/clamav:1.4.6
+# esperar ~15 s hasta que responda:  printf 'zPING\0' | nc 127.0.0.1 13310   -> PONG
+
+# 2. Ejecutar (desde backend/)
+DOCUMENTOS_CARGA_HABILITADA=false ./mvnw -o -Pclamav-real -Dtest=ClamAvRealTest test
+#    propiedades opcionales: -Dclamav.host=127.0.0.1 -Dclamav.puerto=13310 -Dclamav.contenedor=banfield-clamav-test
+
+# 3. Limpiar (elimina también la firma sintética que registran las pruebas)
+docker rm -f banfield-clamav-test
+docker rmi clamav/clamav:1.4.6        # opcional
+```
+
+Las pruebas de caída y pausa usan `docker stop/pause/start` **solo** sobre el contenedor indicado en `clamav.contenedor` y lo dejan en marcha al terminar. No tocan otros contenedores.
+
+Resultados verificados con ClamAV 1.4.6 (firmas del 8 de noviembre de 2026), incluidas dos corridas completas desde un contenedor nuevo:
+
+| Caso | Resultado de negocio |
+|---|---|
+| Archivo limpio (binario, texto, 5 MB) | pasa sin excepción; 5 MB en menos de 20 s |
+| EICAR como archivo; EICAR dentro de un ZIP con 300 KB de relleno | `422 ARCHIVO_PELIGROSO`, sin nombre de firma, archivo ni ruta en el mensaje ni en los logs |
+| Contenido marcado por una firma sintética en medio de 600 KB | `422 ARCHIVO_PELIGROSO` |
+| Exactamente `max-bytes` / `max-bytes + 1` | acepta / `413 ARCHIVO_DEMASIADO_GRANDE` |
+| Nada escuchando en el puerto | `503 CARGA_NO_DISPONIBLE` inmediato |
+| clamd pausado (`docker pause`), plazo de 2 s | `503` dentro del plazo total, también con contenido peligroso: nunca se acepta |
+| clamd detenido durante la prueba | `503`; tras reiniciarlo, el siguiente archivo limpio pasa |
+| Un puerto que responde otra cosa (HTTP) | `503`, nunca se toma por limpio |
+| PNG válido con la firma sintética, por el servicio completo | `422`; `almacen.crear` y `publicar` nunca se invocan; la operación se cierra |
+| Scanner caído, por el servicio completo | `503`; no se inicia la transferencia ni se publica |
+
+Hallazgo de método, no un defecto: la firma EICAR de ClamAV se reconoce solo cuando la cadena es el archivo completo (o está dentro de un ZIP); incrustada en un archivo mayor o tras un prefijo, clamd responde `OK`. EICAR sirve para probar el protocolo y la traducción de errores, no para probar la detección sobre documentos reales; por eso las pruebas de documentos válidos usan una firma sintética propia, registrada en el contenedor descartable y recargada con `RELOAD` (tarda unos 13 s). No se observó ningún defecto de `ClamAvPrivado` ni del protocolo.
+
+Límites de esta verificación: `StreamMaxLength` de clamd (100 MB por defecto, superior al máximo configurable de 50 MB) no se ejercitó con una configuración reducida; la respuesta `INSTREAM size limit exceeded. ERROR` ya se trata como fallo cerrado (`503`) en `ClamAvPrivadoTest`. No se probó el comportamiento ante una base de firmas desactualizada ni la carga concurrente sobre un mismo clamd (el límite de procesamiento es de 2).
+
 ### Configuración y demostración aislada
 
 `DOCUMENTOS_CARGA_HABILITADA=false` por defecto; además requiere el adaptador Storage habilitado y configurado explícitamente. Propiedades externas `banfield.documentos.carga.*`: `max-bytes`, `temporales`, `max-pixeles`, `procesamiento`, `scanner-plazo`, `scanner-host`, `scanner-puerto`, `concurrencia`, `reserva`, `recepciones`. Valores iniciales: 5 MB decimales, 16 millones de píxeles, 10 s parser, 20 s scanner, loopback:3310, dos plazas de procesamiento, ocho recepciones y reserva de tres minutos. Dos plazas constituyen una guarda de recursos probada, **no** una capacidad definitiva/benchmark de producción. Ajustar infraestructura, timeouts, reserva, límites del servlet y protección ante clientes lentos antes de habilitar tráfico real; una reserva vencida nunca habilita reenvíos: `RESERVADA`/`ALMACENADA` se retoman (U4) y `TRANSFIRIENDO`/`RECONCILIANDO` se reconcilian sin publicar (U5).
