@@ -58,20 +58,32 @@ class DbTestsExcluidosPorDefectoTest {
 		Element plugin = surefire(plugins);
 
 		assertThat(plugin).as("plugin surefire en build/plugins").isNotNull();
-		assertThat(hijo(hijo(plugin, "configuration"), "excludedGroups").getTextContent().strip()).isEqualTo("db");
+		// La suite por defecto excluye las pruebas con base de datos y las opt-in contra ClamAV y Supabase Storage
+		// reales (U7a/U7b): ninguna se ejecuta sin su perfil.
+		List<String> excluidos = List.of(hijo(hijo(plugin, "configuration"), "excludedGroups").getTextContent().strip().split("\\s*,\\s*"));
+		assertThat(excluidos).containsExactlyInAnyOrder("db", "clamav-real", "supabase-real");
 	}
 
 	@Test
-	void soloElPerfilDbTestsIncluyeElGrupoDb() throws Exception {
+	void cadaGrupoExcluidoSoloLoIncluyeSuPropioPerfil() throws Exception {
 		Element project = pom().getDocumentElement();
 		NodeList perfiles = hijo(project, "profiles").getElementsByTagName("profile");
-		assertThat(perfiles.getLength()).isEqualTo(1);
-		Element perfil = (Element) perfiles.item(0);
-		assertThat(hijo(perfil, "id").getTextContent().strip()).isEqualTo("db-tests");
-		Element configuracion = hijo(surefire(hijo(hijo(perfil, "build"), "plugins")), "configuration");
-		assertThat(hijo(configuracion, "groups").getTextContent().strip()).isEqualTo("db");
-		// El perfil deja vacia la exclusion para que el grupo db pueda ejecutarse.
-		assertThat(hijo(configuracion, "excludedGroups").getTextContent().strip()).isEmpty();
+		// Perfil -> unico grupo que incluye: db-tests (PostgreSQL), clamav-real (U7a) y supabase-real (U7b).
+		java.util.Map<String, String> esperado = java.util.Map.of(
+				"db-tests", "db", "clamav-real", "clamav-real", "supabase-real", "supabase-real");
+		assertThat(perfiles.getLength()).isEqualTo(esperado.size());
+		java.util.Set<String> vistos = new java.util.HashSet<>();
+		for (int i = 0; i < perfiles.getLength(); i++) {
+			Element perfil = (Element) perfiles.item(i);
+			String id = hijo(perfil, "id").getTextContent().strip();
+			assertThat(esperado).as("perfil inesperado: " + id).containsKey(id);
+			vistos.add(id);
+			Element configuracion = hijo(surefire(hijo(hijo(perfil, "build"), "plugins")), "configuration");
+			assertThat(hijo(configuracion, "groups").getTextContent().strip()).as("grupo del perfil " + id).isEqualTo(esperado.get(id));
+			// El perfil deja vacia la exclusion para que su grupo pueda ejecutarse.
+			assertThat(hijo(configuracion, "excludedGroups").getTextContent().strip()).as("exclusion del perfil " + id).isEmpty();
+		}
+		assertThat(vistos).isEqualTo(esperado.keySet());
 	}
 
 	@Test
