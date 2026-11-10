@@ -46,6 +46,19 @@ class CargaDocumentalHttpDbTest {
   static final AtomicReference<String> MODO_HEAD = new AtomicReference<>("ausente");
   static final AtomicLong TAMANIO_HEAD = new AtomicLong();
   static final AtomicInteger HEADS = new AtomicInteger();
+  static final AtomicInteger INFOS = new AtomicInteger();
+  /** Si no es null, /object/info responde según este modo y no según MODO_HEAD. */
+  static final AtomicReference<String> MODO_INFO = new AtomicReference<>();
+  /**
+   * Credencial sintética con forma de JWT de servicio (U7c: solo una credencial de servicio puede
+   * confirmar ausencia). El doble no verifica la firma; "solo-sintetico-storage" sigue siendo la
+   * marca que las pruebas buscan en los logs.
+   */
+  static final String CREDENCIAL_STORAGE =
+      java.util.Base64.getUrlEncoder().withoutPadding().encodeToString("{\"alg\":\"HS256\"}".getBytes())
+          + "."
+          + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString("{\"role\":\"service_role\"}".getBytes())
+          + ".solo-sintetico-storage";
   static final AtomicReference<Runnable> HOOK_HEAD = new AtomicReference<>(() -> {});
   static final Path TEMPORAL;
   static final AtomicLong DESFASE = new AtomicLong();
@@ -98,6 +111,22 @@ class CargaDocumentalHttpDbTest {
                 x.getResponseHeaders().set("Content-Length", Long.toString(TAMANIO_HEAD.get()));
                 x.sendResponseHeaders(200, -1);
               } else x.sendResponseHeaders(modo.equals("ausente") ? 404 : 500, -1);
+              x.close();
+              return;
+            }
+            if (x.getRequestMethod().equals("GET") && path.contains("/object/info/")) {
+              // U7c: estado del objeto con el formato verificado contra el Storage real.
+              INFOS.incrementAndGet();
+              String modo = MODO_INFO.get() != null ? MODO_INFO.get() : MODO_HEAD.get();
+              int codigo = modo.equals("ausente") ? 400 : modo.equals("existe") ? 200 : 500;
+              byte[] b =
+                  (modo.equals("ausente")
+                          ? "{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}"
+                          : "{\"id\":\"sintetico\"}")
+                      .getBytes(StandardCharsets.UTF_8);
+              x.getResponseHeaders().set("Content-Type", "application/json");
+              x.sendResponseHeaders(codigo, b.length);
+              x.getResponseBody().write(b);
               x.close();
               return;
             }
@@ -167,7 +196,7 @@ class CargaDocumentalHttpDbTest {
         "banfield.documentos.storage.url",
         () -> "http://127.0.0.1:" + STORAGE.getAddress().getPort());
     r.add("banfield.documentos.storage.bucket", () -> "privado");
-    r.add("banfield.documentos.storage.credencial", () -> "solo-sintetico-storage");
+    r.add("banfield.documentos.storage.credencial", () -> CREDENCIAL_STORAGE);
     r.add("banfield.documentos.storage.respuesta", () -> "PT2S");
   }
 
@@ -193,6 +222,8 @@ class CargaDocumentalHttpDbTest {
     MODO_HEAD.set("ausente");
     TAMANIO_HEAD.set(0);
     HEADS.set(0);
+    INFOS.set(0);
+    MODO_INFO.set(null);
     HOOK_HEAD.set(() -> {});
     var d = new DatosDb(jdbc);
     escuela = d.escuela("carga-" + UUID.randomUUID());
@@ -1804,5 +1835,30 @@ class CargaDocumentalHttpDbTest {
       for (var c : abiertos) c.close();
     }
     esperarRecepcionesLibres(8);
+  }
+
+  // ---- U7c: la reconciliación solo cierra por ausencia confirmada ----
+
+  @Test
+  void unHead404SinAusenciaConfirmadaNoCierraYSigueReintentable() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "TRANSFIRIENDO", true);
+    MODO_HEAD.set("ausente");
+    MODO_INFO.set("error");
+    var incierta = cargar(key, file);
+    assertThat(incierta.statusCode()).as(incierta.body()).isEqualTo(503);
+    assertThat(JsonPath.<String>read(incierta.body(), "$.codigo")).isEqualTo("RESULTADO_CARGA_INCIERTO");
+    assertThat(fase(key)).as("un 404 del HEAD no basta para cerrar").isEqualTo("RECONCILIANDO");
+    assertThat(reservaLibre(key)).isTrue();
+    assertThat(INFOS.get()).isEqualTo(1);
+    // Con la ausencia confirmada por /object/info, el reintento cierra sin publicar.
+    MODO_INFO.set(null);
+    var cerrada = cargar(key, file);
+    assertThat(cerrada.statusCode()).as(cerrada.body()).isEqualTo(409);
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(INFOS.get()).isEqualTo(2);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
   }
 }

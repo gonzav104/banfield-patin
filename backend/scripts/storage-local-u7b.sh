@@ -116,6 +116,10 @@ EOF
   curl -s -o /dev/null -w 'bucket: HTTP %{http_code}\n' -X POST "$STORAGE_TEST_URL/storage/v1/bucket" \
     -H "Authorization: Bearer $STORAGE_TEST_SERVICE_KEY" -H "apikey: $STORAGE_TEST_SERVICE_KEY" \
     -H 'Content-Type: application/json' -d "{\"id\":\"$BUCKET\",\"name\":\"$BUCKET\",\"public\":false}"
+  # U7c: reproduce el caso peligroso de una credencial no de servicio que VE el bucket pero no sus
+  # objetos (RLS los oculta con la misma respuesta "not_found" que una ausencia real).
+  docker exec ${PREFIJO}-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q \
+    -c "create policy u7c_bucket_visible on storage.buckets for select to authenticated using (true)" >/dev/null
   echo "Listo: Storage local en 127.0.0.1:${PUERTO}, bucket ${BUCKET} (privado). Claves en $ARCHIVO (0600)."
 }
 

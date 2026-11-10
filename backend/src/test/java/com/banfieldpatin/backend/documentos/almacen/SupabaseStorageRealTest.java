@@ -139,18 +139,16 @@ class SupabaseStorageRealTest {
   }
 
   /**
-   * Hallazgo: este Storage responde HTTP 400 (con el código real en el cuerpo JSON) a un HEAD de un
-   * objeto ausente, por lo que el adaptador, que solo reconoce el HTTP 404, nunca llega a
-   * AUSENCIA_OBSERVADA. Es seguro (nada se toma por ausente) pero deja a U5 sin cierre por ausencia.
-   * Si una versión futura de Storage devolviera 404, esta prueba debe revisarse a propósito.
+   * U7c: el HEAD real de un objeto ausente devuelve 400 (no 404); el adaptador consulta entonces
+   * /object/info y, con la credencial de servicio (BYPASSRLS) y la respuesta verificada, confirma la
+   * ausencia.
    */
   @Test
-  void unObjetoAusenteNoSeConfirmaComoAusenteConEstaVersionDeStorage() throws Exception {
+  void unObjetoRealmenteAusenteSeConfirmaConLaCredencialDeServicio() throws Exception {
     var d = destino();
     assertThat(existe(d.objetoIdInterno())).isFalse();
     var r = adaptador(SERVICIO).inspeccionar(d);
-    assertThat(r.estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
-    assertThat(r.motivo()).hasValue(FalloAlmacenDocumentos.Codigo.RECHAZADO);
+    assertThat(r.estado()).isEqualTo(InspeccionAlmacen.Estado.AUSENCIA_OBSERVADA);
     var directo = http("HEAD", "/object/authenticated/" + BUCKET + "/" + d.objetoIdInterno(), SERVICIO, null, null);
     assertThat(directo.estado()).as("el HEAD real devuelve 400, no 404").isEqualTo(400);
   }
@@ -165,6 +163,110 @@ class SupabaseStorageRealTest {
     // El adaptador no lo toma por ausente: la lectura previa del bucket ya falla para ese rol.
     var r = adaptador(ANON).inspeccionar(d);
     assertThat(r.estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+  }
+
+  static String jwt(String rol) throws Exception {
+    var b = java.util.Base64.getUrlEncoder().withoutPadding();
+    String cab = b.encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes());
+    long ahora = System.currentTimeMillis() / 1000;
+    String car = b.encodeToString(("{\"role\":\"" + rol + "\",\"sub\":\"00000000-0000-0000-0000-000000000001\",\"iat\":"
+        + (ahora - 60) + ",\"exp\":" + (ahora + 3600) + "}").getBytes());
+    var mac = javax.crypto.Mac.getInstance("HmacSHA256");
+    mac.init(new javax.crypto.spec.SecretKeySpec(SECRETO.getBytes(), "HmacSHA256"));
+    return cab + "." + car + "." + b.encodeToString(mac.doFinal((cab + "." + car).getBytes()));
+  }
+
+  /**
+   * El caso peligroso: una credencial válida, no de servicio, que VE el bucket (supera la
+   * verificación previa) pero a la que RLS le oculta los objetos. Storage le responde lo mismo, byte
+   * a byte, para un objeto existente que la credencial de servicio para uno ausente. El adaptador
+   * nunca lo toma por ausencia.
+   */
+  @Test
+  void unaCredencialQueVeElBucketPeroNoLosObjetosNuncaConfirmaAusencia() throws Exception {
+    String autenticado = jwt("authenticated");
+    var existente = destino();
+    crear(adaptador(SERVICIO), existente);
+    var ausente = destino();
+
+    assertThat(http("GET", "/bucket/" + BUCKET, autenticado, null, null).estado())
+        .as("ve el bucket: la verificación previa no lo detiene").isEqualTo(200);
+    var ocultoPorRls = http("GET", "/object/info/authenticated/" + BUCKET + "/" + existente.objetoIdInterno(), autenticado, null, null);
+    var ausenteReal = http("GET", "/object/info/authenticated/" + BUCKET + "/" + ausente.objetoIdInterno(), SERVICIO, null, null);
+    assertThat(ocultoPorRls.estado()).isEqualTo(ausenteReal.estado()).isEqualTo(400);
+    assertThat(ocultoPorRls.cuerpo()).as("respuestas indistinguibles").isEqualTo(ausenteReal.cuerpo());
+
+    var a = adaptador(autenticado);
+    assertThat(a.inspeccionar(existente).estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+    assertThat(a.inspeccionar(ausente).estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+    assertThat(adaptador(SERVICIO).inspeccionar(existente).estado())
+        .isEqualTo(InspeccionAlmacen.Estado.EXISTENCIA_CONFIRMADA);
+    assertThat(adaptador(SERVICIO).inspeccionar(ausente).estado())
+        .isEqualTo(InspeccionAlmacen.Estado.AUSENCIA_OBSERVADA);
+  }
+
+  @Test
+  void unBucketInexistenteNuncaEsAusenciaDelObjeto() {
+    var otro = new SupabaseAlmacenDocumentos(
+        new StoragePropiedades(URL, "banfield-no-existe", SERVICIO, Duration.ofSeconds(2), Duration.ofSeconds(5)));
+    var r = otro.inspeccionar(DestinoPreparado.desdeRegistro("banfield-no-existe", UUID.randomUUID()));
+    assertThat(r.estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+    "400|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\"}",
+    "400|{\"statusCode\":\"404\",\"error\":\"Bucket not found\",\"message\":\"Bucket not found\",\"code\":\"NoSuchBucket\"}",
+    "400|{\"statusCode\":\"403\",\"error\":\"Unauthorized\",\"message\":\"x\",\"code\":\"AccessDenied\"}",
+    "404|{\"message\":\"no Route matched with those values\"}",
+    "404|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}",
+    "400|no-es-json",
+    "502|{\"message\":\"An invalid response was received from the upstream server\"}"
+  })
+  void unaRespuestaDeInfoNoVerificadaEsIncertidumbre(String caso) throws Exception {
+    var partes = caso.split("\\|", 2);
+    try (var proxy = new ProxyDeFallos()) {
+      var a = adaptador(proxy.url(), SERVICIO, Duration.ofSeconds(5));
+      var d = destino();
+      assertThat(a.inspeccionar(d).estado()).as("control: sin alterar, ausencia confirmada")
+          .isEqualTo(InspeccionAlmacen.Estado.AUSENCIA_OBSERVADA);
+      proxy.infoEstado = Integer.parseInt(partes[0]);
+      proxy.infoCuerpo = partes[1];
+      assertThat(a.inspeccionar(d).estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+    }
+  }
+
+  @Test
+  void unaConsultaDeInfoMasLentaQueElPlazoEsTimeoutNuncaAusencia() throws Exception {
+    try (var proxy = new ProxyDeFallos()) {
+      var a = adaptador(proxy.url(), SERVICIO, Duration.ofSeconds(2));
+      proxy.infoLenta = true;
+      var r = a.inspeccionar(destino());
+      assertThat(r.estado()).isEqualTo(InspeccionAlmacen.Estado.INCIERTA);
+      assertThat(r.motivo()).hasValue(FalloAlmacenDocumentos.Codigo.TIMEOUT);
+    }
+  }
+
+  /**
+   * Una ausencia confirmada es una observación, no el fin de un escritor: con un POST todavía
+   * retenido en camino, el objeto está ausente; al liberarlo, Storage lo crea. Por eso U5 cierra sin
+   * publicar y el objeto tardío queda huérfano.
+   */
+  @Test
+  void unaAusenciaConfirmadaNoPruebaElFinDeUnPostEnCurso() throws Exception {
+    try (var proxy = new ProxyDeFallos(); var tareas = Executors.newVirtualThreadPerTaskExecutor()) {
+      var a = adaptador(proxy.url(), SERVICIO, Duration.ofSeconds(8));
+      var d = destino();
+      proxy.retenerPost = new java.util.concurrent.CountDownLatch(1);
+      var envio = tareas.submit(() -> { crear(a, d); return null; });
+      long fin = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      while (proxy.postsRetenidos.get() == 0 && System.nanoTime() < fin) Thread.sleep(20);
+      assertThat(proxy.postsRetenidos.get()).isEqualTo(1);
+      assertThat(adaptador(SERVICIO).inspeccionar(d).estado()).isEqualTo(InspeccionAlmacen.Estado.AUSENCIA_OBSERVADA);
+      proxy.retenerPost.countDown();
+      envio.get(10, TimeUnit.SECONDS);
+      assertThat(adaptador(SERVICIO).inspeccionar(d).estado()).isEqualTo(InspeccionAlmacen.Estado.EXISTENCIA_CONFIRMADA);
+    }
   }
 
   // ------------------------------------------------------------------ sobrescritura
@@ -268,6 +370,11 @@ class SupabaseStorageRealTest {
 
     final HttpServer servidor;
     volatile Modo modo = Modo.NORMAL;
+    volatile Integer infoEstado;
+    volatile String infoCuerpo;
+    volatile boolean infoLenta;
+    volatile java.util.concurrent.CountDownLatch retenerPost;
+    final java.util.concurrent.atomic.AtomicInteger postsRetenidos = new java.util.concurrent.atomic.AtomicInteger();
 
     ProxyDeFallos() throws Exception {
       servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -284,6 +391,20 @@ class SupabaseStorageRealTest {
                 x.sendResponseHeaders(502, b.length);
                 x.getResponseBody().write(b);
                 return;
+              }
+              boolean info = x.getRequestURI().getPath().contains("/object/info/");
+              if (info && infoLenta) Thread.sleep(3500);
+              if (info && infoEstado != null) {
+                byte[] b = infoCuerpo.getBytes(StandardCharsets.UTF_8);
+                x.getResponseHeaders().set("Content-Type", "application/json");
+                x.sendResponseHeaders(infoEstado, b.length);
+                x.getResponseBody().write(b);
+                return;
+              }
+              var retencion = retenerPost;
+              if (retencion != null && x.getRequestMethod().equals("POST")) {
+                postsRetenidos.incrementAndGet();
+                retencion.await(15, TimeUnit.SECONDS);
               }
               var p = HttpRequest.newBuilder(URI.create(URL + x.getRequestURI()))
                   .method(x.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(cuerpo));
