@@ -45,8 +45,9 @@ public class CargaConfiguracion {
 
   /**
    * La reserva debe cubrir cada tramo que se ejecuta sin renovarla: el escaneo (desde la reserva) y
-   * una operación completa del adaptador de Storage (transferencia o inspección). Sólo así una
-   * reserva vencida implica que el plazo del cliente de esa operación ya se agotó.
+   * una operación completa del adaptador de Storage (transferencia o inspección, hasta
+   * 3 × (conexión + respuesta)). Así la reserva cubre los plazos configurados del cliente; ni su
+   * vencimiento ni una ausencia observada prueban que el servidor no complete una escritura tardía.
    */
   static void validarReserva(CargaPropiedades p, java.time.Duration plazoStorage) {
     if (p.reserva().compareTo(p.scannerPlazo()) <= 0

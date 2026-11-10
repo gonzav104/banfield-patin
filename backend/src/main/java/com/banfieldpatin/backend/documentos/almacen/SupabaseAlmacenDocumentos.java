@@ -31,8 +31,15 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 	 * respuesta "not_found". Una clave opaca o con otro rol nunca confirma ausencia.
 	 */
 	private final boolean credencialDeServicio;
-	/** Marca interna: el HEAD no basta y hay que consultar el estado del objeto. */
-	private static final InspeccionAlmacen CONSULTAR_ESTADO = InspeccionAlmacen.incierta(RECHAZADO);
+	/**
+	 * Resultado del HEAD con clasificación explícita: o ya es un resultado final ({@code inspeccion}) o el
+	 * HEAD no basta y hay que consultar el estado del objeto ({@code requiereEstado}). La decisión nunca
+	 * depende de qué instancia de {@link InspeccionAlmacen} se devolvió.
+	 */
+	private record ResultadoCabecera(InspeccionAlmacen inspeccion, boolean requiereEstado) {
+		static ResultadoCabecera final_(InspeccionAlmacen inspeccion) { return new ResultadoCabecera(inspeccion, false); }
+		static ResultadoCabecera consultarEstado() { return new ResultadoCabecera(null, true); }
+	}
 
 	public SupabaseAlmacenDocumentos(StoragePropiedades propiedades) {
 		this.propiedades = propiedades;
@@ -95,27 +102,27 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
         long inicio = System.nanoTime();
         try {
             verificarBucketPrivado();
-            InspeccionAlmacen cabecera = cliente.head().uri("/object/authenticated/{bucket}/{clave}", destino.bucketInterno(), destino.objetoIdInterno())
+            ResultadoCabecera cabecera = cliente.head().uri("/object/authenticated/{bucket}/{clave}", destino.bucketInterno(), destino.objetoIdInterno())
                     .exchange((req, res) -> {
                         int estado = res.getStatusCode().value();
                         // Ni un 404 (pasarela, proxy, rol sin permiso) ni el 400 de Storage prueban ausencia.
-                        if (estado == 400 || estado == 404) return CONSULTAR_ESTADO;
-                        if (estado == 401 || estado == 403) return InspeccionAlmacen.incierta(AUTENTICACION);
-                        if (estado != 200) return InspeccionAlmacen.incierta(estado >= 400 && estado < 500 ? RECHAZADO : RESPUESTA_INESPERADA);
+                        if (estado == 400 || estado == 404) return ResultadoCabecera.consultarEstado();
+                        if (estado == 401 || estado == 403) return ResultadoCabecera.final_(InspeccionAlmacen.incierta(AUTENTICACION));
+                        if (estado != 200) return ResultadoCabecera.final_(InspeccionAlmacen.incierta(estado >= 400 && estado < 500 ? RECHAZADO : RESPUESTA_INESPERADA));
                         var longitudes = res.getHeaders().get("Content-Length");
                         var tipos = res.getHeaders().get("Content-Type");
                         if (longitudes == null || longitudes.size() != 1 || tipos == null || tipos.size() != 1
                                 || !longitudes.getFirst().matches("[1-9][0-9]{0,18}") || tipos.getFirst().length() > 1000)
-                            return InspeccionAlmacen.incierta(RESPUESTA_INESPERADA);
+                            return ResultadoCabecera.final_(InspeccionAlmacen.incierta(RESPUESTA_INESPERADA));
                         try {
                             long tamanio = Long.parseLong(longitudes.getFirst());
                             String mime = validarMime(tipos.getFirst()).toString();
-                            return InspeccionAlmacen.existe(tamanio, mime);
+                            return ResultadoCabecera.final_(InspeccionAlmacen.existe(tamanio, mime));
                         } catch (IllegalArgumentException | FalloAlmacenDocumentos ex) {
-                            return InspeccionAlmacen.incierta(RESPUESTA_INESPERADA);
+                            return ResultadoCabecera.final_(InspeccionAlmacen.incierta(RESPUESTA_INESPERADA));
                         }
                     });
-            return cabecera == CONSULTAR_ESTADO ? confirmarAusencia(destino) : cabecera;
+            return cabecera.requiereEstado() ? confirmarAusencia(destino) : cabecera.inspeccion();
         } catch (FalloAlmacenDocumentos ex) {
             return InspeccionAlmacen.incierta(ex.codigo());
         } catch (ResourceAccessException ex) {

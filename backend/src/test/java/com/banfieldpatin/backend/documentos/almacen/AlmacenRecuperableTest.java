@@ -410,4 +410,32 @@ class AlmacenRecuperableTest {
         tipoInfo = "application/json; charset=utf-8";
         assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(AUSENCIA_OBSERVADA);
     }
+
+    /**
+     * R3-001: la decisión de consultar el estado depende de una clasificación explícita del HEAD y no
+     * de qué instancia de error se devolvió. Con credencial de servicio y un /object/info que
+     * confirmaría ausencia, ningún HEAD distinto de 400/404 puede llegar a ausencia ni consulta.
+     */
+    @ParameterizedTest @ValueSource(ints = {401, 403, 408, 409, 410, 422, 429, 500, 503, 302})
+    void unHeadQueNoEsNiExistenciaNi400Ni404NuncaConsultaElEstadoNiEsAusencia(int estado) {
+        estadoHead = estado;
+        var a = almacen(SERVICIO);
+        var i = a.inspeccionar(a.prepararDestino());
+        assertThat(i.estado()).isEqualTo(INCIERTA);
+        assertThat(i.motivo()).isPresent();
+        assertThat(solicitudes).noneMatch(r -> r.contains("/object/info/"));
+    }
+
+    @Test void lasDecisionesSucesivasDeUnMismoAdaptadorNoSeContaminanEntreSi() {
+        var a = almacen(SERVICIO);
+        for (int vuelta = 0; vuelta < 3; vuelta++) {
+            estadoHead = 400;
+            assertThat(a.inspeccionar(a.prepararDestino()).estado()).isEqualTo(AUSENCIA_OBSERVADA);
+            long consultas = solicitudes.stream().filter(r -> r.contains("/object/info/")).count();
+            estadoHead = 429;
+            assertThat(a.inspeccionar(a.prepararDestino()).estado()).isEqualTo(INCIERTA);
+            assertThat(solicitudes.stream().filter(r -> r.contains("/object/info/")).count())
+                    .as("un 429 no consulta el estado").isEqualTo(consultas);
+        }
+    }
 }
