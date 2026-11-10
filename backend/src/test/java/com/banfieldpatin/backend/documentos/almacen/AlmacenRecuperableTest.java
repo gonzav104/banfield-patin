@@ -25,6 +25,20 @@ class AlmacenRecuperableTest {
     private final CountDownLatch recibido = new CountDownLatch(1), liberar = new CountDownLatch(1);
     private final AtomicLong bytes = new AtomicLong();
     private volatile String upsert, autorizacion;
+    /** GET /object/info: estado y cuerpo; por defecto, el formato de ausencia verificado en U7b/U7c. */
+    static final String AUSENCIA_VERIFICADA =
+            "{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}";
+    private volatile int estadoInfo = 400;
+    private volatile String cuerpoInfo = AUSENCIA_VERIFICADA;
+    private volatile boolean demorarInfo;
+    private volatile String tipoInfo = "application/json";
+    private volatile byte[] bytesInfo;
+    /** JWT sintético con rol service_role (sin firma válida: el doble no la verifica). */
+    static final String SERVICIO = jwt("{\"role\":\"service_role\"}");
+    static String jwt(String carga) {
+        var b = java.util.Base64.getUrlEncoder().withoutPadding();
+        return b.encodeToString("{\"alg\":\"HS256\"}".getBytes()) + "." + b.encodeToString(carga.getBytes()) + ".firma-sintetica";
+    }
 
     @BeforeEach void iniciar() throws Exception {
         servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -36,6 +50,12 @@ class AlmacenRecuperableTest {
                 if (ruta.startsWith("/storage/v1/bucket/")) {
                     byte[] b = bucket.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                     x.sendResponseHeaders(estadoBucket, b.length); x.getResponseBody().write(b); return;
+                }
+                if (metodo.equals("GET") && ruta.startsWith("/storage/v1/object/info/")) {
+                    if (demorarInfo) { liberar.await(3, TimeUnit.SECONDS); return; }
+                    byte[] b = bytesInfo != null ? bytesInfo : cuerpoInfo.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    if (tipoInfo != null) x.getResponseHeaders().set("Content-Type", tipoInfo);
+                    x.sendResponseHeaders(estadoInfo, b.length == 0 ? -1 : b.length); x.getResponseBody().write(b); return;
                 }
                 if (metodo.equals("HEAD")) {
                     if (demorarHead) { liberar.await(3, TimeUnit.SECONDS); return; }
@@ -58,9 +78,10 @@ class AlmacenRecuperableTest {
         }); servidor.start();
     }
     @AfterEach void cerrar() { liberar.countDown(); if (servidor != null) servidor.stop(0); if (hilos != null) hilos.close(); }
-    private SupabaseAlmacenDocumentos almacen() {
+    private SupabaseAlmacenDocumentos almacen() { return almacen("credencial-sintetica"); }
+    private SupabaseAlmacenDocumentos almacen(String credencial) {
         return new SupabaseAlmacenDocumentos(new StoragePropiedades("http://127.0.0.1:" + servidor.getAddress().getPort(),
-                "privado", "credencial-sintetica", Duration.ofSeconds(1), Duration.ofMillis(500)));
+                "privado", credencial, Duration.ofSeconds(1), Duration.ofMillis(500)));
     }
     private InputStream contenido() { return new ByteArrayInputStream(new byte[]{1,2,3}); }
     private long posts() { return solicitudes.stream().filter(s -> s.startsWith("POST ")).count(); }
@@ -134,7 +155,7 @@ class AlmacenRecuperableTest {
         assertThat(solicitudes).containsExactly("GET /storage/v1/bucket/privado", "HEAD /storage/v1/object/authenticated/privado/"+d.objetoIdInterno());
         assertThat(i.toString()).doesNotContain("a".repeat(64),d.objetoIdInterno().toString());
     }
-    @ParameterizedTest @ValueSource(ints={401,403,400,429,500,503,302})
+    @ParameterizedTest @ValueSource(ints={401,403,429,500,503,302})
     void inspeccionInciertaYTipadaAnteFallos(int estado) {
         estadoHead=estado;
         var a=almacen();
@@ -166,7 +187,7 @@ class AlmacenRecuperableTest {
         try(var tareas=Executors.newVirtualThreadPerTaskExecutor()) {
             var futuro=tareas.submit(()->crear(a,d));
         assertThat(recibido.await(2,TimeUnit.SECONDS)).isTrue();
-            var i=almacen().inspeccionar(DestinoPreparado.desdeRegistro(d.bucketInterno(),d.objetoIdInterno()));
+            var i=almacen(SERVICIO).inspeccionar(DestinoPreparado.desdeRegistro(d.bucketInterno(),d.objetoIdInterno()));
             assertThat(i.estado()).isEqualTo(AUSENCIA_OBSERVADA);
         assertThat(i.tamanioBytes()).isEmpty();
         assertThat(i.motivo()).isEmpty();
@@ -272,4 +293,149 @@ class AlmacenRecuperableTest {
         assertThat(cerrado).isTrue();
     }
 
+
+    // ---- U7c: detección segura de ausencia ----
+
+    private InspeccionAlmacen inspeccionarAusente(String credencial) {
+        estadoHead = 400;
+        var a = almacen(credencial);
+        return a.inspeccionar(a.prepararDestino());
+    }
+
+    @ParameterizedTest @ValueSource(ints = {400, 404})
+    void soloLaRespuestaVerificadaConCredencialDeServicioConfirmaAusencia(int head) {
+        estadoHead = head;
+        var a = almacen(SERVICIO);
+        var d = a.prepararDestino();
+        var i = a.inspeccionar(d);
+        assertThat(i.estado()).isEqualTo(AUSENCIA_OBSERVADA);
+        assertThat(solicitudes).containsExactly("GET /storage/v1/bucket/privado",
+                "HEAD /storage/v1/object/authenticated/privado/" + d.objetoIdInterno(),
+                "GET /storage/v1/object/info/authenticated/privado/" + d.objetoIdInterno());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"credencial-sintetica", "sb_secret_opaca0123456789", "rol-authenticated", "rol-anon", "sin-rol", "carga-no-json"})
+    void unaCredencialQueNoEsDeServicioNuncaConfirmaAusencia(String caso) {
+        String credencial = switch (caso) {
+            case "rol-authenticated" -> jwt("{\"role\":\"authenticated\"}");
+            case "rol-anon" -> jwt("{\"role\":\"anon\"}");
+            case "sin-rol" -> jwt("{\"sub\":\"x\"}");
+            case "carga-no-json" -> jwt("no-es-json");
+            default -> caso;
+        };
+        var i = inspeccionarAusente(credencial);
+        assertThat(i.estado()).isEqualTo(INCIERTA);
+        assertThat(solicitudes).noneMatch(r -> r.contains("/object/info/"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "404|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}",
+        "404|{\"message\":\"no Route matched with those values\"}",
+        "200|{\"id\":\"x\",\"name\":\"y\"}",
+        "500|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}",
+        "400|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\"}",
+        "400|{\"statusCode\":\"404\",\"error\":\"Bucket not found\",\"message\":\"Bucket not found\",\"code\":\"NoSuchBucket\"}",
+        "400|{\"statusCode\":\"403\",\"error\":\"Unauthorized\",\"message\":\"signature verification failed\",\"code\":\"AccessDenied\"}",
+        "400|{\"statusCode\":404,\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\"}",
+        "400|{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\",\"extra\":true}",
+        "400|[\"NoSuchKey\"]",
+        "400|no-es-json",
+        "400|",
+        "401|{}",
+        "403|{}"
+    })
+    void cualquierOtraRespuestaDeInfoEsIncertidumbre(int estado, String cuerpo) {
+        estadoInfo = estado;
+        cuerpoInfo = cuerpo == null ? "" : cuerpo;
+        var i = inspeccionarAusente(SERVICIO);
+        assertThat(i.estado()).isEqualTo(INCIERTA);
+        assertThat(i.motivo()).isPresent();
+        assertThat(solicitudes).anyMatch(r -> r.contains("/object/info/"));
+    }
+
+    @Test void unCuerpoDeInfoExcesivoEsIncertidumbre() {
+        cuerpoInfo = "{\"statusCode\":\"404\",\"error\":\"not_found\",\"message\":\"" + "x".repeat(20_000)
+                + "\",\"code\":\"NoSuchKey\"}";
+        assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(INCIERTA);
+    }
+
+    @Test void unTimeoutDeInfoEsIncertidumbreAcotada() {
+        demorarInfo = true;
+        long inicio = System.nanoTime();
+        var i = inspeccionarAusente(SERVICIO);
+        assertThat(i.estado()).isEqualTo(INCIERTA);
+        assertThat(i.motivo()).contains(FalloAlmacenDocumentos.Codigo.TIMEOUT);
+        assertThat(Duration.ofNanos(System.nanoTime() - inicio)).isLessThan(Duration.ofSeconds(3));
+    }
+
+    @Test void unaAutenticacionRechazadaEnElHeadNoConsultaInfo() {
+        estadoHead = 403;
+        var a = almacen(SERVICIO);
+        var i = a.inspeccionar(a.prepararDestino());
+        assertThat(i.motivo()).contains(FalloAlmacenDocumentos.Codigo.AUTENTICACION);
+        assertThat(solicitudes).noneMatch(r -> r.contains("/object/info/"));
+    }
+
+    /** Un 404 de la pasarela, de un proxy o de un rol sin permiso no es ausencia del objeto. */
+    @Test void unHead404ConCredencialQueNoEsDeServicioNoEsAusencia() {
+        estadoHead = 404;
+        var a = almacen("credencial-sintetica");
+        assertThat(a.inspeccionar(a.prepararDestino()).estado()).isEqualTo(INCIERTA);
+    }
+
+    /** Solo el formato verificado: una clave repetida no es ese formato aunque la última "gane". */
+    @Test void unCuerpoConClavesDuplicadasNoConfirmaAusencia() {
+        cuerpoInfo = "{\"statusCode\":\"200\",\"error\":\"not_found\",\"message\":\"Object not found\",\"code\":\"NoSuchKey\",\"statusCode\":\"404\"}";
+        assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(INCIERTA);
+    }
+
+    @Test void unCuerpoConBomNoConfirmaAusencia() {
+        byte[] verificado = AUSENCIA_VERIFICADA.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] conBom = new byte[verificado.length + 3];
+        conBom[0] = (byte) 0xEF; conBom[1] = (byte) 0xBB; conBom[2] = (byte) 0xBF;
+        System.arraycopy(verificado, 0, conBom, 3, verificado.length);
+        bytesInfo = conBom;
+        assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(INCIERTA);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"text/html", "text/plain", "application/xml", "sin-cabecera"})
+    void unaRespuestaQueNoEsJsonNoConfirmaAusencia(String tipo) {
+        tipoInfo = tipo.equals("sin-cabecera") ? null : tipo;
+        assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(INCIERTA);
+    }
+
+    @Test void elFormatoVerificadoConCharsetSigueConfirmandoAusencia() {
+        tipoInfo = "application/json; charset=utf-8";
+        assertThat(inspeccionarAusente(SERVICIO).estado()).isEqualTo(AUSENCIA_OBSERVADA);
+    }
+
+    /**
+     * R3-001: la decisión de consultar el estado depende de una clasificación explícita del HEAD y no
+     * de qué instancia de error se devolvió. Con credencial de servicio y un /object/info que
+     * confirmaría ausencia, ningún HEAD distinto de 400/404 puede llegar a ausencia ni consulta.
+     */
+    @ParameterizedTest @ValueSource(ints = {401, 403, 408, 409, 410, 422, 429, 500, 503, 302})
+    void unHeadQueNoEsNiExistenciaNi400Ni404NuncaConsultaElEstadoNiEsAusencia(int estado) {
+        estadoHead = estado;
+        var a = almacen(SERVICIO);
+        var i = a.inspeccionar(a.prepararDestino());
+        assertThat(i.estado()).isEqualTo(INCIERTA);
+        assertThat(i.motivo()).isPresent();
+        assertThat(solicitudes).noneMatch(r -> r.contains("/object/info/"));
+    }
+
+    @Test void lasDecisionesSucesivasDeUnMismoAdaptadorNoSeContaminanEntreSi() {
+        var a = almacen(SERVICIO);
+        for (int vuelta = 0; vuelta < 3; vuelta++) {
+            estadoHead = 400;
+            assertThat(a.inspeccionar(a.prepararDestino()).estado()).isEqualTo(AUSENCIA_OBSERVADA);
+            long consultas = solicitudes.stream().filter(r -> r.contains("/object/info/")).count();
+            estadoHead = 429;
+            assertThat(a.inspeccionar(a.prepararDestino()).estado()).isEqualTo(INCIERTA);
+            assertThat(solicitudes.stream().filter(r -> r.contains("/object/info/")).count())
+                    .as("un 429 no consulta el estado").isEqualTo(consultas);
+        }
+    }
 }

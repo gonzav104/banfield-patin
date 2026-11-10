@@ -49,6 +49,12 @@ public final class StoragePropiedades {
 	String credencial() { return credencial; }
 	Duration conexion() { return conexion; }
 	Duration respuesta() { return respuesta; }
+	/**
+	 * Plazo máximo de una operación del adaptador: la lectura previa del bucket, la solicitud principal
+	 * y, al inspeccionar, la consulta del estado del objeto; cada una con conexión y respuesta. Sólo para
+	 * validar la reserva de la carga.
+	 */
+	public Duration plazoMaximoPorOperacion() { return conexion.plus(respuesta).multipliedBy(3); }
 	@Override
 	public String toString() { return "StoragePropiedades[privadas]"; }
 }

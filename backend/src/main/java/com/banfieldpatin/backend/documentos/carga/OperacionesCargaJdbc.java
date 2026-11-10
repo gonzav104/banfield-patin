@@ -42,7 +42,23 @@ final class OperacionesCargaJdbc {
     }
   }
 
-  record Reserva(Operacion operacion, DocumentoMetadatos publicada) {}
+  /**
+   * {@code retomada}: la clave ya existía en RESERVADA o ALMACENADA con la reserva vencida y esta
+   * solicitud la adquirió por CAS; {@code operacion} lleva la versión renovada.
+   */
+  record Reserva(Operacion operacion, DocumentoMetadatos publicada, boolean retomada) {
+    Reserva(Operacion operacion, DocumentoMetadatos publicada) {
+      this(operacion, publicada, false);
+    }
+  }
+
+  /**
+   * Estados que un reintento puede retomar con la reserva vencida. TRANSFIRIENDO pasa a
+   * RECONCILIANDO (resultado de la transferencia desconocido); RECONCILIANDO renueva su reserva para
+   * reconciliar. Ninguno de los dos se publica: la existencia en Storage no prueba integridad.
+   */
+  private static final Set<String> RETOMABLES =
+      Set.of("RESERVADA", "ALMACENADA", "TRANSFIRIENDO", "RECONCILIANDO");
 
   private final JdbcClient jdbc;
   private final TransactionTemplate tx;
@@ -200,10 +216,41 @@ final class OperacionesCargaJdbc {
               || op.bytes() != a.bytes
               || !op.mime().equals(a.mime)
               || !MessageDigest.isEqual(op.sha(), a.sha)) throw ErrorCarga.conflicto();
-          if (!nueva && !op.estado().equals("PUBLICADA")) throw ErrorCarga.conflicto();
-          if (nueva) comprobarPrimera(u.escuelaId(), atleta, tipo.name());
-          return new Reserva(op, nueva ? null : metadatos(op.id()));
+          // El manifiesto ya coincide: sólo entonces un reintento puede retomar la operación.
+          boolean retomada = false;
+          if (!nueva && !op.estado().equals("PUBLICADA")) {
+            if (!RETOMABLES.contains(op.estado()) || !retomar(op)) throw ErrorCarga.conflicto();
+            op =
+                conEstado(op, op.estado().equals("TRANSFIRIENDO") ? "RECONCILIANDO" : op.estado());
+            retomada = true;
+          }
+          if (nueva || retomada && op.estado().equals("RESERVADA"))
+            comprobarPrimera(u.escuelaId(), atleta, tipo.name());
+          return new Reserva(op, nueva || retomada ? null : metadatos(op.id()), retomada);
         });
+  }
+
+  /**
+   * Adquiere por CAS una reserva vencida, en el mismo estado y bajo el FOR UPDATE de la reserva. El
+   * vencimiento se mide con el reloj de PostgreSQL, el mismo que usa el trigger. No supone que el
+   * propietario anterior terminó: la versión incrementada hace fallar cualquier transición tardía
+   * suya (iniciar, almacenada, publicar, cierre o reconciliación).
+   */
+  private boolean retomar(Operacion o) {
+    // TRANSFIRIENDO vencida no puede renovarse en su estado (V6): pasa a RECONCILIANDO.
+    String nuevo = o.estado().equals("TRANSFIRIENDO") ? "RECONCILIANDO" : o.estado();
+    return jdbc.sql(
+                "UPDATE gestion_patin.operacion_carga_documental SET estado=:nuevo,version=version+1,"
+                    + "reserva_hasta=clock_timestamp()+(:ms * interval '1 millisecond')"
+                    + " WHERE id=:id AND version=:v AND estado=:e AND reserva_hasta IS NOT NULL"
+                    + " AND reserva_hasta <= clock_timestamp()")
+            .param("nuevo", nuevo)
+            .param("ms", p.reserva().toMillis())
+            .param("id", o.id())
+            .param("v", o.version())
+            .param("e", o.estado())
+            .update()
+        == 1;
   }
 
   Operacion iniciar(ContextoCarga c, Operacion o) {
@@ -267,7 +314,58 @@ final class OperacionesCargaJdbc {
       tx.executeWithoutResult(s -> cambiar(o, "CERRADA", true));
     } catch (RuntimeException ex) {
       /* Se conserva el registro; no se afirma cierre si falló el commit. */
+      DiagnosticoCarga.fallo(o.id(), "cierre", ex);
     }
+  }
+
+  /**
+   * Libera la reserva que esta solicitud mantiene, sin cambiar el estado, para que un reintento
+   * pueda retomarla de inmediato. Si la versión ya no es la propia (otro trabajador, o un commit que
+   * sí se confirmó), el CAS falla y no se toca la operación.
+   */
+  void liberar(Operacion o) {
+    try {
+      tx.executeWithoutResult(
+          s -> {
+            new LockTimeoutTransaccion(jdbc).aplicar(Duration.ofSeconds(2));
+            int filas =
+                jdbc.sql(
+                        "UPDATE gestion_patin.operacion_carga_documental SET version=version+1,"
+                            + "reserva_hasta=clock_timestamp() WHERE id=:id AND version=:v AND"
+                            + " estado=:e AND reserva_hasta > clock_timestamp()")
+                    .param("id", o.id())
+                    .param("v", o.version())
+                    .param("e", o.estado())
+                    .update();
+            if (filas != 1) throw ErrorCarga.conflicto();
+          });
+    } catch (RuntimeException ex) {
+      DiagnosticoCarga.fallo(o.id(), "liberacion", ex);
+    }
+  }
+
+  /**
+   * Cierra una operación ALMACENADA cuya publicación falló por un conflicto permanente (sin acceso o
+   * DNI ya vigente). V6 no admite ALMACENADA→CERRADA: pasa por RECONCILIANDO en la misma
+   * transacción y con la reserva propia. El objeto confirmado queda huérfano, nunca publicado.
+   */
+  boolean cerrarConfirmada(Operacion o) {
+    try {
+      tx.executeWithoutResult(
+          s -> {
+            cambiar(o, "RECONCILIANDO", false);
+            cambiar(conEstado(o, "RECONCILIANDO"), "CERRADA", true);
+          });
+      return true;
+    } catch (RuntimeException ex) {
+      DiagnosticoCarga.fallo(o.id(), "cierre", ex);
+      return false;
+    }
+  }
+
+  /** Cierra por CAS una operación RECONCILIANDO cuya reserva mantiene esta solicitud. */
+  void cerrarReconciliada(Operacion o) {
+    tx.executeWithoutResult(s -> cambiar(o, "CERRADA", true));
   }
 
   void incierta(Operacion o) {
@@ -275,6 +373,7 @@ final class OperacionesCargaJdbc {
       tx.executeWithoutResult(s -> cambiar(o, "RECONCILIANDO", false));
     } catch (RuntimeException ex) {
       /* No recarga versión ni borra; incluso PUBLICADA puede haber confirmado un commit incierto. */
+      DiagnosticoCarga.fallo(o.id(), "reconciliacion", ex);
     }
   }
 
