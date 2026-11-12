@@ -132,6 +132,17 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 - Las variables de las mutaciones (contraseña, código TOTP, secreto de enrolamiento) no se retienen en la caché (`gcTime: 0`).
 - La autorización real siempre la decide el backend; los guards del frontend solo ordenan la navegación.
 
+## Integración continua
+
+`.github/workflows/frontend.yml` corre en cada `push` y `pull_request`, con Node fijado en `frontend/.node-version`:
+
+- **Verificación:** `npm ci`, `typecheck`, `lint`, `npm test` y `npm run build`.
+- **Auditoría:** `npm audit --audit-level=moderate`, en un job aparte: un aviso nuevo del registro de npm lo hace
+  fallar sin que el código haya cambiado, y así se distingue de una regresión.
+- **E2E reales:** `.github/scripts/frontend-e2e.sh` levanta una PostgreSQL descartable con Docker, el backend y Vite, y
+  corre Playwright. Las credenciales se generan en cada ejecución y el contenedor se elimina al terminar. El mismo
+  script sirve en local (Docker, Java 21, `npm ci` y `npx playwright install chromium`): `bash .github/scripts/frontend-e2e.sh`.
+
 ## Limitaciones conocidas
 
 - La landing no vive en esta app: `/` redirige a `/login`.

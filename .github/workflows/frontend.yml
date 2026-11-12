@@ -1,0 +1,111 @@
+name: frontend
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificacion:
+    name: Verificación (tipos, lint, pruebas y build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # La versión exacta vive en frontend/.node-version: la misma que se usa en local.
+      - name: Configurar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Pruebas (Vitest, con backend simulado)
+        run: npm test
+
+      - name: Build de producción
+        run: npm run build
+
+  # Aparte de la verificación: un aviso nuevo del registro de npm falla este job sin que el código haya cambiado,
+  # y así se distingue de una regresión real.
+  auditoria:
+    name: Auditoría de dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.node-version
+
+      # Usa solo package-lock.json; no hace falta instalar.
+      - name: npm audit
+        run: npm audit --audit-level=moderate
+
+  # Flujos reales: navegador -> Vite -> backend Spring -> PostgreSQL. La base es un contenedor descartable del
+  # runner y todas las credenciales se generan en cada ejecución (nada sensible en el repositorio).
+  e2e:
+    name: E2E reales (backend + PostgreSQL descartable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Configurar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm ci
+
+      - name: Instalar Chromium de Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Ejecutar E2E reales
+        run: bash .github/scripts/frontend-e2e.sh
+
+      # Red de seguridad: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.
+      - name: Verificar artefactos sensibles
+        if: always()
+        working-directory: frontend
+        run: npm run test:e2e:check-artifacts
