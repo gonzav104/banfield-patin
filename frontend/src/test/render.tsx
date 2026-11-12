@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { App } from '@/app/App';
 import { AppProviders, createQueryClient } from '@/app/providers';
 import { FakeBackend, type FakeUser } from './fakeBackend';
@@ -33,6 +33,12 @@ export function createBackend(): FakeBackend {
   return backend;
 }
 
+/** Exposes the current path to assertions (MemoryRouter has no real address bar). */
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
+
 /** Renders the whole app (real providers, router and guards) at `path`. */
 export function renderApp(path: string): { queryClient: QueryClient } {
   const queryClient = createQueryClient();
@@ -40,6 +46,7 @@ export function renderApp(path: string): { queryClient: QueryClient } {
     <AppProviders client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <App />
+        <LocationProbe />
       </MemoryRouter>
     </AppProviders>,
   );

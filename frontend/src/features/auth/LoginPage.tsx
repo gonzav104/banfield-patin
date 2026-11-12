@@ -17,7 +17,11 @@ export function LoginPage() {
       title="Ingresá a tu portal"
       description="Accedé con el correo y la contraseña de tu cuenta de familia."
     >
-      {state.from ? (
+      {state.registered ? (
+        <Alert tone="success" className="mb-5">
+          <strong>Tu cuenta fue creada.</strong> Ingresá con tu correo y tu contraseña.
+        </Alert>
+      ) : state.from ? (
         <Alert tone="info" className="mb-5">
           Ingresá para acceder a esa sección.
         </Alert>

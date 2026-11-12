@@ -6,6 +6,8 @@ import { homePathFor, useSession } from './session';
 export interface RedirectState {
   from?: string;
   expired?: boolean;
+  /** Set by the registration screen after a successful sign-up. */
+  registered?: boolean;
 }
 
 /** Only same-app paths inside the expected area are honoured: never an open redirect. */

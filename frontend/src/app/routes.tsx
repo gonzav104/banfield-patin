@@ -5,6 +5,7 @@ import { PublicOnly, RequireMfaPending, RequireRole } from '@/features/auth/guar
 import { AdminHomePage, FamiliaHomePage } from '@/features/auth/HomePages';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
+import { RegistrationPage } from '@/features/registration/RegistrationPage';
 import { LoadingScreen, NotFoundScreen } from '@/features/auth/screens';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { FamiliaLayout } from '@/layouts/FamiliaLayout';
@@ -20,6 +21,10 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Registration exists only behind an invitation link; /registro without one explains that. */}
+      <Route path="/registro/invitacion/:token?" element={<RegistrationPage />} />
+      <Route path="/registro" element={<RegistrationPage />} />
 
       <Route element={<PublicOnly area="family" />}>
         <Route path="/login" element={<LoginPage />} />
