@@ -4,6 +4,7 @@ import { AdminLoginPage } from '@/features/auth/AdminLoginPage';
 import { PublicOnly, RequireMfaPending, RequireRole } from '@/features/auth/guards';
 import { AdminHomePage, FamiliaHomePage } from '@/features/auth/HomePages';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { LoadingScreen, NotFoundScreen } from '@/features/auth/screens';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { FamiliaLayout } from '@/layouts/FamiliaLayout';
@@ -48,6 +49,7 @@ export function AppRoutes() {
       <Route element={<RequireRole role="ADMIN" />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminHomePage />} />
+          <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>
       </Route>

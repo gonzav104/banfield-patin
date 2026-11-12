@@ -5,7 +5,10 @@ import { useSession } from '@/features/auth/session';
 import { cn } from '@/lib/utils';
 import { LogoutButton } from './LogoutButton';
 
-const navItems = [{ to: '/admin', label: 'Inicio', end: true }];
+const navItems = [
+  { to: '/admin', label: 'Inicio', end: true },
+  { to: '/admin/invitaciones', label: 'Invitaciones', end: false },
+];
 
 /** Administration shell: sidebar on desktop, stacked header on small screens. */
 export function AdminLayout() {
