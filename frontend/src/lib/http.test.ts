@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './api-error';
-import { apiWrite, http, setUnauthenticatedListener } from './http';
+import { apiWrite, http, setSessionEventListener } from './http';
 import { createBackend } from '@/test/render';
 
-afterEach(() => setUnauthenticatedListener(null));
+afterEach(() => setSessionEventListener(null));
 
 describe('http client (mock backend)', () => {
   it('requests a CSRF token and sends it in the header before every write', async () => {
@@ -69,17 +69,47 @@ describe('http client (mock backend)', () => {
     await expect(http.get('/auth/me')).rejects.toMatchObject({ kind: 'network', status: null });
   });
 
-  it('notifies the listener on 401 NO_AUTENTICADO but not on wrong credentials', async () => {
+  it('reports "lost" on 401 NO_AUTENTICADO but nothing on wrong credentials', async () => {
     const backend = createBackend();
     const listener = vi.fn();
-    setUnauthenticatedListener(listener);
-
-    await expect(http.get('/auth/me')).rejects.toBeInstanceOf(ApiError); // no session
-    expect(listener).toHaveBeenCalledTimes(1);
+    setSessionEventListener(listener);
+    backend.override('get', '/admin/invitaciones', { status: 401, body: { codigo: 'NO_AUTENTICADO', mensaje: 'x' } });
+    await expect(http.get('/admin/invitaciones')).rejects.toBeInstanceOf(ApiError);
+    expect(listener).toHaveBeenCalledWith('lost');
 
     listener.mockClear();
     backend.override('post', '/auth/login', { status: 401, body: { codigo: 'CREDENCIALES_INVALIDAS', mensaje: 'x' } });
     await expect(apiWrite('post', '/auth/login', {})).rejects.toBeInstanceOf(ApiError);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('reports "suspect" (re-check, do not drop) on a 401 without a code from an authenticated endpoint', async () => {
+    const backend = createBackend();
+    const listener = vi.fn();
+    setSessionEventListener(listener);
+    backend.override('get', '/admin/invitaciones?page=0', { status: 401, body: '<html>proxy</html>' });
+    await expect(http.get('/admin/invitaciones?page=0')).rejects.toMatchObject({ kind: 'unauthenticated', code: null });
+    expect(listener).toHaveBeenCalledWith('suspect');
+  });
+
+  it.each(['/auth/me', '/auth/login', '/auth/admin/login', '/auth/invitaciones/validar', '/auth/registro/invitacion'])(
+    'does not raise a session event for a 401 without a code from %s',
+    async (url) => {
+      const backend = createBackend();
+      const listener = vi.fn();
+      setSessionEventListener(listener);
+      backend.override(url === '/auth/me' ? 'get' : 'post', url, { status: 401 });
+      await expect(url === '/auth/me' ? http.get(url) : apiWrite('post', url, {})).rejects.toBeInstanceOf(ApiError);
+      expect(listener).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([503, 'network'] as const)('does not raise a session event for %s', async (failure) => {
+    const backend = createBackend();
+    const listener = vi.fn();
+    setSessionEventListener(listener);
+    backend.override('get', '/admin/invitaciones', failure === 'network' ? 'network' : { status: 503, body: { codigo: 'SERVICIO_NO_DISPONIBLE', mensaje: 'x' } });
+    await expect(http.get('/admin/invitaciones')).rejects.toBeInstanceOf(ApiError);
     expect(listener).not.toHaveBeenCalled();
   });
 });

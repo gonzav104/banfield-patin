@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 import { ApiError } from './api-error';
 
 /**
@@ -17,20 +17,39 @@ export const http = axios.create({
   headers: { Accept: 'application/json' },
 });
 
-type UnauthenticatedListener = () => void;
-let unauthenticatedListener: UnauthenticatedListener | null = null;
+/**
+ * Session events raised by the client:
+ * - `lost`: the backend said the session is gone (401 NO_AUTENTICADO).
+ * - `suspect`: an authenticated request got a 401 WITHOUT a code (for example from a proxy). The session is re-checked
+ *   through /api/auth/me instead of being dropped: a 503 or a network failure there never closes it.
+ */
+export type SessionEvent = 'lost' | 'suspect';
+type SessionEventListener = (event: SessionEvent) => void;
+let sessionEventListener: SessionEventListener | null = null;
 
-/** Registers the single callback invoked when the backend says the session is gone (401 NO_AUTENTICADO). */
-export function setUnauthenticatedListener(listener: UnauthenticatedListener | null): void {
-  unauthenticatedListener = listener;
+/** Registers the single callback for session events (wired by the app providers). */
+export function setSessionEventListener(listener: SessionEventListener | null): void {
+  sessionEventListener = listener;
+}
+
+// Public endpoints and the session check itself: a 401 from them says nothing new about an existing session.
+const NO_SESSION_CHECK = new Set(['/auth/me', '/auth/csrf', '/auth/login', '/auth/admin/login', '/auth/invitaciones/validar', '/auth/registro/invitacion']);
+
+function requestPath(error: unknown): string {
+  const url = isAxiosError(error) ? (error.config?.url ?? '') : '';
+  return url.split('?')[0] ?? '';
 }
 
 http.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     const apiError = ApiError.from(error);
-    if (apiError.kind === 'unauthenticated' && apiError.code === 'NO_AUTENTICADO') {
-      unauthenticatedListener?.();
+    if (apiError.kind === 'unauthenticated') {
+      if (apiError.code === 'NO_AUTENTICADO') {
+        sessionEventListener?.('lost');
+      } else if (apiError.code === null && !NO_SESSION_CHECK.has(requestPath(error))) {
+        sessionEventListener?.('suspect');
+      }
     }
     return Promise.reject(apiError);
   },

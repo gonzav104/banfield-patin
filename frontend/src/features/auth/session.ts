@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '@/lib/api-error';
+import { broadcastSessionSignal } from './sessionSync';
 import {
   confirmMfa,
   enrollMfa,
@@ -55,6 +56,18 @@ export function resetSessionCache(queryClient: QueryClient): void {
   queryClient.setQueryData(sessionKey, null);
 }
 
+/** Drops cached private data but keeps the session entry (identity is about to be replaced or re-checked). */
+export function clearPrivateState(queryClient: QueryClient): void {
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+}
+
+/** A new identity (or a privilege upgrade) starts from an empty cache, and other tabs are told to re-check. */
+function startSession(queryClient: QueryClient, user: AuthUser): void {
+  clearPrivateState(queryClient);
+  queryClient.setQueryData(sessionKey, user);
+  broadcastSessionSignal({ type: 'login' });
+}
+
 export function homePathFor(user: AuthUser): string {
   if (user.rol === 'ADMIN') return user.mfaPendiente ? '/admin/mfa' : '/admin';
   return '/familia';
@@ -64,7 +77,7 @@ export function useFamilyLogin() {
   const queryClient = useQueryClient();
   return useMutation<AuthUser, ApiError, Credentials>({
     mutationFn: loginFamily,
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -72,7 +85,7 @@ export function useAdminLogin() {
   const queryClient = useQueryClient();
   return useMutation<AuthUser, ApiError, Credentials>({
     mutationFn: loginAdmin,
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -84,7 +97,7 @@ export function useConfirmMfa() {
   const queryClient = useQueryClient();
   return useMutation<AuthUser, ApiError, string>({
     mutationFn: confirmMfa,
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -92,7 +105,7 @@ export function useVerifyMfa() {
   const queryClient = useQueryClient();
   return useMutation<AuthUser, ApiError, string>({
     mutationFn: verifyMfa,
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -104,6 +117,7 @@ export function useLogout(redirectTo: string) {
     mutationFn: logout,
     onSuccess: () => {
       resetSessionCache(queryClient);
+      broadcastSessionSignal({ type: 'logout' });
       void navigate(redirectTo, { replace: true });
     },
   });
