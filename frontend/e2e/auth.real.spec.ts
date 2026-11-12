@@ -54,8 +54,13 @@ test.describe('administrator (real backend)', () => {
     await page.getByRole('button', { name: 'Empezar configuración' }).click();
     const secret = ((await page.getByTestId('mfa-secret').textContent()) ?? '').replace(/\s/g, '');
     expect(secret).toMatch(/^[A-Z2-7]{16,}$/);
-    await expect(page.getByRole('img', { name: /Código QR/ })).toBeVisible();
-    await page.screenshot({ path: `${ARTIFACTS}/admin-mfa-enroll-desktop.png` });
+    const qr = page.getByRole('img', { name: /Código QR/ });
+    await expect(qr).toBeVisible();
+    // H-02: the QR and the secret are a live credential; mask them in the evidence screenshot.
+    await page.screenshot({
+      path: `${ARTIFACTS}/admin-mfa-enroll-desktop.png`,
+      mask: [qr, page.getByTestId('mfa-secret'), page.getByRole('link', { name: 'Abrir en mi app autenticadora' })],
+    });
     saveState({ ...loadState(), adminSecret: secret });
 
     await submitTotp(page, 'Confirmar y activar');

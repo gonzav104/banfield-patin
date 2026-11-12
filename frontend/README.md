@@ -93,6 +93,7 @@ npm run test:e2e    # Playwright — contra backend + PostgreSQL REALES
 export E2E_ADMIN_EMAIL=...      # el BOOTSTRAP_ADMIN_EMAIL
 export E2E_ADMIN_PASSWORD=...   # el BOOTSTRAP_ADMIN_PASSWORD
 export E2E_DB_CONTAINER=...     # opcional: contenedor Docker PostgreSQL DESCARTABLE, para forzar el vencimiento por SQL
+export E2E_DB_NAME=...          # opcional: base dentro de ese contenedor (por defecto, su POSTGRES_DB)
 npx playwright install chromium # una vez
 npm run test:e2e
 ```
@@ -105,6 +106,12 @@ no hay sesión automática → login; enlace usado, revocado y vencido (este úl
 de FAMILIA/anónimo sobre la API ADMIN. El backend limita por IP las validaciones **fallidas** (5 cada 15 min, en memoria):
 esa spec provoca 3, así que **reiniciá el backend (o esperá 15 minutos) entre corridas**.
 Las capturas quedan en `e2e/artifacts/` (ignorado por Git).
+
+**Artefactos sin secretos (H-02):** Playwright no guarda trazas, videos ni capturas automáticas (registran cuerpos de
+peticiones y el texto de la página). Las capturas de evidencia enmascaran el QR, el secreto TOTP y los enlaces de
+invitación. Al terminar, el teardown redacta y verifica los artefactos de texto (`e2e/support/artifact-check.ts`) y
+`npm run test:e2e:check-artifacts` repite la verificación. `e2e/.state.json` sí contiene el secreto TOTP y contraseñas de
+prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600, y debe borrarse con la base descartable.
 
 ## Seguridad (cómo está resuelto)
 

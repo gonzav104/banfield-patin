@@ -13,5 +13,5 @@ export default defineConfig({
   // Production hosting must send the same header (docs/SEGURIDAD.md, section 7).
   preview: { headers: { 'Referrer-Policy': 'no-referrer' } },
   server: { headers: { 'Referrer-Policy': 'no-referrer' }, port: 5173, strictPort: true, proxy: { '/api': { target: process.env.BACKEND_URL ?? 'http://127.0.0.1:8080', changeOrigin: false } } },
-  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test/setup.ts'], include: ['src/**/*.test.{ts,tsx}'], restoreMocks: true },
+  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test/setup.ts'], include: ['src/**/*.test.{ts,tsx}', 'e2e/support/**/*.test.ts'], restoreMocks: true },
 });

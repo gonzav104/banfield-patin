@@ -32,7 +32,9 @@ function dbQuery(sql: string): void {
   const container = process.env.E2E_DB_CONTAINER;
   if (!container) throw new Error('E2E_DB_CONTAINER is required for the expired-invitation test.');
   // psql reads the credentials from the container's own environment: nothing sensitive leaves it.
-  execFileSync('docker', ['exec', container, 'sh', '-c', `psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "${sql}"`], { stdio: 'pipe' });
+  // E2E_DB_NAME selects a disposable database inside that container (default: the container's POSTGRES_DB).
+  const database = process.env.E2E_DB_NAME ? `'${process.env.E2E_DB_NAME.replace(/[^A-Za-z0-9_]/g, '')}'` : '"$POSTGRES_DB"';
+  execFileSync('docker', ['exec', container, 'sh', '-c', `psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d ${database} -c "${sql}"`], { stdio: 'pipe' });
 }
 
 function tokenOf(link: string): string {
@@ -107,7 +109,8 @@ test.describe('invitation lifecycle (real backend)', () => {
 
     usedLink = await createInvitationInUi(admin, { newFamily: familyName, email: newUser.email });
     await expect(admin.getByText(/se muestra una sola vez/)).toBeVisible();
-    await admin.screenshot({ path: `${ARTIFACTS}/invitations-created-desktop.png` });
+    // H-02: the link is a live credential until used; mask it in the evidence screenshot.
+    await admin.screenshot({ path: `${ARTIFACTS}/invitations-created-desktop.png`, mask: [admin.getByLabel('Enlace de registro')] });
 
     await admin.getByRole('button', { name: 'Listo, ya lo copié' }).click();
     await expect(admin.getByLabel('Enlace de registro')).toHaveCount(0);

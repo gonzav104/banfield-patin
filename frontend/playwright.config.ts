@@ -14,10 +14,15 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [['list']],
   outputDir: 'test-results',
+  // H-02: no traces, automatic screenshots or videos. They record request bodies and page text (passwords, the TOTP
+  // secret during enrolment, invitation links). Evidence screenshots are taken explicitly, with sensitive areas masked,
+  // and the teardown redacts/verifies every text artifact (see e2e/support/artifact-check.ts).
+  globalTeardown: './e2e/support/artifact-check.ts',
   use: {
     baseURL: 'http://127.0.0.1:5173',
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    trace: 'off',
+    screenshot: 'off',
+    video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
