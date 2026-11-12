@@ -31,7 +31,7 @@ async function fillRegistration(overrides: Partial<Record<'nombre' | 'apellido' 
 describe('opening the invitation link (mock backend)', () => {
   it('validates a pending invitation, shows the form and prefills the suggested email', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE', email: 'sugerido@example.com' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
 
     expect(await screen.findByRole('heading', { name: 'Creá tu cuenta' })).toBeInTheDocument();
     expect(screen.getByText(/Te invitaron a Banfield Patín Carrera/)).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe('opening the invitation link (mock backend)', () => {
 
   it('sends the token in the request body (never in a URL) and removes it from the address', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     await screen.findByRole('heading', { name: 'Creá tu cuenta' });
 
     const validation = backend.requests.find((r) => r.url === '/auth/invitaciones/validar');
@@ -50,13 +50,13 @@ describe('opening the invitation link (mock backend)', () => {
     expect(validation?.csrfHeader).toBeTruthy();
     expect(validation?.body).toEqual({ token });
     expect(backend.requests.every((r) => !r.url.includes(token))).toBe(true);
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/registro\/invitacion$/));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/registro/invitacion'));
     expect(document.body.innerHTML).not.toContain(token);
   });
 
   it('validates only once even though the token leaves the URL', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     await screen.findByRole('heading', { name: 'Creá tu cuenta' });
     expect(backend.requests.filter((r) => r.url === '/auth/invitaciones/validar')).toHaveLength(1);
   });
@@ -69,7 +69,7 @@ describe('opening the invitation link (mock backend)', () => {
     ['already used', 'USADA'],
   ])('shows the uniform "not available" screen for an %s invitation, without a form', async (_label, status) => {
     const token = status === 'UNKNOWN' ? 'A'.repeat(43) : backend.seedInvitation({ status });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
 
     expect(await screen.findByRole('heading', { name: UNAVAILABLE })).toBeInTheDocument();
     expect(screen.getByText(/haya vencido, haya sido revocado o ya se haya utilizado/)).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe('opening the invitation link (mock backend)', () => {
   it('offers a retry when validation fails for a connection or server reason (not the same as "not available")', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
     backend.override('post', '/auth/invitaciones/validar', { status: 503, body: { codigo: 'SERVICIO_NO_DISPONIBLE', mensaje: 'x' } });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
 
     expect(await screen.findByRole('heading', { name: 'No pudimos verificar tu invitación' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('El servicio no está disponible');
@@ -98,15 +98,68 @@ describe('opening the invitation link (mock backend)', () => {
   it('reports a network failure while validating', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
     backend.override('get', '/auth/csrf', 'network');
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos conectar con el servidor');
+  });
+});
+
+describe('legacy links /registro/invitacion/TOKEN (temporary compatibility, mock backend)', () => {
+  it('still validates a legacy path link, sends the token only in the body and removes it from the address', async () => {
+    const token = backend.seedInvitation({ status: 'PENDIENTE', email: 'legacy@example.com' });
+    renderApp(`/registro/invitacion/${token}`);
+
+    expect(await screen.findByRole('heading', { name: 'Creá tu cuenta' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Correo electrónico/)).toHaveValue('legacy@example.com');
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/registro/invitacion'));
+    expect(backend.requests.find((r) => r.url === '/auth/invitaciones/validar')?.body).toEqual({ token });
+    expect(backend.requests.every((r) => !r.url.includes(token))).toBe(true);
+  });
+
+  it('completes a registration from a legacy link', async () => {
+    const token = backend.seedInvitation({ status: 'PENDIENTE' });
+    renderApp(`/registro/invitacion/${token}`);
+    const user = await fillRegistration();
+    await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
+    expect(await screen.findByText('Tu cuenta fue creada.')).toBeInTheDocument();
+    expect(backend.statusOfToken(token)).toBe('USADA');
+  });
+
+  it('keeps the uniform "not available" screen for a used legacy link', async () => {
+    const token = backend.seedInvitation({ status: 'USADA' });
+    renderApp(`/registro/invitacion/${token}`);
+    expect(await screen.findByRole('heading', { name: UNAVAILABLE })).toBeInTheDocument();
+  });
+});
+
+describe('fragment links /registro/invitacion#TOKEN (H-01, mock backend)', () => {
+  it('reads the token from the fragment and strips the fragment from the address before validating', async () => {
+    const token = backend.seedInvitation({ status: 'PENDIENTE' });
+    renderApp(`/registro/invitacion#${token}`);
+
+    expect(await screen.findByRole('heading', { name: 'Creá tu cuenta' })).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/registro/invitacion');
+    const validation = backend.requests.find((r) => r.url === '/auth/invitaciones/validar');
+    expect(validation?.body).toEqual({ token });
+    expect(backend.requests.every((r) => !r.url.includes(token))).toBe(true);
+    expect(localStorage.length + sessionStorage.length).toBe(0);
+  });
+
+  it('treats an empty fragment as a missing invitation', async () => {
+    renderApp('/registro/invitacion#');
+    expect(await screen.findByRole('heading', { name: 'Necesitás un enlace de invitación' })).toBeInTheDocument();
+    expect(backend.requests.some((r) => r.url === '/auth/invitaciones/validar')).toBe(false);
+  });
+
+  it('keeps the uniform message for an unknown token passed in the fragment', async () => {
+    renderApp(`/registro/invitacion#${'B'.repeat(43)}`);
+    expect(await screen.findByRole('heading', { name: UNAVAILABLE })).toBeInTheDocument();
   });
 });
 
 describe('completing the registration (mock backend)', () => {
   it('registers, sends only the allowed fields, and redirects to /login WITHOUT signing in', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
 
@@ -124,7 +177,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('lets the new user sign in afterwards with the chosen credentials', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
 
@@ -136,7 +189,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('validates every field on the client before calling the backend', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Crear mi cuenta' }));
 
@@ -149,7 +202,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('rejects mismatching passwords and short passwords', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration({ password: 'una-clave-larga-1', confirm: 'otra-distinta-99' });
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
     expect(await screen.findByText('Las contraseñas no coinciden.')).toBeInTheDocument();
@@ -163,7 +216,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('rejects an invalid email format', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration({ email: 'sin-arroba' });
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
     expect(await screen.findByText('Ingresá un correo electrónico válido.')).toBeInTheDocument();
@@ -171,7 +224,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('shows 409 EMAIL_YA_REGISTRADO next to the email field and keeps the invitation usable', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration({ email: 'lucia@example.com' }); // already exists in the fake
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
 
@@ -188,7 +241,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('maps backend field validation errors to the field', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     backend.override('post', '/auth/registro/invitacion', {
       status: 400,
@@ -202,7 +255,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('switches to the "not available" screen if the invitation is consumed or revoked before submitting', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     backend.override('post', '/auth/registro/invitacion', {
       status: 400,
@@ -214,7 +267,7 @@ describe('completing the registration (mock backend)', () => {
 
   it('shows server and network failures without losing what was typed, and never retries the write', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     backend.override('post', '/auth/registro/invitacion', { status: 503, body: { codigo: 'SERVICIO_NO_DISPONIBLE', mensaje: 'x' } });
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
@@ -226,14 +279,14 @@ describe('completing the registration (mock backend)', () => {
 
   it('cannot be opened a second time once used', async () => {
     const token = backend.seedInvitation({ status: 'PENDIENTE' });
-    const first = renderApp(`/registro/invitacion/${token}`);
+    const first = renderApp(`/registro/invitacion#${token}`);
     const user = await fillRegistration();
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
     await screen.findByRole('heading', { name: 'Ingresá a tu portal' });
     first.queryClient.clear();
 
     document.body.innerHTML = '';
-    renderApp(`/registro/invitacion/${token}`);
+    renderApp(`/registro/invitacion#${token}`);
     expect(await screen.findByRole('heading', { name: UNAVAILABLE })).toBeInTheDocument();
   });
 });

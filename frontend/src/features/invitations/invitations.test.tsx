@@ -130,7 +130,7 @@ describe('create invitation (mock backend)', () => {
     await user.click(screen.getByRole('button', { name: 'Crear invitación' }));
 
     const link = await screen.findByLabelText<HTMLInputElement>('Enlace de registro');
-    expect(link.value).toMatch(/^http:\/\/app\.test\/registro\/invitacion\/tok-/);
+    expect(link.value).toMatch(/^http:\/\/app\.test\/registro\/invitacion#tok-/);
     expect(screen.getByText(/se muestra una sola vez/)).toBeInTheDocument();
     expect(screen.getByText('Familia Fernández', { selector: 'strong' })).toBeInTheDocument();
 
@@ -230,7 +230,7 @@ describe('create invitation (mock backend)', () => {
     await user.click(screen.getByRole('button', { name: 'Crear invitación' }));
 
     const link = await screen.findByLabelText<HTMLInputElement>('Enlace de registro');
-    expect(link.value).toBe(`${window.location.origin}/registro/invitacion/${link.value.split('/').pop()}`);
+    expect(link.value).toBe(`${window.location.origin}/registro/invitacion#${link.value.split('#').pop()}`);
     expect(screen.getByText(/FRONTEND_URL_BASE/)).toBeInTheDocument();
   });
 

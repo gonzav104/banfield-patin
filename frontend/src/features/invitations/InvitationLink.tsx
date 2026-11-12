@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime } from './format';
 import type { CreatedInvitation } from './schemas';
 
-/** The backend builds the link from FRONTEND_URL_BASE; when it is not configured the link is null. */
+/** The backend builds the link from FRONTEND_URL_BASE (token in the fragment); when not configured the link is null. */
 export function resolveInvitationLink(created: CreatedInvitation, origin: string): { url: string; fromBackend: boolean } {
   if (created.enlaceRegistro) return { url: created.enlaceRegistro, fromBackend: true };
-  return { url: `${origin}/registro/invitacion/${created.token}`, fromBackend: false };
+  return { url: `${origin}/registro/invitacion#${created.token}`, fromBackend: false };
 }
 
 interface InvitationLinkProps {

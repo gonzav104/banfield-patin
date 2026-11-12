@@ -124,7 +124,8 @@ class InvitacionAdminServiceTest {
 		assertThat(i.getCreadoEn()).isEqualTo(AHORA);
 		assertThat(i.getExpiraEn()).isEqualTo(AHORA.plus(Duration.ofDays(7)));
 		assertThat(r.estado()).isEqualTo(EstadoInvitacion.PENDIENTE);
-		assertThat(r.enlaceRegistro()).isEqualTo("https://app.example.org/registro/invitacion/" + r.token());
+		// H-01: el token va en el FRAGMENTO, que el navegador nunca envia al servidor (ni en la peticion ni en logs).
+		assertThat(r.enlaceRegistro()).isEqualTo("https://app.example.org/registro/invitacion#" + r.token());
 		assertThat(r.familia().id()).isEqualTo(familiaId);
 
 		EventoAuditoria e = eventos(1).get(0);

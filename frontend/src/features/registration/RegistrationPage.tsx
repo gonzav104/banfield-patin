@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { AuthShell } from '@/features/auth/AuthShell';
@@ -8,6 +8,7 @@ import { commonErrorMessage } from '@/features/auth/messages';
 import { ApiError } from '@/lib/api-error';
 import { isInvitationUnavailable, registerFamily, validateInvitation, type RegistrationInput } from './api';
 import { RegistrationForm } from './RegistrationForm';
+import { readInvitationToken } from './token';
 
 function UnavailableInvitation({ missing }: { missing: boolean }) {
   return (
@@ -31,18 +32,23 @@ function UnavailableInvitation({ missing }: { missing: boolean }) {
 }
 
 /**
- * Public registration screen reached from an invitation link: /registro/invitacion/:token.
- * The token is read once into memory and removed from the address bar (history, screenshots, shared tabs);
- * it is never written to browser storage. There is deliberately no registration without an invitation.
+ * Public registration screen reached from an invitation link: /registro/invitacion#TOKEN.
+ * The fragment is never sent to any server (no access logs, no proxies, no Referer). The token is read once into
+ * memory and removed from the address bar before any request is made; it is never written to browser storage.
+ * Legacy links /registro/invitacion/TOKEN are still accepted temporarily (see docs/SEGURIDAD.md, section 7) but the
+ * backend no longer generates them. There is deliberately no registration without an invitation.
  */
 export function RegistrationPage() {
-  const { token: urlToken } = useParams();
+  const { token: legacyPathToken } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [token] = useState(urlToken);
+  const [token] = useState(() => readInvitationToken(location.hash, legacyPathToken));
+  const tokenInUrl = !!legacyPathToken || location.hash.length > 0;
 
+  // Declared before the validation query, so the address is cleaned before that request starts.
   useEffect(() => {
-    if (urlToken) void navigate('/registro/invitacion', { replace: true });
-  }, [urlToken, navigate]);
+    if (tokenInUrl) void navigate('/registro/invitacion', { replace: true });
+  }, [tokenInUrl, navigate]);
 
   const validation = useQuery({
     queryKey: ['invitation-validation', token],

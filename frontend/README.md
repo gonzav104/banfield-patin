@@ -26,7 +26,7 @@ export BOOTSTRAP_ADMIN_EMAIL=admin@example.test
 export BOOTSTRAP_ADMIN_NOMBRE=Admin
 export BOOTSTRAP_ADMIN_APELLIDO=Pruebas
 export BOOTSTRAP_ADMIN_PASSWORD="elegí-una-de-10+-caracteres"
-export FRONTEND_URL_BASE=http://127.0.0.1:5173   # el backend arma enlaceRegistro = {base}/registro/invitacion/{token}
+export FRONTEND_URL_BASE=http://127.0.0.1:5173   # el backend arma enlaceRegistro = {base}/registro/invitacion#{token}
 ./mvnw spring-boot:run
 ```
 
@@ -62,14 +62,16 @@ El acceso ADMIN no está enlazado desde ninguna pantalla pública.
 3. Se muestra el **enlace una sola vez**: copialo con *Copiar enlace*. El backend no permite recuperarlo después; si se
    pierde, revocá la invitación y creá otra. Si el backend no tiene `FRONTEND_URL_BASE`, el enlace se arma con la
    dirección actual de la página (y se avisa).
-4. Abrí el enlace en otro navegador o ventana privada: `/registro/invitacion/{token}`. Se valida la invitación, se
+4. Abrí el enlace en otro navegador o ventana privada: `/registro/invitacion#{token}`. Se valida la invitación, se
    completa nombre, apellido, correo y contraseña (≥ 10 caracteres) y se redirige a `/login` **sin iniciar sesión**.
+   Los enlaces del formato anterior (`/registro/invitacion/{token}`) todavía se aceptan temporalmente; ver el riesgo
+   residual en `docs/SEGURIDAD.md` §7.
 5. En el listado podés filtrar por estado (Pendiente, Usada, Revocada, Vencida) y **revocar** invitaciones pendientes.
 
 El backend responde siempre el mismo `400 INVITACION_NO_DISPONIBLE` para una invitación inexistente, vencida, revocada
 o ya usada (decisión de seguridad, `docs/SEGURIDAD.md` §7), por lo que el registro muestra un único mensaje: "Esta
-invitación no está disponible". El token viaja siempre en el cuerpo de la petición, se quita de la barra de direcciones
-al abrir el enlace y nunca se guarda en el navegador.
+invitación no está disponible". El token va en el fragmento del enlace (el navegador no lo envía al servidor), viaja
+solo en el cuerpo de las peticiones, se quita de la barra de direcciones al abrir el enlace y nunca se guarda en el navegador.
 
 ## Pruebas
 

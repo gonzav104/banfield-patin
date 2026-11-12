@@ -18,7 +18,7 @@ test.describe.configure({ mode: 'serial' });
 const ARTIFACTS = 'e2e/artifacts';
 mkdirSync(ARTIFACTS, { recursive: true });
 
-const LINK_PATTERN = /^http:\/\/127\.0\.0\.1:5173\/registro\/invitacion\/([A-Za-z0-9_-]{43})$/;
+const LINK_PATTERN = /^http:\/\/127\.0\.0\.1:5173\/registro\/invitacion#([A-Za-z0-9_-]{43})$/;
 const suffix = randomBytes(3).toString('hex');
 const familyName = `E2E Invitada ${suffix}`;
 const newUser = { nombre: 'Ana', apellido: 'Invitada', email: `ana.${suffix}@example.test`, password: `Reg-${randomBytes(8).toString('hex')}` };
@@ -33,6 +33,22 @@ function dbQuery(sql: string): void {
   if (!container) throw new Error('E2E_DB_CONTAINER is required for the expired-invitation test.');
   // psql reads the credentials from the container's own environment: nothing sensitive leaves it.
   execFileSync('docker', ['exec', container, 'sh', '-c', `psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "${sql}"`], { stdio: 'pipe' });
+}
+
+function tokenOf(link: string): string {
+  return LINK_PATTERN.exec(link)?.[1] ?? '';
+}
+
+/** Opens `url` in a fresh anonymous browser and records every request that carried the token. */
+async function openAndWatch(url: string, token: string): Promise<{ context: BrowserContext; page: Page; leaks: string[] }> {
+  const { context, page } = await anonymousPage();
+  const leaks: string[] = [];
+  page.on('request', (request) => {
+    const referer = request.headers()['referer'] ?? '';
+    if (request.url().includes(token) || referer.includes(token)) leaks.push(request.resourceType());
+  });
+  await page.goto(url);
+  return { context, page, leaks };
 }
 
 async function loginAdmin(page: Page): Promise<void> {
@@ -97,20 +113,22 @@ test.describe('invitation lifecycle (real backend)', () => {
     await expect(admin.getByLabel('Enlace de registro')).toHaveCount(0);
     const row = admin.getByRole('listitem').filter({ hasText: familyName });
     await expect(row.getByText('Pendiente', { exact: true })).toBeVisible();
-    expect(await admin.content()).not.toContain(usedLink.split('/').pop());
+    expect(await admin.content()).not.toContain(tokenOf(usedLink));
 
     const stored = await admin.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));
     expect(stored).toEqual({ local: [], session: [] });
   });
 
   test('the family registers through the link, is NOT signed in, then signs in with the new account', async () => {
-    const { context, page } = await anonymousPage();
+    const token = tokenOf(usedLink);
+    const { context, page, leaks } = await openAndWatch(usedLink, token);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(usedLink);
 
     await expect(page.getByRole('heading', { name: 'Creá tu cuenta' })).toBeVisible();
     await expect(page.getByText(/Te invitaron a/)).toBeVisible();
-    await expect(page).toHaveURL(/\/registro\/invitacion$/); // the token left the address bar
+    await expect(page).toHaveURL('http://127.0.0.1:5173/registro/invitacion'); // no path token, no fragment
+    // H-01: with the fragment link, NO request (document, assets or API) carries the token in its URL or Referer.
+    expect(leaks).toEqual([]);
     await expect(page.getByLabel(/^Correo electrónico/)).toHaveValue(newUser.email);
     await page.screenshot({ path: `${ARTIFACTS}/registration-form-mobile.png`, fullPage: true });
 
@@ -184,6 +202,20 @@ test.describe('invitation lifecycle (real backend)', () => {
     const { context, page } = await anonymousPage();
     await page.goto(link);
     await expect(page.getByRole('heading', { name: 'Esta invitación no está disponible' })).toBeVisible();
+    await context.close();
+  });
+
+  test('legacy path links still work temporarily, but expose the token in the document request (residual risk)', async () => {
+    const link = await createInvitationInUi(admin, { newFamily: `E2E Legado ${suffix}` });
+    await admin.getByRole('button', { name: 'Listo, ya lo copié' }).click();
+    const token = tokenOf(link);
+    const legacy = link.replace('/registro/invitacion#', '/registro/invitacion/');
+
+    const { context, page, leaks } = await openAndWatch(legacy, token);
+    await expect(page.getByRole('heading', { name: 'Creá tu cuenta' })).toBeVisible();
+    await expect(page).toHaveURL('http://127.0.0.1:5173/registro/invitacion');
+    // Only the initial HTML document request carries it (that is what reaches access logs); nothing after it.
+    expect(leaks).toEqual(['document']);
     await context.close();
   });
 

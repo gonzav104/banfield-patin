@@ -36,7 +36,7 @@ export function createBackend(): FakeBackend {
 /** Exposes the current path to assertions (MemoryRouter has no real address bar). */
 function LocationProbe() {
   const location = useLocation();
-  return <output data-testid="location">{location.pathname}</output>;
+  return <output data-testid="location">{`${location.pathname}${location.search}${location.hash}`}</output>;
 }
 
 /** Renders the whole app (real providers, router and guards) at `path`. */

@@ -209,7 +209,7 @@ export class FakeBackend {
           id: invitation.id,
           estado: 'PENDIENTE',
           token,
-          enlaceRegistro: this.frontendBase ? `${this.frontendBase}/registro/invitacion/${token}` : null,
+          enlaceRegistro: this.frontendBase ? `${this.frontendBase}/registro/invitacion#${token}` : null,
           expiraEn: invitation.expiraEn,
           familia: family,
           emailSugerido: invitation.emailSugerido,
