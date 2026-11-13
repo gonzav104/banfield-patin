@@ -100,7 +100,7 @@ class InvitacionAdminControllerWebMvcTest {
 
 	private InvitacionCreadaRespuesta creada() {
 		return new InvitacionCreadaRespuesta(invitacionId, EstadoInvitacion.PENDIENTE, "tokenEnClaroDeLaRespuesta",
-				"https://app.example.org/registro/invitacion/tokenEnClaroDeLaRespuesta", EXPIRA, familia,
+				"https://app.example.org/registro/invitacion#tokenEnClaroDeLaRespuesta", EXPIRA, familia,
 				"madre@example.com");
 	}
 

@@ -58,7 +58,7 @@ public class InvitacionAdminService {
 		this.generador = generador;
 		this.propiedades = propiedades;
 		this.reloj = reloj;
-		this.urlBaseFrontend = urlBaseFrontend == null ? "" : urlBaseFrontend.strip();
+		this.urlBaseFrontend = UrlBaseFrontend.normalizar(urlBaseFrontend);
 	}
 
 	public static ExcepcionNegocio familiaNoEncontrada() {
@@ -190,9 +190,9 @@ public class InvitacionAdminService {
 		if (urlBaseFrontend.isEmpty()) {
 			return null;
 		}
-		String base = urlBaseFrontend.endsWith("/") ? urlBaseFrontend.substring(0, urlBaseFrontend.length() - 1)
-				: urlBaseFrontend;
-		return base + "/registro/invitacion/" + token;
+		// El token va en el fragmento (#): el navegador no lo envia en la peticion del documento, asi que no queda en
+		// logs de acceso del servidor web, proxies ni CDN. El frontend lo retira de la URL apenas lo lee.
+		return urlBaseFrontend + "/registro/invitacion#" + token;
 	}
 
 	private static FamiliaResumen resumen(Familia f) {

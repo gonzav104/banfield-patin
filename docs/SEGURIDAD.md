@@ -192,7 +192,21 @@ responsable la consume en `POST /api/auth/registro/invitacion`.
 
 - Token de 256 bits (`SecureRandom`, Base64 URL sin relleno). Solo se guarda su SHA-256; el texto en claro se devuelve **una sola vez**
   en la respuesta de creación (`Cache-Control: no-store`) y nunca aparece en listados, logs ni auditoría.
-- El token viaja en el cuerpo (`POST`), nunca en la URL, para que no quede en logs de acceso.
+- El token viaja en el cuerpo (`POST`), nunca en la URL de una petición, para que no quede en logs de acceso.
+- **Enlace de registro (`enlaceRegistro`): `{FRONTEND_URL_BASE}/registro/invitacion#{token}`.** El token va en el *fragmento*,
+  que el navegador no envía en ninguna petición: no llega al servidor de la SPA, proxies, CDN ni sus logs, ni viaja en `Referer`.
+  El frontend lo lee una vez, lo retira de la barra de direcciones antes de validar, lo envía solo en el cuerpo de
+  `invitaciones/validar` y `registro/invitacion`, y no lo guarda en el navegador (`Referrer-Policy: no-referrer` en la SPA).
+- **Compatibilidad temporal con enlaces anteriores** (`/registro/invitacion/{token}`, ya no se generan): el frontend todavía los
+  acepta. **Riesgo residual:** en esos enlaces el token viaja en la ruta de la petición del documento HTML, así que pudo quedar en
+  logs de acceso del servidor web/CDN/proxy y en el historial del navegador. Mitigación: revocar y reemitir las invitaciones
+  pendientes emitidas con el formato anterior (o esperar a que venzan: máximo 30 días) y retirar la compatibilidad pasado ese
+  plazo. Mientras tanto, en producción: excluir o redactar la ruta `/registro/invitacion/*` en los logs de acceso del hosting,
+  CDN y proxy, restringir quién puede leerlos y purgar los logs que ya la contengan. El hosting de la SPA debe enviar el header
+  HTTP `Referrer-Policy: no-referrer` (además del `<meta>`), para que ninguna subpetición del documento lleve la URL como `Referer`.
+- `FRONTEND_URL_BASE` debe ser una URL absoluta `http(s)` sin credenciales, query ni fragmento (si no, la aplicación no arranca).
+  Con el perfil `prod` es **obligatoria y debe ser `https`** (`VerificadorUrlFrontendProduccion`): el enlace se comparte por
+  canales externos y no puede apuntar a un origen no confiable.
 - Vigencia por defecto 7 días, máximo 30 (`banfield.invitaciones.vigencia-por-defecto` / `vigencia-maxima`; también por variable
   de entorno con el nombre del *relaxed binding*, por ejemplo `BANFIELD_INVITACIONES_VIGENCIA_MAXIMA`).
 - Estado derivado, no almacenado: `USADA` > `REVOCADA` > `EXPIRADA` > `PENDIENTE`. El ADMIN puede revocar una invitación pendiente
@@ -342,7 +356,7 @@ contiene únicamente valores ficticios.
 | `AUTH_COOKIE_SECURE` | no | `true` por defecto; `false` solo para desarrollo local sin HTTPS |
 | `AUTH_COOKIE_SAME_SITE` | no | `Lax` (defecto), `Strict` o `None` (exige `Secure`) |
 | `CORS_ORIGENES_PERMITIDOS` | no | Lista de orígenes separados por coma; vacío = CORS desactivado |
-| `FRONTEND_URL_BASE` | no | Base para generar `enlaceRegistro` (`{base}/registro/invitacion/{token}`) |
+| `FRONTEND_URL_BASE` | **sí en `prod`** (https); no en otros perfiles | Base para generar `enlaceRegistro` (`{base}/registro/invitacion#{token}`, sección 7). Vacía fuera de `prod` = sin enlace |
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
