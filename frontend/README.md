@@ -176,7 +176,7 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 - La landing no vive en esta app: `/` redirige a `/login`.
 - El logo es una marca provisional (SVG); falta integrar el recurso oficial.
 - E2E solo en Chromium (escritorio); móvil verificado por emulación de viewport, no en dispositivos reales.
-- Portal de familias: no hay detalle de deportista, temporada vigente ni edición; el listado no se actualiza solo (se refresca al volver a entrar o con «Reintentar»).
+- Portal de familias: no hay detalle de deportista, temporada vigente ni edición; los datos se consideran vigentes 60 s (`staleTime`): pasado ese tiempo se vuelven a pedir al volver a la pestaña o a la ventana (`refetchOnWindowFocus`), al volver a entrar a la pantalla o con «Reintentar». No hay actualización periódica en segundo plano.
 - Si otra pestaña inicia sesión con otra persona, esta pestaña conserva su identidad hasta el siguiente `/api/auth/me` (foco o próxima petición); ninguna petición mezcla datos y el backend es la autoridad.
 - No se puede distinguir en pantalla *por qué* una invitación no está disponible (vencida, revocada, usada, inválida): el backend lo oculta a propósito.
 - El enlace de invitación solo existe en la respuesta de creación; no hay forma de recuperarlo luego.
