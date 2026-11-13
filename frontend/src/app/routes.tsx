@@ -2,7 +2,9 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLoginPage } from '@/features/auth/AdminLoginPage';
 import { PublicOnly, RequireMfaPending, RequireRole } from '@/features/auth/guards';
-import { AdminHomePage, FamiliaHomePage } from '@/features/auth/HomePages';
+import { AdminHomePage } from '@/features/auth/HomePages';
+import { AthletesPage } from '@/features/familia/AthletesPage';
+import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { RegistrationPage } from '@/features/registration/RegistrationPage';
@@ -46,7 +48,8 @@ export function AppRoutes() {
 
       <Route element={<RequireRole role="FAMILIA" />}>
         <Route element={<FamiliaLayout />}>
-          <Route path="/familia" element={<FamiliaHomePage />} />
+          <Route path="/familia" element={<FamilyDashboardPage />} />
+          <Route path="/familia/deportistas" element={<AthletesPage />} />
           <Route path="/familia/*" element={<Navigate to="/familia" replace />} />
         </Route>
       </Route>

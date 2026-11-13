@@ -13,36 +13,6 @@ function Identity({ rows }: { rows: [string, string][] }) {
   );
 }
 
-/** Minimal family home: real identity only. Athletes, documents and raffles arrive in later units. */
-export function FamiliaHomePage() {
-  const session = useSession();
-  if (session.status !== 'authenticated') return null;
-  const { user } = session;
-  return (
-    <div className="space-y-6">
-      <section>
-        <p className="text-sm font-semibold text-brand-700">Portal de familias</p>
-        <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Hola, {user.nombre}</h1>
-        <p className="mt-2 text-muted">Ingresaste correctamente. Desde acá vas a gestionar todo lo de tu familia en la escuela.</p>
-      </section>
-      <section aria-labelledby="account" className="rounded-2xl border border-line bg-white p-5">
-        <h2 id="account" className="mb-4 text-lg font-bold">
-          Tu cuenta
-        </h2>
-        <Identity
-          rows={[
-            ['Nombre', `${user.nombre} ${user.apellido}`],
-            ['Correo', user.email],
-          ]}
-        />
-      </section>
-      <p className="rounded-2xl border border-dashed border-line p-5 text-sm text-muted">
-        Las secciones de deportistas, documentación y competencias se habilitan en próximas etapas.
-      </p>
-    </div>
-  );
-}
-
 /** Minimal admin home: real identity and session security state only. */
 export function AdminHomePage() {
   const session = useSession();
