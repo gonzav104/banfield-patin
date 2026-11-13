@@ -61,6 +61,7 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/familia/deportistas/{id}` | FAMILIA | — | `200` `{id, nombre, apellido, dni, cuil, fechaNacimiento, nacionalidad, domicilio, otrosDatosDomicilio, localidad, partido, codigoPostal, telefonoContacto, emailFederativo, activo}` | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
 | `GET /api/familia/deportistas/{deportistaId}/temporadas` | FAMILIA | — | `200` `List<{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}>` de las temporadas **visibles** (año descendente, sin paginar; `[]` si el deportista es propio y no tiene ninguna visible) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
 | `GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}` | FAMILIA | — | `200` `{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}` | `400` (id no UUID), `404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` (uniforme: una sola respuesta para cualquier causa) |
+| `GET /api/familia/deportistas/{deportistaId}/ficha` | FAMILIA | — | `200` `{nombre, apellido, edad, activo, temporadaVigente}`; `edad` entero o `null`; `temporadaVigente` es `{anio, categoria, rama, divisional, numeroCorredor, estadoDeportivo}` o `null` (lista cerrada: sin id, DNI, CUIL, fecha de nacimiento, nacionalidad, domicilio, teléfono ni correo) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme: el mismo cuerpo byte a byte que el de `/deportistas/{id}`) |
 
 `DELETE` y `PATCH` no existen en ninguna ruta de este módulo (`405 METODO_NO_PERMITIDO`): una familia, un deportista o un vínculo se desactivan o revocan, nunca se
 borran. `VinculoRespuesta` es `{vinculoId, familiaId, familiaNombre, deportistaId, deportistaNombre, deportistaApellido, deportistaActivo, estado, esPrincipal,
@@ -157,6 +158,18 @@ superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotad
   y borra la cookie en **todas** las rutas (incluida `/api/auth/me`); reactivar restablece la sesión sin nuevo login. Si la base no responde, `503` y la cookie queda
   intacta. El predicado `f.activa = true` se conserva en la consulta del portal como defensa en profundidad y se prueba solo a nivel de repositorio.
 - **Datos deportivos anuales (`temp-3`):** `GET /api/familia/deportistas/{deportistaId}/temporadas[/{temporadaId}]` (solo lectura, regla de visibilidad y `404` uniforme por endpoint) se documenta en [TEMPORADAS.md](TEMPORADAS.md) sección 9; el historial ≤ 1 sentencia (2 si vino vacío) y el detalle ≤ 1.
+- **Ficha mínima (`FE-04`):** `GET /api/familia/deportistas/{deportistaId}/ficha` reúne en una respuesta de lista cerrada el nombre, el apellido, la **edad calculada en el servidor**, `activo`
+  (estado en la escuela) y la temporada **vigente** (la activa de la escuela; `estadoDeportivo` es el de la temporada y es otro plano que `activo`). La fecha de nacimiento
+  **no sale del servidor**: la edad se cuenta a la fecha de hoy en `America/Argentina/Buenos_Aires`, el 29/2 cumple el 1/3 en los años sin 29/2 y es `null` si la fecha falta,
+  es futura o supera 120 años. `temporadaVigente` es `null` (con `200`) si la escuela no tiene temporada activa o el deportista no tiene fila en ella, sin decir por qué; un
+  deportista que no es de la familia da el `404` uniforme. Son **dos sentencias**, **cada una con el alcance completo de la familia** (vínculo ACTIVO, familia activa, misma familia
+  y escuela del JWT; la visibilidad de temporadas reutiliza los fragmentos del historial), dentro de **una transacción de solo lectura `REPEATABLE_READ`**: ambas leen la misma
+  instantánea. Consecuencia exacta: un cambio confirmado **antes** de la primera sentencia se ve (una revocación da `404`); uno confirmado **después** no se ve en esa solicitud
+  (la respuesta es la de la instantánea, coherente, sin mezclar instantes) y la **solicitud siguiente** ya lo nota. Techo: ≤ 2 sentencias (1 si el resultado es `404`).
+- **Riesgo residual conocido:** `GET /api/familia/deportistas/{id}` (15 campos, con DNI, CUIL, fecha de nacimiento y domicilio) sigue existiendo, **no lo usa ninguna pantalla** y no
+  se modificó. La ficha mínima no lo reemplaza ni lo restringe; cuando se diseñe una pantalla de consulta, verificación o actualización de datos se definirá un contrato mínimo propio
+  por pantalla. La fecha de nacimiento sigue siendo un dato esencial del dominio (empadronamiento, licencias, categorías, Listas de Buena Fe): la minimización es solo de las
+  respuestas del portal.
 - Techos de sentencias de Hibernate (medidos con más de 5 filas): `mi-familia` ≤ 2, listado ≤ 2 (con cualquier `page`/`size`), detalle ≤ 1; la revalidación central
   suma una sentencia JDBC aparte por solicitud autenticada.
 

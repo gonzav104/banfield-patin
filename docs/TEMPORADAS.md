@@ -185,3 +185,6 @@ Cada temporada se muestra con **exactamente** `{temporadaId, anio, temporadaActi
 
 **Consultas.** La autorización y la visibilidad son el `WHERE` de **una** sentencia (vínculo, familia, deportista, fila deportiva, su temporada y la temporada activa unidos por id **y** escuela), sin cargar nada para comparar después. Techos de sentencias de Hibernate: detalle 1, historial 1 (2 si vino vacío, para decidir entre `404` y `200 []`), con cualquier cantidad de temporadas. La revalidación central de la sesión (usuario, escuela y familia activos, vínculo revocado, etc.) rige desde la siguiente solicitud con el mismo token.
 
+- **Temporada vigente en la ficha (`FE-04`).** La ficha mínima de FAMILIA (`GET /api/familia/deportistas/{deportistaId}/ficha`, ver [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md)
+  sección 6) incluye la fila deportiva de la temporada **activa** de la escuela, componiendo los mismos fragmentos de alcance y visibilidad que el historial más `t.activa = true`;
+  es `null` (con `200`) si no hay temporada activa o el deportista no tiene fila en ella. No incluye licencia, empadronamiento ni aptos.

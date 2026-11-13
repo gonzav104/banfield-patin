@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.banfieldpatin.backend.familias.portal.dto.DatosBaseDeFicha;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
 import com.banfieldpatin.backend.familias.portal.dto.TemporadaDeFamilia;
@@ -211,4 +212,32 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			""")
 	Optional<UUID> deportistaEnAlcance(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
 			@Param("deportistaId") UUID deportistaId);
+
+	// ---------- ficha minima para la FAMILIA (solo lectura) ----------
+
+	/**
+	 * Datos generales de la ficha de un deportista propio (alcance de la familia, UNA sentencia). Devuelve una proyeccion
+	 * INTERNA con la fecha de nacimiento, solo para calcular la edad en el servicio: nunca se serializa. Un id ajeno,
+	 * de otra escuela, con vinculo no activo o inexistente produce el mismo resultado vacio.
+	 */
+	@Query("""
+			select new com.banfieldpatin.backend.familias.portal.dto.DatosBaseDeFicha(
+			    d.nombre, d.apellido, d.fechaNacimiento, d.activo)
+			""" + ALCANCE_FAMILIA + """
+			  and d.id = :deportistaId
+			""")
+	Optional<DatosBaseDeFicha> fichaBaseDelPortal(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+			@Param("deportistaId") UUID deportistaId);
+
+	/**
+	 * La temporada VIGENTE (la activa de la escuela) de un deportista propio: compone los MISMOS fragmentos de alcance y de
+	 * visibilidad que el historial, sin reescribirlos, y agrega {@code t.activa = true}. A lo sumo una fila
+	 * ({@code uq_temporada_activa_por_escuela} y {@code uq_deportista_temporada}); vacio si no hay temporada activa o el
+	 * deportista no tiene fila en ella. Repite el alcance completo de la familia: no confia en la consulta anterior.
+	 */
+	@Query(TEMPORADA_DE_FAMILIA + ALCANCE_FAMILIA_JOINS + TEMPORADAS_VISIBLES_JOINS + ALCANCE_FAMILIA_FILTRO + """
+			  and d.id = :deportistaId and t.activa = true
+			""")
+	Optional<TemporadaDeFamilia> temporadaVigenteDelPortal(@Param("familiaId") UUID familiaId,
+			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
 }
