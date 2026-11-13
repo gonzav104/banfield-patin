@@ -98,9 +98,17 @@ test.describe('family portal (real backend)', () => {
   test('list: two real pages of 10 and 2, inactive marked, revoked link gone', async () => {
     const { context, page } = await newContext();
     await loginFamilyUi(page, familyA);
+    const primeraPagina = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === '/api/familia/deportistas' && r.url().includes('size=10') && r.request().method() === 'GET',
+    );
     await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Deportistas' }).click();
     await expect(page).toHaveURL(/\/familia\/deportistas$/);
 
+    // The age on screen is the one the SERVER computed: the client has no birth date to calculate with.
+    const cuerpoPrimeraPagina = (await (await primeraPagina).json()) as { contenido: { nombre: string; edad: number | null }[] };
+    const edadDelServidor = cuerpoPrimeraPagina.contenido.find((a) => a.nombre === NAME(1))?.edad;
+    expect(edadDelServidor).toBeGreaterThanOrEqual(2); // born 2014: 11 or 12 depending on the day this runs
+    await expect(athleteCards(page).filter({ hasText: NAME(1) })).toContainText(`${edadDelServidor} años`);
     await expect(page.getByText('Página 1 de 2 · 12 en total')).toBeVisible();
     await expect(athleteCards(page)).toHaveCount(10);
     await expect(athleteCards(page).first()).toContainText(NAME(1));
@@ -142,7 +150,11 @@ test.describe('family portal (real backend)', () => {
     expect(everything).not.toMatch(/"(dni|cuil|domicilio|telefonoContacto|escuelaId|familiaId)"/);
     expect(everything).not.toMatch(/cuil|domicilio/i);
     const athleteKeys = bodies.flatMap((body) => (JSON.parse(body) as { contenido?: object[] }).contenido ?? []).flatMap((a) => Object.keys(a));
-    expect(new Set(athleteKeys)).toEqual(new Set(['id', 'nombre', 'apellido', 'fechaNacimiento', 'activo']));
+    // Backend as of U2: `edad` plus the birth date it still sends TRANSITIONALLY (retired in a later step).
+    expect(new Set(athleteKeys)).toEqual(new Set(['id', 'nombre', 'apellido', 'fechaNacimiento', 'edad', 'activo']));
+    // Whatever the wire carries, the client neither shows nor keeps the exact birth date (seeded as 2014-03-10).
+    const pantalla = `${await page.content()}\n${await page.locator('body').innerText()}`;
+    expect(pantalla).not.toMatch(/2014-03-10|10\/03\/2014|03\/10\/2014|10-03-2014|fechaNacimiento/);
     expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
     // The app logs nothing. The only tolerated console line is the browser's own note about the EXPECTED 401 of
     // GET /api/auth/me when the login screen is opened without a session.

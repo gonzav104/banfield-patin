@@ -19,12 +19,18 @@ export const myFamilySchema = z.object({
 export type MyFamily = z.infer<typeof myFamilySchema>;
 export type FamilyTutor = MyFamily['tutores'][number];
 
-/** `activo` is the athlete's administrative state in the school; it is NOT an enrolment or a season status. */
+/**
+ * `activo` is the athlete's administrative state in the school; it is NOT an enrolment or a season status. `edad` is
+ * computed by the server (null without a reliable birth date) and is the ONLY age data the client uses. The server still
+ * sends `fechaNacimiento` for now (it is retired in a later step): it is deliberately NOT declared here, so validation
+ * drops it and it never reaches the query cache or the screen. `edad` is optional so a server that does not send it yet
+ * (frontend deployed first) degrades to "Edad no informada" instead of failing the whole list.
+ */
 export const athleteSchema = z.object({
   id: z.string(),
   nombre: z.string(),
   apellido: z.string(),
-  fechaNacimiento: z.string().nullable().optional(),
+  edad: z.number().nullable().optional(),
   activo: z.boolean(),
 });
 export type Athlete = z.infer<typeof athleteSchema>;

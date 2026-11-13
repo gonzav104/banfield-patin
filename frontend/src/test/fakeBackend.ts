@@ -61,7 +61,10 @@ export interface FakeAthlete {
   id: string;
   nombre: string;
   apellido: string;
-  fechaNacimiento: string | null;
+  /** Stored by the server; the list still sends it TRANSITIONALLY (retired later). The client must never use it. */
+  fechaNacimiento?: string | null;
+  /** What the server computes (backend `EdadDeportista`); null without a reliable birth date. The client shows it as is. */
+  edad?: number | null;
   activo: boolean;
   /** Fields the REAL list never sends (DNI, address...): used to prove the client never renders what it does not need. */
   extra?: Record<string, unknown>;
@@ -324,7 +327,8 @@ export class FakeBackend {
         id: a.id,
         nombre: a.nombre,
         apellido: a.apellido,
-        fechaNacimiento: a.fechaNacimiento,
+        fechaNacimiento: a.fechaNacimiento ?? null, // transitional: still sent by the real list (U2), retired in U4
+        edad: a.edad ?? null,
         activo: a.activo,
         ...a.extra,
       }));

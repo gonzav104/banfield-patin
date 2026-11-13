@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { calculateAge, formatAge } from './age';
+import { formatAge } from './age';
 import type { Athlete } from './schemas';
 
 function initials(athlete: Athlete): string {
@@ -7,7 +7,7 @@ function initials(athlete: Athlete): string {
 }
 
 /**
- * One linked athlete: name, age and the school status exactly as the backend reports it (`activo`). The status is
+ * One linked athlete: name, the age computed by the server and the school status exactly as the backend reports it (`activo`). The status is
  * text, not only colour. It never says "inscripto" or similar: it is not an enrolment or a season status.
  */
 export function AthleteCard({ athlete }: { athlete: Athlete }) {
@@ -23,7 +23,7 @@ export function AthleteCard({ athlete }: { athlete: Athlete }) {
         <p className="break-words font-semibold leading-snug">
           {athlete.nombre} {athlete.apellido}
         </p>
-        <p className="text-sm text-muted">{formatAge(calculateAge(athlete.fechaNacimiento))}</p>
+        <p className="text-sm text-muted">{formatAge(athlete.edad)}</p>
       </div>
       <p
         className={cn(
