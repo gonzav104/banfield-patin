@@ -101,7 +101,10 @@ describe('private state is cleared when the identity changes', () => {
 
     await screen.findByRole('heading', { name: 'Hola, Lucía' });
     expect(queryClient.getQueryData(['admin', 'invitations', { status: 'ALL', page: 0 }])).toBeUndefined();
-    expect(queryClient.getQueryCache().getAll().map((q) => q.queryKey[0])).toEqual(['session']);
+    // Nothing of the previous identity survives; only the session and the new family's own queries (the dashboard loads them).
+    const keys = queryClient.getQueryCache().getAll().map((q) => q.queryKey[0]);
+    expect(keys).toContain('session');
+    expect(keys.every((key) => key === 'session' || key === 'familia')).toBe(true);
   });
 
   it('drops cached data when the second factor upgrades the session', async () => {

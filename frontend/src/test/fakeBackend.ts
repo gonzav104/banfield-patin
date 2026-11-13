@@ -15,6 +15,8 @@ export interface FakeUser {
   password: string;
   rol: 'ADMIN' | 'FAMILIA';
   mfaEnrolado?: boolean;
+  /** FAMILIA only. undefined = the default family 'familia-1'; null = an account with no family. */
+  familiaId?: string | null;
 }
 
 export interface LoggedRequest {
@@ -46,6 +48,34 @@ interface FakeInvitation {
 
 const DAY = 86_400_000;
 
+export interface FakeTutor {
+  id: string;
+  nombre: string;
+  apellido: string;
+  parentesco: string | null;
+  telefono: string | null;
+  email: string | null;
+}
+
+export interface FakeAthlete {
+  id: string;
+  nombre: string;
+  apellido: string;
+  fechaNacimiento: string | null;
+  activo: boolean;
+  /** Fields the REAL list never sends (DNI, address...): used to prove the client never renders what it does not need. */
+  extra?: Record<string, unknown>;
+}
+
+interface PortalFamily {
+  id: string;
+  nombreReferencia: string | null;
+  activa: boolean;
+  tutores: FakeTutor[];
+  /** athleteId -> link is ACTIVE. A revoked link keeps the athlete out of the family's list. */
+  links: Map<string, boolean>;
+}
+
 export const VALID_TOTP = '123456';
 export const FAKE_SECRET = 'JBSWY3DPEHPK3PXP';
 
@@ -55,10 +85,13 @@ export class FakeBackend {
   private session: { userId: string; pending: boolean } | null = null;
   private csrfToken: string | null = null;
   private overrides: { method: string; url: string; value: Override; once: boolean }[] = [];
+  private holds: { method: string; url: string; deliver?: () => void }[] = [];
   private enrolledInFlight = new Set<string>();
   private families: FakeFamily[] = [];
   private invitations: FakeInvitation[] = [];
   private counter = 0;
+  private portalFamilies = new Map<string, PortalFamily>();
+  private athletes = new Map<string, FakeAthlete>();
   /** Mirrors FRONTEND_URL_BASE: when null the backend returns `enlaceRegistro: null`. */
   frontendBase: string | null = 'http://app.test';
 
@@ -228,6 +261,78 @@ export class FakeBackend {
     return null;
   }
 
+  // ---------- family portal (read-only) ----------
+
+  addPortalFamily(id: string, nombreReferencia: string | null, tutores: FakeTutor[] = []): this {
+    this.portalFamilies.set(id, { id, nombreReferencia, activa: true, tutores, links: new Map() });
+    return this;
+  }
+
+  setPortalFamilyActive(id: string, activa: boolean): this {
+    const family = this.portalFamilies.get(id);
+    if (!family) throw new Error(`Unknown portal family ${id}`);
+    family.activa = activa;
+    return this;
+  }
+
+  addAthlete(athlete: Omit<FakeAthlete, 'id'>): FakeAthlete {
+    const created = { ...athlete, id: `ath-${++this.counter}` };
+    this.athletes.set(created.id, created);
+    return created;
+  }
+
+  linkAthlete(familyId: string, athleteId: string): this {
+    const family = this.portalFamilies.get(familyId);
+    if (!family || !this.athletes.has(athleteId)) throw new Error('Unknown family or athlete');
+    family.links.set(athleteId, true);
+    return this;
+  }
+
+  revokeLink(familyId: string, athleteId: string): this {
+    this.portalFamilies.get(familyId)?.links.set(athleteId, false);
+    return this;
+  }
+
+  private portalRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined): { status: number; body?: unknown } | null {
+    if (!path.startsWith('/familia/')) return null;
+    if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+    if (this.session.pending || current.rol !== 'FAMILIA') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+    if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
+
+    // Like the real backend: the family comes from the session, never from the request (a `familiaId` parameter is ignored).
+    const familyId = this.identity(current, false).familiaId;
+    const family = familyId ? this.portalFamilies.get(familyId) : undefined;
+
+    if (path === '/familia/mi-familia') {
+      if (!family || !family.activa) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+      return { status: 200, body: { id: family.id, nombreReferencia: family.nombreReferencia, tutores: family.tutores } };
+    }
+    if (path === '/familia/deportistas') {
+      const visible = family ? [...family.links].filter(([, active]) => active).map(([id]) => this.athletes.get(id)!) : [];
+      visible.sort(
+        (a, b) =>
+          a.apellido.localeCompare(b.apellido, 'es', { sensitivity: 'base' }) ||
+          a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }) ||
+          a.id.localeCompare(b.id),
+      );
+      // Like the real API: out-of-range values are clamped (size 1..100, page >= 0), never a 400.
+      const rawSize = Number(params.get('size') ?? 20);
+      const size = Number.isFinite(rawSize) ? Math.min(Math.max(Math.trunc(rawSize), 1), 100) : 20;
+      const rawPage = Number(params.get('page') ?? 0);
+      const page = Number.isFinite(rawPage) ? Math.max(Math.trunc(rawPage), 0) : 0;
+      const contenido = visible.slice(page * size, page * size + size).map((a) => ({
+        id: a.id,
+        nombre: a.nombre,
+        apellido: a.apellido,
+        fechaNacimiento: a.fechaNacimiento,
+        activo: a.activo,
+        ...a.extra,
+      }));
+      return { status: 200, body: { contenido, pagina: page, tamanio: size, totalElementos: visible.length } };
+    }
+    return this.error(404, 'RECURSO_NO_ENCONTRADO');
+  }
+
   expireSession(): void {
     this.session = null;
   }
@@ -240,6 +345,17 @@ export class FakeBackend {
 
   clearOverrides(): void {
     this.overrides = [];
+    this.holds = [];
+  }
+
+  /**
+   * Holds the NEXT matching request: the server answers as of now, but the client only receives the response when
+   * `release()` is called. Used to reproduce late responses that arrive after the identity changed.
+   */
+  hold(method: 'get' | 'post', url: string): { release: () => void } {
+    const entry: { method: string; url: string; deliver?: () => void } = { method, url };
+    this.holds.push(entry);
+    return { release: () => entry.deliver?.() };
   }
 
   writes(): LoggedRequest[] {
@@ -271,7 +387,17 @@ export class FakeBackend {
       return this.respond(config, override.value.status, override.value.body);
     }
 
+    // The answer is computed NOW (with the identity and data of this moment); a held request only delays its delivery.
     const result = this.route(method, url, body, csrfHeader);
+    const holdIndex = this.holds.findIndex((h) => h.method === method && h.url === url);
+    if (holdIndex >= 0) {
+      const [hold] = this.holds.splice(holdIndex, 1);
+      return new Promise((resolve, reject) => {
+        hold!.deliver = () => {
+          void this.respond(config, result.status, result.body).then(resolve, reject);
+        };
+      });
+    }
     return this.respond(config, result.status, result.body);
   };
 
@@ -295,7 +421,7 @@ export class FakeBackend {
       email: user.email,
       rol: user.rol,
       escuelaId: 'escuela-1',
-      familiaId: user.rol === 'FAMILIA' ? 'familia-1' : null,
+      familiaId: user.rol === 'FAMILIA' ? (user.familiaId === undefined ? 'familia-1' : user.familiaId) : null,
       mfaPendiente: pending,
       mfaEnrolado: user.rol === 'ADMIN' && !!user.mfaEnrolado,
     };
@@ -356,6 +482,8 @@ export class FakeBackend {
     const parsed = new URL(url, 'http://fake.local');
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);
     if (handled) return handled;
+    const portal = this.portalRoute(method, parsed.pathname, parsed.searchParams, current);
+    if (portal) return portal;
 
     return this.error(404, 'RECURSO_NO_ENCONTRADO');
   }

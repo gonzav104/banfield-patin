@@ -3,7 +3,9 @@
 React + TypeScript estricto + Vite + React Router + TanStack Query + Tailwind v4 + React Hook Form + Zod + Axios.
 Stack y reglas: ver [`AGENTS.md`](./AGENTS.md). Estado actual: **FE-01 — autenticación y sesiones**
 (login de familias, login ADMIN con MFA/TOTP, rutas protegidas, logout) y **FE-02 — invitaciones y registro de familias**
-(panel ADMIN de invitaciones + registro por enlace). No incluye deportistas, competencias, rifas ni carga documental.
+(panel ADMIN de invitaciones + registro por enlace) y **FE-03 (primera unidad) — portal de familias, solo lectura**
+(dashboard y listado de deportistas vinculados). No incluye detalle de deportista, temporada, edición, competencias,
+rifas, empadronamiento ni carga documental.
 
 ## Ejecutar localmente
 
@@ -73,6 +75,27 @@ o ya usada (decisión de seguridad, `docs/SEGURIDAD.md` §7), por lo que el regi
 invitación no está disponible". El token va en el fragmento del enlace (el navegador no lo envía al servidor), viaja
 solo en el cuerpo de las peticiones, se quita de la barra de direcciones al abrir el enlace y nunca se guarda en el navegador.
 
+### 5. Portal de familias (FE-03, solo lectura)
+
+Una cuenta FAMILIA ve, desde el teléfono o la computadora:
+
+| Ruta | Qué muestra |
+| --- | --- |
+| `/familia` | saludo, nombre de la familia, tutores (solo nombre y parentesco), total de deportistas vinculados y hasta 3 de ellos |
+| `/familia/deportistas` | listado paginado (10 por página): nombre, apellido, edad y estado **Activo/Inactivo** |
+
+- Datos reales: `GET /api/familia/mi-familia` y `GET /api/familia/deportistas?page&size` (paginación del backend; el total sale de `totalElementos`).
+  La familia **sale de la sesión**: el cliente nunca envía un identificador de familia y el backend es la autoridad.
+- «Activo/Inactivo» es el estado administrativo del deportista en la escuela. **No** es una inscripción ni un estado de temporada.
+- No se muestra DNI, CUIL, domicilio, teléfono ni identificadores; los datos que la interfaz no necesita se descartan al validar la respuesta.
+- Tres situaciones distintas: cuenta sin familia asociada (no se llama a `/api/familia/*`), familia no disponible (`404 FAMILIA_NO_ENCONTRADA`) y familia sin deportistas.
+- Navegación: barra inferior en pantallas chicas y lateral desde `md` (respeta las safe areas); la edad se calcula con la fecha de nacimiento y, si falta o es inválida, se muestra «Edad no informada».
+- Aislamiento en el cliente: las claves de caché llevan usuario y familia, y si `/api/auth/me` revela otra identidad se descarta el estado privado
+  (la pantalla nunca muestra datos de la identidad anterior). Ver el hallazgo y su corrección en `odd/tasks/fe-03-portal-familias.md` (L6, L7).
+
+Para verlo con datos, un ADMIN crea y vincula deportistas con la API de administración (`POST /api/admin/deportistas`,
+`POST /api/admin/familias/{id}/deportistas`); esta unidad no incluye pantallas de administración de deportistas.
+
 ## Pruebas
 
 ```bash
@@ -101,6 +124,11 @@ npm run test:e2e
 El primer test enrola el TOTP del ADMIN por la UI y guarda el secreto en `e2e/.state.json` (ignorado por Git,
 solo para bases descartables); luego crea una familia e invitación por la API real. **Si recreás la base, borrá
 `e2e/.state.json`.** Dos escenarios (503 y sin conexión) se simulan con `page.route` y están rotulados como tales.
+`portal.real.spec.ts` (FE-03) siembra **datos sintéticos por la API real de ADMIN** (dos familias, 13 deportistas con DNI sintético de 9 dígitos que
+empieza con 9, uno inactivo, uno sin fecha de nacimiento y uno con vínculo revocado) y comprueba: dashboard y listado en 2 páginas reales, ausencia
+de datos sensibles en la API y en pantalla, 360 px sin desborde y navegación inferior/lateral, aislamiento entre familias (incluido el mismo 404 del
+backend para un id ajeno y uno inexistente), cambio de familia en el mismo navegador, sesión vencida y una caída **simulada** (`page.route`).
+Depende del administrador enrolado por `auth.real.spec.ts` (se ejecuta después, por orden alfabético en modo serial).
 `invitations.real.spec.ts` recorre el ciclo completo contra el backend real: crear invitación → enlace único → registro →
 no hay sesión automática → login; enlace usado, revocado y vencido (este último requiere `E2E_DB_CONTAINER`); permisos
 de FAMILIA/anónimo sobre la API ADMIN. El backend limita por IP las validaciones **fallidas** (5 cada 15 min, en memoria):
@@ -148,6 +176,8 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 - La landing no vive en esta app: `/` redirige a `/login`.
 - El logo es una marca provisional (SVG); falta integrar el recurso oficial.
 - E2E solo en Chromium (escritorio); móvil verificado por emulación de viewport, no en dispositivos reales.
+- Portal de familias: no hay detalle de deportista, temporada vigente ni edición; los datos se consideran vigentes 60 s (`staleTime`): pasado ese tiempo se vuelven a pedir al volver a la pestaña o a la ventana (`refetchOnWindowFocus`), al volver a entrar a la pantalla o con «Reintentar». No hay actualización periódica en segundo plano.
+- Si otra pestaña inicia sesión con otra persona, esta pestaña conserva su identidad hasta el siguiente `/api/auth/me` (foco o próxima petición); ninguna petición mezcla datos y el backend es la autoridad.
 - No se puede distinguir en pantalla *por qué* una invitación no está disponible (vencida, revocada, usada, inválida): el backend lo oculta a propósito.
 - El enlace de invitación solo existe en la respuesta de creación; no hay forma de recuperarlo luego.
 - El bloqueo por intentos fallidos del backend responde igual que unas credenciales incorrectas: la UI no puede distinguirlo.

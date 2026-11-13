@@ -29,9 +29,14 @@ export type SessionState =
  * the session state is unknown, not closed, so we keep the last known identity and flag the problem.
  */
 export function useSession(): SessionState {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: sessionKey,
-    queryFn: fetchSession,
+    queryFn: async () => {
+      const user = await fetchSession();
+      dropPrivateStateIfIdentityChanged(queryClient, user);
+      return user;
+    },
     staleTime: 60_000,
     retry: false,
   });
@@ -56,9 +61,28 @@ export function resetSessionCache(queryClient: QueryClient): void {
   queryClient.setQueryData(sessionKey, null);
 }
 
+const isPrivateQuery = (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== sessionKey[0];
+
 /** Drops cached private data but keeps the session entry (identity is about to be replaced or re-checked). */
 export function clearPrivateState(queryClient: QueryClient): void {
-  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+  queryClient.removeQueries({ predicate: isPrivateQuery });
+}
+
+/** Who the session belongs to. mfaPendiente is excluded on purpose: a privilege upgrade is handled by startSession. */
+function identityOf(user: AuthUser | null | undefined): string {
+  return user ? [user.id, user.rol, user.escuelaId ?? '', user.familiaId ?? ''].join('|') : 'anonymous';
+}
+
+/**
+ * A /api/auth/me re-check can reveal that the shared cookie now belongs to someone else (another tab signed in)
+ * while this tab still has private screens mounted. When the identity differs from the one in cache, every private
+ * query is removed, which also aborts the ones in flight (their late responses are discarded).
+ * The session entry is untouched, so this never triggers another /me.
+ */
+export function dropPrivateStateIfIdentityChanged(queryClient: QueryClient, next: AuthUser | null): void {
+  const previous = queryClient.getQueryData<AuthUser | null>(sessionKey);
+  if (previous === undefined || identityOf(previous) === identityOf(next)) return;
+  clearPrivateState(queryClient); // removing a query also aborts its in-flight request, so late responses are discarded
 }
 
 /** A new identity (or a privilege upgrade) starts from an empty cache, and other tabs are told to re-check. */
