@@ -71,7 +71,7 @@ public class FamiliaPortalService {
 		}
 		LocalDate hoy = EdadDeportista.hoy(reloj);
 		return Pagina.de(vinculos.deportistasDelPortal(usuario.familiaId(), usuario.escuelaId(), pagina),
-				d -> new DeportistaDeFamilia(d.id(), d.nombre(), d.apellido(), d.fechaNacimiento(),
+				d -> new DeportistaDeFamilia(d.id(), d.nombre(), d.apellido(),
 						EdadDeportista.calcular(d.fechaNacimiento(), hoy), d.activo()));
 	}
 

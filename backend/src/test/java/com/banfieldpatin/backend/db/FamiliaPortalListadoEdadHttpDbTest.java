@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,9 +37,9 @@ import com.banfieldpatin.backend.usuarios.Rol;
 import jakarta.servlet.http.Cookie;
 
 /**
- * El listado de FAMILIA agrega {@code edad} (calculada en el servidor, la MISMA regla de la ficha) y MANTIENE por ahora
- * {@code fechaNacimiento}: HTTP real, PostgreSQL 17 descartable y cookies de usuarios PERSISTIDOS. Paginacion, orden y alcance
- * no cambian.
+ * El listado de FAMILIA devuelve {@code {id, nombre, apellido, edad, activo}}: la edad la calcula el servidor (la MISMA regla de
+ * la ficha) y la fecha de nacimiento NO sale en esta respuesta, aunque sigue almacenada y disponible para ADMIN. HTTP real,
+ * PostgreSQL 17 descartable y cookies de usuarios PERSISTIDOS. Paginacion, orden y alcance no cambian.
  */
 @Tag("db")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -131,19 +132,57 @@ class FamiliaPortalListadoEdadHttpDbTest extends BaseDbTest {
 	}
 
 	private String fila(int i, String nombre, String apellido, boolean activo) {
-		String fecha = nacimientos.get(i) == null ? "null" : "\"" + nacimientos.get(i) + "\"";
 		String edad = edades.get(i) == null ? "null" : String.valueOf(edades.get(i));
 		return "{\"id\":\"" + propios.get(i) + "\",\"nombre\":\"" + nombre + "\",\"apellido\":\"" + apellido
-				+ "\",\"fechaNacimiento\":" + fecha + ",\"edad\":" + edad + ",\"activo\":" + activo + "}";
+				+ "\",\"edad\":" + edad + ",\"activo\":" + activo + "}";
 	}
 
 	@Test
-	void cadaFilaTrae_edad_ademasDeLaFechaDeNacimientoQueSeMantieneTemporalmente() throws Exception {
+	void cadaFilaTraeExactamenteIdNombreApellidoEdadYActivoSinLaFechaDeNacimiento() throws Exception {
 		String esperado = "{\"contenido\":[" + fila(0, "Ana", "Aguirre", true) + "," + fila(1, "Beto", "Bravo", true) + ","
 				+ fila(2, "Cata", "Cano", true) + "," + fila(3, "Dora", "Duarte", true) + ","
 				+ fila(4, "Ema", "Esteban", false) + "],\"pagina\":0,\"tamanio\":20,\"totalElementos\":5}";
 
 		assertThat(cuerpo(LISTADO, sesionFa1())).isEqualTo(esperado);
+	}
+
+	@Test
+	void laFechaDeNacimientoNoApareceEnLosBytesDelListadoEnNingunFormato() throws Exception {
+		byte[] bytes = pedir(LISTADO, sesionFa1()).andReturn().getResponse().getContentAsByteArray();
+		String texto = new String(bytes, StandardCharsets.UTF_8);
+
+		assertThat(texto).doesNotContain("fechaNacimiento", "nacimiento");
+		for (LocalDate nacimiento : nacimientos) {
+			if (nacimiento == null) {
+				continue;
+			}
+			for (String formato : List.of(nacimiento.toString(), nacimiento.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+					nacimiento.format(DateTimeFormatter.ofPattern("dd-MM-yyyy")), nacimiento.format(DateTimeFormatter.BASIC_ISO_DATE))) {
+				assertThat(texto).as("fecha %s", formato).doesNotContain(formato);
+			}
+		}
+		pedir(LISTADO, sesionFa1()).andExpect(jsonPath("$.contenido[0].length()").value(5))
+				.andExpect(jsonPath("$.contenido[0].fechaNacimiento").doesNotExist());
+	}
+
+	@Test
+	void laFichaTampocoDevuelveLaFechaDeNacimientoYLaEdadCoincideConLaDelListado() throws Exception {
+		String ficha = cuerpo(LISTADO + "/" + propios.get(0) + "/ficha", sesionFa1());
+
+		assertThat(ficha).doesNotContain("fechaNacimiento", nacimientos.get(0).toString()).contains("\"edad\":9");
+	}
+
+	@Test
+	void adminConservaLaFechaDeNacimientoQueLaFamiliaYaNoRecibe() throws Exception {
+		Cookie admin = new Cookie(COOKIE, tokens.emitir(adminId, Rol.ADMIN, escuelaA, null));
+
+		pedir("/api/admin/deportistas/" + propios.get(0), admin).andExpect(status().isOk())
+				.andExpect(jsonPath("$.fechaNacimiento").value(nacimientos.get(0).toString()));
+		pedir("/api/admin/deportistas/" + propios.get(1), admin).andExpect(status().isOk())
+				.andExpect(jsonPath("$.fechaNacimiento").value((Object) null));
+		// El dato sigue almacenado, sin cambios, en la base.
+		assertThat(jdbc.sql("SELECT fecha_nacimiento FROM gestion_patin.deportista WHERE id = :d").param("d", propios.get(0))
+				.query(LocalDate.class).single()).isEqualTo(nacimientos.get(0));
 	}
 
 	@Test
@@ -195,7 +234,7 @@ class FamiliaPortalListadoEdadHttpDbTest extends BaseDbTest {
 	void ningunDatoSensibleSaleEnElListado() throws Exception {
 		String cuerpo = cuerpo(LISTADO, sesionFa1());
 
-		for (String prohibido : List.of("36100001", "36100005", "dni", "cuil", "domicilio", "telefono", "email", "escuelaId",
+		for (String prohibido : List.of("36100001", "36100005", "fechaNacimiento", "dni", "cuil", "domicilio", "telefono", "email", "escuelaId",
 				"familiaId", "esPrincipal", "vinculo", "nacionalidad")) {
 			assertThat(cuerpo).as(prohibido).doesNotContain(prohibido);
 		}

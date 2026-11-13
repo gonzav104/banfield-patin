@@ -61,7 +61,7 @@ export interface FakeAthlete {
   id: string;
   nombre: string;
   apellido: string;
-  /** Stored by the server; the list still sends it TRANSITIONALLY (retired later). The client must never use it. */
+  /** Stored by the server and available to ADMIN; the family list does NOT send it (only `edad`). Tests may force it in via `extra`. */
   fechaNacimiento?: string | null;
   /** What the server computes (backend `EdadDeportista`); null without a reliable birth date. The client shows it as is. */
   edad?: number | null;
@@ -327,8 +327,7 @@ export class FakeBackend {
         id: a.id,
         nombre: a.nombre,
         apellido: a.apellido,
-        fechaNacimiento: a.fechaNacimiento ?? null, // transitional: still sent by the real list (U2), retired in U4
-        edad: a.edad ?? null,
+        edad: a.edad ?? null, // the birth date is NOT sent in the list anymore (backend U4)
         activo: a.activo,
         ...a.extra,
       }));

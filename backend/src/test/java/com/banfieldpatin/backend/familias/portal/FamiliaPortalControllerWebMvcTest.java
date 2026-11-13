@@ -157,18 +157,18 @@ class FamiliaPortalControllerWebMvcTest {
 
 	@Test
 	void elListadoExponeActivoYNingunCampoProhibido() throws Exception {
-		var activo = new DeportistaDeFamilia(deportistaId, "Lola", "Gomez", LocalDate.of(2015, 1, 2), 11, true);
-		var inactivo = new DeportistaDeFamilia(UUID.randomUUID(), "Pepe", "Gomez", LocalDate.of(2012, 3, 4), null, false);
+		var activo = new DeportistaDeFamilia(deportistaId, "Lola", "Gomez", 11, true);
+		var inactivo = new DeportistaDeFamilia(UUID.randomUUID(), "Pepe", "Gomez", null, false);
 		when(servicio.deportistas(any(), any())).thenReturn(new Pagina<>(List.of(activo, inactivo), 0, 20, 2));
 
 		mvc.perform(get("/api/familia/deportistas").cookie(familia())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.totalElementos").value(2))
 				.andExpect(jsonPath("$.contenido.length()").value(2))
-				.andExpect(jsonPath("$.contenido[0].length()").value(6))
+				.andExpect(jsonPath("$.contenido[0].length()").value(5))
 				.andExpect(jsonPath("$.contenido[0].id").value(deportistaId.toString()))
 				.andExpect(jsonPath("$.contenido[0].nombre").value("Lola"))
 				.andExpect(jsonPath("$.contenido[0].apellido").value("Gomez"))
-				.andExpect(jsonPath("$.contenido[0].fechaNacimiento").value("2015-01-02"))
+				.andExpect(jsonPath("$.contenido[0].fechaNacimiento").doesNotExist())
 				.andExpect(jsonPath("$.contenido[0].edad").value(11))
 				.andExpect(jsonPath("$.contenido[1].edad").value((Object) null))
 				.andExpect(jsonPath("$.contenido[0].activo").value(true))

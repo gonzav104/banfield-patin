@@ -150,7 +150,6 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 			UUID id = ids.get(i);
 			var fila = filas.stream().filter(f -> f.id().equals(id)).findFirst().orElseThrow();
 			assertThat(fila.edad()).as("fecha %s", fechas[i]).isEqualTo(ficha.ficha(usuario, id).edad());
-			assertThat(fila.fechaNacimiento()).isEqualTo(fechas[i]);
 		}
 	}
 

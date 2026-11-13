@@ -150,17 +150,25 @@ test.describe('family portal (real backend)', () => {
     expect(everything).not.toMatch(/"(dni|cuil|domicilio|telefonoContacto|escuelaId|familiaId)"/);
     expect(everything).not.toMatch(/cuil|domicilio/i);
     const athleteKeys = bodies.flatMap((body) => (JSON.parse(body) as { contenido?: object[] }).contenido ?? []).flatMap((a) => Object.keys(a));
-    // Backend as of U2: `edad` plus the birth date it still sends TRANSITIONALLY (retired in a later step).
-    expect(new Set(athleteKeys)).toEqual(new Set(['id', 'nombre', 'apellido', 'fechaNacimiento', 'edad', 'activo']));
-    // Whatever the wire carries, the client neither shows nor keeps the exact birth date (seeded as 2014-03-10).
+    // The family list carries the age the server computed and NO birth date (seeded as 2014-03-10 for the athletes).
+    expect(new Set(athleteKeys)).toEqual(new Set(['id', 'nombre', 'apellido', 'edad', 'activo']));
+    expect(bodies.join('\n')).not.toMatch(/2014-03-10|fechaNacimiento/); // not one byte of any portal response
     const pantalla = `${await page.content()}\n${await page.locator('body').innerText()}`;
-    expect(pantalla).not.toMatch(/2014-03-10|10\/03\/2014|03\/10\/2014|10-03-2014|fechaNacimiento/);
+    expect(pantalla).not.toMatch(/2014-03-10|10\/03\/2014|03\/10\/2014|10-03-2014|fechaNacimiento/); // nor the page
     expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
     // The app logs nothing. The only tolerated console line is the browser's own note about the EXPECTED 401 of
     // GET /api/auth/me when the login screen is opened without a session.
     const expected401 = /^Failed to load resource: the server responded with a status of 401/;
     expect(logged.filter(({ type, text }) => (type === 'log' || type === 'error' || type === 'warning') && !expected401.test(text))).toEqual([]);
     await context.close();
+  });
+
+  test('the administrator keeps the birth date the family no longer receives', async () => {
+    const detalle = await adminContext.request.get(`/api/admin/deportistas/${athleteIds[0]}`);
+    expect(detalle.status()).toBe(200);
+    expect(((await detalle.json()) as { fechaNacimiento: string | null }).fechaNacimiento).toBe('2014-03-10'); // stored, unchanged
+    const sinFecha = await adminContext.request.get(`/api/admin/deportistas/${athleteIds[WITHOUT_BIRTH_DATE - 1]}`);
+    expect(((await sinFecha.json()) as { fechaNacimiento: string | null }).fechaNacimiento).toBeNull();
   });
 
   test('responsive: no horizontal overflow at 360 px, bottom navigation works and never covers the logout button', async () => {

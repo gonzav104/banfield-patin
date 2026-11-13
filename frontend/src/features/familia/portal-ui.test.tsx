@@ -22,9 +22,9 @@ function addAthletes(count: number, familyId = 'familia-1') {
     const athlete = backend.addAthlete({
       nombre: `Atleta ${String(i).padStart(2, '0')}`,
       apellido: 'Prueba',
-      fechaNacimiento: '2015-06-15', // still sent by the server (transitional); the client must never show it
       edad: 11,
       activo: true,
+      extra: { fechaNacimiento: '2015-06-15' }, // an over-sharing server: the client must never show or keep it
     });
     backend.linkAthlete(familyId, athlete.id);
   }
@@ -164,7 +164,7 @@ describe('athletes list (/familia/deportistas)', () => {
   it('shows name, the age the SERVER sent and the status in the backend order, with the status as text', async () => {
     // The birth dates are decoys that would give other ages if the client calculated anything: it must not.
     const mk = (nombre: string, apellido: string, edad: number | null, activo: boolean) =>
-      backend.linkAthlete('familia-1', backend.addAthlete({ nombre, apellido, fechaNacimiento: edad === null ? '2015-01-01' : '1990-01-01', edad, activo }).id);
+      backend.linkAthlete('familia-1', backend.addAthlete({ nombre, apellido, edad, activo, extra: { fechaNacimiento: edad === null ? '2015-01-01' : '1990-01-01' } }).id);
     mk('Bruno', 'Zárate', 9, true);
     mk('Ana', 'Álvarez', null, false);
     renderApp('/familia/deportistas');
@@ -191,7 +191,7 @@ describe('athletes list (/familia/deportistas)', () => {
     expect(screen.getByText('Edad no informada')).toBeInTheDocument();
   });
 
-  it('never renders the exact birth date, on the list or the dashboard, although the server still sends it', async () => {
+  it('never renders the exact birth date, on the list or the dashboard, even if a server sent it', async () => {
     addAthletes(4);
     const user = userEvent.setup();
     renderApp('/familia');
@@ -235,9 +235,8 @@ describe('athletes list (/familia/deportistas)', () => {
     const athlete = backend.addAthlete({
       nombre: 'Ana',
       apellido: 'Paz',
-      fechaNacimiento: '2016-05-01',
       activo: true,
-      extra: { dni: '98765432', cuil: '27-98765432-1', domicilio: 'Calle Falsa 123', escuelaId: 'escuela-1', familiaId: 'familia-1', telefono: '11-4444-0000' },
+      extra: { fechaNacimiento: '2016-05-01', dni: '98765432', cuil: '27-98765432-1', domicilio: 'Calle Falsa 123', escuelaId: 'escuela-1', familiaId: 'familia-1', telefono: '11-4444-0000' },
     });
     backend.linkAthlete('familia-1', athlete.id);
     renderApp('/familia/deportistas');

@@ -47,10 +47,10 @@ describe('family portal API (mock backend)', () => {
     const athlete = backend.addAthlete({
       nombre: 'Ana',
       apellido: 'Paz',
-      fechaNacimiento: '2016-05-01',
       edad: 9,
       activo: true,
-      extra: { dni: '12345678', domicilio: 'Calle Falsa 123' },
+      // An over-sharing server (old, misconfigured): the client must still drop all of it, birth date included.
+      extra: { fechaNacimiento: '2016-05-01', dni: '12345678', domicilio: 'Calle Falsa 123' },
     });
     backend.linkAthlete('familia-1', athlete.id);
 
@@ -58,24 +58,26 @@ describe('family portal API (mock backend)', () => {
 
     const url = new URL(portalRequests().at(-1)!.url, 'http://fake.local');
     expect([...url.searchParams.keys()].sort()).toEqual(['page', 'size']);
-    // The age comes from the server as is. The birth date the server still sends (transitional) is dropped by validation.
+    // The age comes from the server as is; anything else (a birth date a server should not send) is dropped by validation.
     expect(page.contenido[0]).toEqual({ id: athlete.id, nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true });
     expect(JSON.stringify(page)).not.toMatch(/12345678|Calle Falsa|2016-05-01|fechaNacimiento/); // an over-sharing server leaks nothing
   });
 
-  it('proves the server still sends the birth date (transitional) and the client never keeps it', async () => {
-    const athlete = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', fechaNacimiento: '2016-05-01', edad: 9, activo: true });
-    backend.linkAthlete('familia-1', athlete.id);
+  it('the real list no longer sends the birth date, and if a server did, the client would not keep it', async () => {
+    const normal = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true });
+    const sobreComparte = backend.addAthlete({ nombre: 'Beto', apellido: 'Paz', edad: 7, activo: true, extra: { fechaNacimiento: '2018-02-02' } });
+    backend.linkAthlete('familia-1', normal.id).linkAthlete('familia-1', sobreComparte.id);
 
     const raw = (await http.get<{ contenido: Record<string, unknown>[] }>('/familia/deportistas?page=0&size=10')).data;
     const parsed = await fetchAthletes({ page: 0, size: 10 });
 
-    expect(raw.contenido[0]).toMatchObject({ fechaNacimiento: '2016-05-01', edad: 9 }); // the mock mirrors the real contract (U2)
-    expect(Object.keys(parsed.contenido[0]!).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']);
+    expect(Object.keys(raw.contenido[0]!).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']); // the contract after U4
+    expect(raw.contenido[1]).toHaveProperty('fechaNacimiento'); // a misbehaving server
+    for (const athlete of parsed.contenido) expect(Object.keys(athlete).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']);
   });
 
   it('keeps a null age as null and tolerates a server that does not send the age yet', async () => {
-    const sinFecha = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', fechaNacimiento: null, edad: null, activo: true });
+    const sinFecha = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: null, activo: true });
     backend.linkAthlete('familia-1', sinFecha.id);
     expect((await fetchAthletes({ page: 0, size: 10 })).contenido[0]?.edad).toBeNull();
 
@@ -187,8 +189,8 @@ describe('family portal hooks (mock backend)', () => {
     await waitFor(() => expect(result.current.data?.contenido.map((a) => a.nombre)).toEqual(['Ajena']));
   });
 
-  it('the query cache never holds the birth date, even though the server sends it', async () => {
-    backend.linkAthlete('familia-1', backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', fechaNacimiento: '2016-05-01', edad: 9, activo: true }).id);
+  it('the query cache never holds a birth date, even if a server sent it', async () => {
+    backend.linkAthlete('familia-1', backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true, extra: { fechaNacimiento: '2016-05-01' } }).id);
     const client = createQueryClient();
     const identity = { userId: 'u-family', familyId: 'familia-1' };
     const { result } = renderHook(() => useAthletes(identity, 0, 10), { wrapper: wrapperFor(client) });

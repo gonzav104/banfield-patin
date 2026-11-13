@@ -117,8 +117,8 @@ class FamiliaPortalServiceTest {
 
 		Pagina<DeportistaDeFamilia> r = servicio.deportistas(familia, pagina);
 
-		// Misma fila de antes, ahora con la edad calculada por el servidor (hoy = 2026-11-13 en Buenos Aires: nacio el 2/1/2015, tiene 11).
-		assertThat(r.contenido()).containsExactly(new DeportistaDeFamilia(id, "Lola", "Gomez", LocalDate.of(2015, 1, 2), 11, false));
+		// La fila lleva la edad calculada por el servidor y ya no la fecha de nacimiento (hoy = 2026-11-13 en Buenos Aires: nacio el 2/1/2015, tiene 11).
+		assertThat(r.contenido()).containsExactly(new DeportistaDeFamilia(id, "Lola", "Gomez", 11, false));
 		assertThat(r.contenido().get(0).activo()).as("el inactivo se ve con activo=false").isFalse();
 		assertThat(r.pagina()).isEqualTo(2);
 		assertThat(r.tamanio()).isEqualTo(5);
@@ -159,8 +159,6 @@ class FamiliaPortalServiceTest {
 		var filas = servicio.deportistas(familia, pagina).contenido();
 
 		assertThat(filas).extracting(DeportistaDeFamilia::edad).containsExactly(10, null, null);
-		assertThat(filas).extracting(DeportistaDeFamilia::fechaNacimiento)
-				.containsExactly(LocalDate.of(2016, 2, 29), null, LocalDate.of(2027, 1, 1));
 		assertThat(lecturasDelReloj[0]).as("una sola fecha de referencia para toda la pagina").isEqualTo(1);
 	}
 
