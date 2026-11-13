@@ -42,3 +42,32 @@ export const athletePageSchema = z.object({
   totalElementos: z.number(),
 });
 export type AthletePage = z.infer<typeof athletePageSchema>;
+
+/**
+ * Minimal athlete sheet (`GET /api/familia/deportistas/{id}/ficha`): a CLOSED list of fields. The server never sends the
+ * DNI, CUIL, birth date, address or contact data here, and this allow-list drops anything else a server might add.
+ * `activo` is the state in the SCHOOL; `estadoDeportivo` is the state in the season: two different planes.
+ */
+export const sportsStatusSchema = z.enum(['ACTIVO', 'INACTIVO', 'SUSPENDIDO']);
+export type SportsStatus = z.infer<typeof sportsStatusSchema>;
+
+/** Free text with no official catalogue; lengths mirror the database columns (80, 40, 80 and 30). */
+export const currentSeasonSchema = z.object({
+  anio: z.number().int().min(2020).max(2100),
+  categoria: z.string().max(80).nullable(),
+  rama: z.string().max(40).nullable(),
+  divisional: z.string().max(80).nullable(),
+  numeroCorredor: z.string().max(30).nullable(),
+  estadoDeportivo: sportsStatusSchema,
+});
+export type CurrentSeason = z.infer<typeof currentSeasonSchema>;
+
+/** `edad` and `temporadaVigente` are null when the server has no reliable birth date / no data for the current season. */
+export const athleteFichaSchema = z.object({
+  nombre: z.string(),
+  apellido: z.string(),
+  edad: z.number().int().nonnegative().nullable(),
+  activo: z.boolean(),
+  temporadaVigente: currentSeasonSchema.nullable(),
+});
+export type AthleteFicha = z.infer<typeof athleteFichaSchema>;
