@@ -29,6 +29,7 @@ export const newAdmin: FakeUser = { ...admin, id: 'u-admin-2', email: 'nuevo@exa
 export function createBackend(): FakeBackend {
   const backend = new FakeBackend();
   backend.addUser({ ...family }).addUser({ ...admin }).addUser({ ...newAdmin });
+  backend.addPortalFamily('familia-1', 'Familia Gómez'); // the default family of FAMILIA fixtures, with no athletes
   backend.install();
   return backend;
 }
