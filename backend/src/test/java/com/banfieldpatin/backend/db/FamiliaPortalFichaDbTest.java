@@ -19,6 +19,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalFichaService;
+import com.banfieldpatin.backend.familias.portal.FamiliaPortalService;
 import com.banfieldpatin.backend.familias.portal.dto.FichaDeportistaDeFamilia;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
@@ -43,6 +44,8 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 
 	@Autowired
 	FamiliaPortalFichaService ficha;
+	@Autowired
+	FamiliaPortalService listado;
 	@Autowired
 	DataSource dataSource;
 
@@ -121,6 +124,34 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 		assertThat(repositorio.fichaBaseDelPortal(familia, escuelaB, deportista)).as("otra escuela").isEmpty();
 		datos.estadoVinculo(vinculo, "REVOCADO", adminId);
 		assertThat(repositorio.fichaBaseDelPortal(familia, escuelaA, deportista)).as("vinculo revocado").isEmpty();
+	}
+
+	// ---------- una sola regla de edad en la ficha y el listado ----------
+
+	@Test
+	void laFichaYElListadoCalculanLaMismaEdadParaLasMismasFechasIncluidosLosBordes() {
+		java.time.LocalDate hoy = java.time.LocalDate.now(com.banfieldpatin.backend.familias.portal.EdadDeportista.ZONA_ESCUELA);
+		java.time.LocalDate[] fechas = { java.time.LocalDate.of(2016, 2, 29), java.time.LocalDate.of(2000, 2, 29),
+				java.time.LocalDate.of(2012, 2, 28), java.time.LocalDate.of(2012, 3, 1), hoy, hoy.minusDays(1),
+				hoy.plusDays(1), hoy.minusYears(120), hoy.minusYears(120).minusDays(1), hoy.minusYears(30).plusDays(1) };
+		java.util.List<UUID> ids = new java.util.ArrayList<>();
+		int dni = 33100000;
+		for (java.time.LocalDate fecha : fechas) {
+			UUID d = datos.deportista(escuelaA, String.valueOf(dni++), "Edad", "Zeta" + dni, true);
+			datos.vinculo(escuelaA, familia, d, "ACTIVO", false, adminId);
+			jdbc.sql("UPDATE gestion_patin.deportista SET fecha_nacimiento = :f WHERE id = :d").param("f", fecha).param("d", d)
+					.update();
+			ids.add(d);
+		}
+
+		var filas = listado.deportistas(usuario, org.springframework.data.domain.PageRequest.of(0, 100)).contenido();
+
+		for (int i = 0; i < ids.size(); i++) {
+			UUID id = ids.get(i);
+			var fila = filas.stream().filter(f -> f.id().equals(id)).findFirst().orElseThrow();
+			assertThat(fila.edad()).as("fecha %s", fechas[i]).isEqualTo(ficha.ficha(usuario, id).edad());
+			assertThat(fila.fechaNacimiento()).isEqualTo(fechas[i]);
+		}
 	}
 
 	// ---------- cambios concurrentes ----------

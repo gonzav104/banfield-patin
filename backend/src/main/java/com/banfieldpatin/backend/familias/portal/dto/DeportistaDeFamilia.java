@@ -5,10 +5,14 @@ import java.util.UUID;
 
 /**
  * Fila del listado de deportistas de la FAMILIA. {@code activo} se expone a proposito: un deportista inactivo con vinculo
- * ACTIVO sigue visible (la inactividad deportiva no es una revocacion de acceso). Sin escuelaId, esPrincipal, datos del
- * vinculo ni DNI. Se construye con {@code select new} (una sola consulta con el alcance de la familia).
+ * ACTIVO sigue visible (la inactividad deportiva no es una revocacion de acceso). {@code edad} la calcula el servidor con la
+ * regla unica {@code EdadDeportista} (la misma de la ficha); es {@code null} sin fecha de nacimiento fiable.
+ * {@code fechaNacimiento} se mantiene TEMPORALMENTE solo por compatibilidad con el cliente actual y se retira cuando el
+ * cliente lea {@code edad}. Sin escuelaId, esPrincipal, datos del vinculo ni DNI. Se arma a partir de la proyeccion interna
+ * {@link DatosListadoDeFamilia} (una sola consulta con el alcance de la familia).
  */
-public record DeportistaDeFamilia(UUID id, String nombre, String apellido, LocalDate fechaNacimiento, boolean activo) {
+public record DeportistaDeFamilia(UUID id, String nombre, String apellido, LocalDate fechaNacimiento, Integer edad,
+		boolean activo) {
 
 	/** Los datos personales no se imprimen nunca (logs, excepciones). */
 	@Override

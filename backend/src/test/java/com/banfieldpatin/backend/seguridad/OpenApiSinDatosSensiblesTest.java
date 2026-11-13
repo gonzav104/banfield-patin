@@ -97,7 +97,13 @@ class OpenApiSinDatosSensiblesTest extends BaseOpenApiWebMvc {
 					"esPrincipal", "autorizadoPor", "autorizadoEn", "vinculoId", "creadoEn", "usuarioId");
 		}
 		assertThat(esquemas.path("TutorDeFamilia").path("properties").propertyNames()).doesNotContain("dni", "activo");
-		assertThat(esquemas.path("DeportistaDeFamilia").path("properties").propertyNames()).contains("activo");
+		// El listado de FAMILIA expone la edad calculada por el servidor; la fecha de nacimiento se mantiene TEMPORALMENTE por
+		// compatibilidad con el cliente actual y se retira en un paso posterior (la prueba pasara a exigir su ausencia).
+		assertThat(esquemas.path("DeportistaDeFamilia").path("properties").propertyNames()).contains("activo", "edad")
+				.doesNotContain("dni", "cuil", "domicilio");
+		// La ficha minima de FAMILIA: lista cerrada, sin DNI, CUIL, fecha de nacimiento ni datos de contacto.
+		assertThat(esquemas.path("FichaDeportistaDeFamilia").path("properties").propertyNames())
+				.containsExactlyInAnyOrder("nombre", "apellido", "edad", "activo", "temporadaVigente");
 		// DNI (O8): los listados y los tutores anidados exponen solo el enmascarado; los detalles autorizados, el completo.
 		assertThat(esquemas.path("DeportistaResumen").path("properties").propertyNames()).contains("dniEnmascarado")
 				.doesNotContain("dni");

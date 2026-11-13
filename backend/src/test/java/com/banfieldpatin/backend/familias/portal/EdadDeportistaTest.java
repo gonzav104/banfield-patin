@@ -69,6 +69,14 @@ class EdadDeportistaTest {
 		assertThat(EdadDeportista.calcular(nacimiento, reloj("2026-03-01T03:00:00Z"))).isEqualTo(10);
 	}
 
+	@Test
+	void laFechaDeReferenciaEsLaDeHoyEnBuenosAires() {
+		assertThat(EdadDeportista.hoy(reloj("2026-11-13T02:59:59Z"))).isEqualTo(LocalDate.of(2026, 11, 12));
+		assertThat(EdadDeportista.hoy(reloj("2026-11-13T03:00:00Z"))).isEqualTo(LocalDate.of(2026, 11, 13));
+		assertThat(EdadDeportista.calcular(LocalDate.of(2018, 11, 13), reloj("2026-11-13T15:00:00Z")))
+				.isEqualTo(EdadDeportista.calcular(LocalDate.of(2018, 11, 13), EdadDeportista.hoy(reloj("2026-11-13T15:00:00Z"))));
+	}
+
 	private static Clock reloj(String instante) {
 		return Clock.fixed(Instant.parse(instante), ZoneOffset.UTC);
 	}

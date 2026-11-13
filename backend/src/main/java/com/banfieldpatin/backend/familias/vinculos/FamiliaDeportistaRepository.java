@@ -14,7 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.banfieldpatin.backend.familias.portal.dto.DatosBaseDeFicha;
-import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia;
+import com.banfieldpatin.backend.familias.portal.dto.DatosListadoDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
 import com.banfieldpatin.backend.familias.portal.dto.TemporadaDeFamilia;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
@@ -154,12 +154,12 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	String ALCANCE_FAMILIA = ALCANCE_FAMILIA_JOINS + ALCANCE_FAMILIA_FILTRO;
 
 	@Query(value = """
-			select new com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia(
+			select new com.banfieldpatin.backend.familias.portal.dto.DatosListadoDeFamilia(
 			    d.id, d.nombre, d.apellido, d.fechaNacimiento, d.activo)
 			""" + ALCANCE_FAMILIA + """
 			order by lower(d.apellido), lower(d.nombre), d.id
 			""", countQuery = "select count(fd)" + ALCANCE_FAMILIA)
-	Page<DeportistaDeFamilia> deportistasDelPortal(@Param("familiaId") UUID familiaId,
+	Page<DatosListadoDeFamilia> deportistasDelPortal(@Param("familiaId") UUID familiaId,
 			@Param("escuelaId") UUID escuelaId, Pageable pageable);
 
 	@Query("""

@@ -8,7 +8,9 @@ import java.time.ZoneId;
 
 /**
  * Edad de un deportista para las respuestas del portal de FAMILIA: la fecha de nacimiento exacta no sale del servidor, solo
- * los anios cumplidos. UNICA regla de edad del portal (la usan la ficha y el listado):
+ * los anios cumplidos. UNICA regla de edad del portal, compartida por la ficha ({@link FamiliaPortalFichaService}) y el
+ * listado ({@link FamiliaPortalService#deportistas}): ambos la aplican con la misma fecha de referencia ({@link #hoy}), asi que
+ * el mismo deportista tiene la misma edad en las dos respuestas:
  * <ul>
  * <li>"hoy" es la fecha calendario en {@link #ZONA_ESCUELA}: el {@link Clock} del sistema es UTC y, sin zona, la edad
  * cambiaria unas horas antes del cumpleanios real;</li>
@@ -27,9 +29,14 @@ public final class EdadDeportista {
 	private EdadDeportista() {
 	}
 
+	/** La fecha de hoy segun el reloj dado, en la zona de la escuela: unica fecha de referencia de las respuestas del portal. */
+	public static LocalDate hoy(Clock reloj) {
+		return LocalDate.now(reloj.withZone(ZONA_ESCUELA));
+	}
+
 	/** Edad al dia de hoy segun el reloj dado, en la zona de la escuela. */
 	public static Integer calcular(LocalDate nacimiento, Clock reloj) {
-		return calcular(nacimiento, LocalDate.now(reloj.withZone(ZONA_ESCUELA)));
+		return calcular(nacimiento, hoy(reloj));
 	}
 
 	/** Anios cumplidos de {@code nacimiento} a la fecha {@code hoy}; {@code null} sin dato fiable. */

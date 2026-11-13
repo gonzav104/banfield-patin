@@ -10,7 +10,11 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +31,7 @@ import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.portal.dto.DatosListadoDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
 import com.banfieldpatin.backend.familias.portal.dto.MiFamiliaRespuesta;
@@ -56,7 +61,9 @@ class FamiliaPortalServiceTest {
 		familias = mock(FamiliaRepository.class);
 		tutores = mock(TutorRepository.class);
 		vinculos = mock(FamiliaDeportistaRepository.class);
-		servicio = new FamiliaPortalService(familias, tutores, vinculos);
+		// 2026-11-13 en Buenos Aires.
+		servicio = new FamiliaPortalService(familias, tutores, vinculos,
+				Clock.fixed(Instant.parse("2026-11-13T15:00:00Z"), ZoneOffset.UTC));
 	}
 
 	private static void assertError(Throwable e, HttpStatus estado, String codigo, String mensaje) {
@@ -104,12 +111,14 @@ class FamiliaPortalServiceTest {
 	@Test
 	void elListadoUsaLaFamiliaYLaEscuelaDelUsuarioYLaPaginaPedida() {
 		var pagina = PageRequest.of(2, 5);
-		var fila = new DeportistaDeFamilia(UUID.randomUUID(), "Lola", "Gomez", LocalDate.of(2015, 1, 2), false);
+		UUID id = UUID.randomUUID();
+		var fila = new DatosListadoDeFamilia(id, "Lola", "Gomez", LocalDate.of(2015, 1, 2), false);
 		when(vinculos.deportistasDelPortal(familiaId, escuelaId, pagina)).thenReturn(new PageImpl<>(List.of(fila), pagina, 11));
 
 		Pagina<DeportistaDeFamilia> r = servicio.deportistas(familia, pagina);
 
-		assertThat(r.contenido()).containsExactly(fila);
+		// Misma fila de antes, ahora con la edad calculada por el servidor (hoy = 2026-11-13 en Buenos Aires: nacio el 2/1/2015, tiene 11).
+		assertThat(r.contenido()).containsExactly(new DeportistaDeFamilia(id, "Lola", "Gomez", LocalDate.of(2015, 1, 2), 11, false));
 		assertThat(r.contenido().get(0).activo()).as("el inactivo se ve con activo=false").isFalse();
 		assertThat(r.pagina()).isEqualTo(2);
 		assertThat(r.tamanio()).isEqualTo(5);
@@ -119,9 +128,46 @@ class FamiliaPortalServiceTest {
 	}
 
 	@Test
+	void laEdadDeCadaFilaUsaLaReglaUnicaYUnaSolaFechaDeReferenciaPorPagina() {
+		var pagina = PageRequest.of(0, 20);
+		var conFecha = new DatosListadoDeFamilia(UUID.randomUUID(), "Ana", "Paz", LocalDate.of(2016, 2, 29), true);
+		var sinFecha = new DatosListadoDeFamilia(UUID.randomUUID(), "Beto", "Paz", null, true);
+		var futura = new DatosListadoDeFamilia(UUID.randomUUID(), "Cata", "Paz", LocalDate.of(2027, 1, 1), true);
+		when(vinculos.deportistasDelPortal(familiaId, escuelaId, pagina))
+				.thenReturn(new PageImpl<>(List.of(conFecha, sinFecha, futura), pagina, 3));
+		int[] lecturasDelReloj = { 0 };
+		Clock contador = new Clock() {
+			@Override
+			public ZoneId getZone() {
+				return ZoneOffset.UTC;
+			}
+
+			/** {@code EdadDeportista.hoy} pide la fecha de referencia con este metodo: se cuenta cada vez que se la pide. */
+			@Override
+			public Clock withZone(ZoneId zona) {
+				lecturasDelReloj[0]++;
+				return Clock.fixed(Instant.parse("2026-11-13T15:00:00Z"), zona);
+			}
+
+			@Override
+			public Instant instant() {
+				return Instant.parse("2026-11-13T15:00:00Z");
+			}
+		};
+		servicio = new FamiliaPortalService(familias, tutores, vinculos, contador);
+
+		var filas = servicio.deportistas(familia, pagina).contenido();
+
+		assertThat(filas).extracting(DeportistaDeFamilia::edad).containsExactly(10, null, null);
+		assertThat(filas).extracting(DeportistaDeFamilia::fechaNacimiento)
+				.containsExactly(LocalDate.of(2016, 2, 29), null, LocalDate.of(2027, 1, 1));
+		assertThat(lecturasDelReloj[0]).as("una sola fecha de referencia para toda la pagina").isEqualTo(1);
+	}
+
+	@Test
 	void unListadoSinVinculosActivosEsUnaPaginaVaciaNuncaUnError() {
 		var pagina = PageRequest.of(0, 20);
-		Page<DeportistaDeFamilia> vacia = new PageImpl<>(List.of(), pagina, 0);
+		Page<DatosListadoDeFamilia> vacia = new PageImpl<>(List.of(), pagina, 0);
 		when(vinculos.deportistasDelPortal(familiaId, escuelaId, pagina)).thenReturn(vacia);
 
 		Pagina<DeportistaDeFamilia> r = servicio.deportistas(familia, pagina);
@@ -205,7 +251,7 @@ class FamiliaPortalServiceTest {
 	void elServicioNoTieneDependenciaDeAuditoriaNiMetodosQueEscriban() {
 		assertThat(FamiliaPortalService.class.getDeclaredConstructors()).hasSize(1);
 		assertThat(FamiliaPortalService.class.getDeclaredConstructors()[0].getParameterTypes())
-				.containsExactly(FamiliaRepository.class, TutorRepository.class, FamiliaDeportistaRepository.class);
+				.containsExactly(FamiliaRepository.class, TutorRepository.class, FamiliaDeportistaRepository.class, Clock.class);
 		for (Method metodo : FamiliaPortalService.class.getDeclaredMethods()) {
 			if (metodo.isSynthetic()) {
 				continue;
