@@ -85,6 +85,7 @@ export class FakeBackend {
   private session: { userId: string; pending: boolean } | null = null;
   private csrfToken: string | null = null;
   private overrides: { method: string; url: string; value: Override; once: boolean }[] = [];
+  private holds: { method: string; url: string; deliver?: () => void }[] = [];
   private enrolledInFlight = new Set<string>();
   private families: FakeFamily[] = [];
   private invitations: FakeInvitation[] = [];
@@ -344,6 +345,17 @@ export class FakeBackend {
 
   clearOverrides(): void {
     this.overrides = [];
+    this.holds = [];
+  }
+
+  /**
+   * Holds the NEXT matching request: the server answers as of now, but the client only receives the response when
+   * `release()` is called. Used to reproduce late responses that arrive after the identity changed.
+   */
+  hold(method: 'get' | 'post', url: string): { release: () => void } {
+    const entry: { method: string; url: string; deliver?: () => void } = { method, url };
+    this.holds.push(entry);
+    return { release: () => entry.deliver?.() };
   }
 
   writes(): LoggedRequest[] {
@@ -375,7 +387,17 @@ export class FakeBackend {
       return this.respond(config, override.value.status, override.value.body);
     }
 
+    // The answer is computed NOW (with the identity and data of this moment); a held request only delays its delivery.
     const result = this.route(method, url, body, csrfHeader);
+    const holdIndex = this.holds.findIndex((h) => h.method === method && h.url === url);
+    if (holdIndex >= 0) {
+      const [hold] = this.holds.splice(holdIndex, 1);
+      return new Promise((resolve, reject) => {
+        hold!.deliver = () => {
+          void this.respond(config, result.status, result.body).then(resolve, reject);
+        };
+      });
+    }
     return this.respond(config, result.status, result.body);
   };
 

@@ -1,31 +1,35 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { fetchAthletes, fetchMyFamily } from './api';
+import { identityKey, type FamilyIdentity } from './identity';
 
 /**
- * Query keys carry the family id, so two identities in the same browser can never share a cache entry even if a
- * clear were missed (the session code also drops every private query when the identity changes).
+ * Query keys carry the identity (user + family). Besides that, the session code drops every private query when
+ * /api/auth/me reports a different identity, so nothing from the previous one is reused even by a still-mounted screen.
  */
 export const familyKeys = {
-  myFamily: (familyId: string) => ['familia', familyId, 'mi-familia'] as const,
-  athletes: (familyId: string, page: number, size: number) => ['familia', familyId, 'deportistas', { page, size }] as const,
+  myFamily: (identity: FamilyIdentity) => ['familia', identityKey(identity), 'mi-familia'] as const,
+  athletes: (identity: FamilyIdentity, page: number, size: number) =>
+    ['familia', identityKey(identity), 'deportistas', { page, size }] as const,
 };
 
-/** `familyId` null/undefined = the account has no family: nothing is requested. */
-export function useMyFamily(familyId: string | null | undefined) {
+export function useMyFamily(identity: FamilyIdentity) {
   return useQuery({
-    queryKey: familyKeys.myFamily(familyId ?? 'sin-familia'),
+    queryKey: familyKeys.myFamily(identity),
     queryFn: fetchMyFamily,
-    enabled: !!familyId,
+    enabled: !!identity.familyId,
     staleTime: 60_000,
   });
 }
 
-export function useAthletes(familyId: string | null | undefined, page: number, size: number) {
+export function useAthletes(identity: FamilyIdentity, page: number, size: number) {
+  const key = familyKeys.athletes(identity, page, size);
   return useQuery({
-    queryKey: familyKeys.athletes(familyId ?? 'sin-familia', page, size),
+    queryKey: key,
     queryFn: () => fetchAthletes({ page, size }),
-    enabled: !!familyId,
+    enabled: !!identity.familyId,
     staleTime: 60_000,
-    placeholderData: keepPreviousData,
+    // Paging keeps the previous page on screen while the next loads, but ONLY within the same identity:
+    // a placeholder from another user or family would show their athletes for a moment.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === key[1] ? previous : undefined),
   });
 }

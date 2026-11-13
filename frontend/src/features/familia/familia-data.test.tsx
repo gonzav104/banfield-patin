@@ -98,8 +98,9 @@ describe('family error copy', () => {
 describe('family portal hooks (mock backend)', () => {
   it('requests nothing for an account without a family', async () => {
     const client = createQueryClient();
-    const mine = renderHook(() => useMyFamily(null), { wrapper: wrapperFor(client) });
-    const athletes = renderHook(() => useAthletes(undefined, 0, 10), { wrapper: wrapperFor(client) });
+    const noFamily = { userId: 'u-nofam', familyId: null };
+    const mine = renderHook(() => useMyFamily(noFamily), { wrapper: wrapperFor(client) });
+    const athletes = renderHook(() => useAthletes(noFamily, 0, 10), { wrapper: wrapperFor(client) });
 
     await waitFor(() => expect(mine.result.current.fetchStatus).toBe('idle'));
     expect(athletes.result.current.fetchStatus).toBe('idle');
@@ -114,19 +115,62 @@ describe('family portal hooks (mock backend)', () => {
     backend.linkAthlete('familia-1', own.id);
     backend.linkAthlete('familia-2', other.id);
     const client = createQueryClient();
+    const idA = { userId: 'u-family', familyId: 'familia-1' };
+    const idB = { userId: 'u-b', familyId: 'familia-2' };
 
-    const first = renderHook(() => useAthletes('familia-1', 0, 10), { wrapper: wrapperFor(client) });
+    const first = renderHook(() => useAthletes(idA, 0, 10), { wrapper: wrapperFor(client) });
     await waitFor(() => expect(first.result.current.data).toBeDefined());
     expect(first.result.current.data?.contenido.map((a) => a.nombre)).toEqual(['Propia']);
 
     backend.signIn('otra@example.com'); // same browser, another identity
-    const second = renderHook(() => useAthletes('familia-2', 0, 10), { wrapper: wrapperFor(client) });
+    const second = renderHook(() => useAthletes(idB, 0, 10), { wrapper: wrapperFor(client) });
     await waitFor(() => expect(second.result.current.data).toBeDefined());
     expect(second.result.current.data?.contenido.map((a) => a.nombre)).toEqual(['Ajena']);
 
-    expect(familyKeys.athletes('familia-1', 0, 10)).not.toEqual(familyKeys.athletes('familia-2', 0, 10));
-    const cached = (id: string) => client.getQueryData<{ contenido: { nombre: string }[] }>(familyKeys.athletes(id, 0, 10))?.contenido.map((a) => a.nombre);
-    expect(cached('familia-1')).toEqual(['Propia']);
-    expect(cached('familia-2')).toEqual(['Ajena']);
+    expect(familyKeys.athletes(idA, 0, 10)).not.toEqual(familyKeys.athletes(idB, 0, 10));
+    const cached = (id: typeof idA) => client.getQueryData<{ contenido: { nombre: string }[] }>(familyKeys.athletes(id, 0, 10))?.contenido.map((a) => a.nombre);
+    expect(cached(idA)).toEqual(['Propia']);
+    expect(cached(idB)).toEqual(['Ajena']);
+  });
+
+  it('one mounted observer: a new identity never receives the previous identity data, not even for one render', async () => {
+    backend.addUser({ ...family, id: 'u-b', email: 'otra@example.com', familiaId: 'familia-2' });
+    backend.addPortalFamily('familia-2', 'Familia López');
+    backend.linkAthlete('familia-1', backend.addAthlete({ nombre: 'Propia', apellido: 'Gómez', fechaNacimiento: null, activo: true }).id);
+    backend.linkAthlete('familia-2', backend.addAthlete({ nombre: 'Ajena', apellido: 'López', fechaNacimiento: null, activo: true }).id);
+    const client = createQueryClient();
+    const { result, rerender } = renderHook(({ identity }) => useAthletes(identity, 0, 10), {
+      wrapper: wrapperFor(client),
+      initialProps: { identity: { userId: 'u-family', familyId: 'familia-1' } },
+    });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    backend.signIn('otra@example.com');
+    rerender({ identity: { userId: 'u-b', familyId: 'familia-2' } });
+
+    expect(result.current.data).toBeUndefined(); // the regression: this used to be family A's athletes
+    expect(result.current.isPlaceholderData).toBe(false);
+    await waitFor(() => expect(result.current.data?.contenido.map((a) => a.nombre)).toEqual(['Ajena']));
+  });
+
+  it('two users of the same family do not share an entry either', () => {
+    expect(familyKeys.athletes({ userId: 'u1', familyId: 'f1' }, 0, 10)).not.toEqual(familyKeys.athletes({ userId: 'u2', familyId: 'f1' }, 0, 10));
+  });
+
+  it('within one identity, paging keeps the previous page while the next one loads', async () => {
+    for (let i = 1; i <= 12; i += 1) {
+      backend.linkAthlete('familia-1', backend.addAthlete({ nombre: `Atleta ${String(i).padStart(2, '0')}`, apellido: 'Prueba', fechaNacimiento: null, activo: true }).id);
+    }
+    const client = createQueryClient();
+    const identity = { userId: 'u-family', familyId: 'familia-1' };
+    const { result, rerender } = renderHook(({ page }) => useAthletes(identity, page, 10), { wrapper: wrapperFor(client), initialProps: { page: 0 } });
+    await waitFor(() => expect(result.current.data?.contenido).toHaveLength(10));
+
+    rerender({ page: 1 });
+
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.contenido).toHaveLength(10); // page 1 stays visible while page 2 loads
+    await waitFor(() => expect(result.current.data?.contenido).toHaveLength(2));
   });
 });
+

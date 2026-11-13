@@ -6,14 +6,15 @@ import { useFamilyAccount } from './account';
 import { ATHLETES_PAGE_SIZE, isFamilyUnavailable } from './api';
 import { ErrorBlock, FamilyUnavailableNotice, LoadingBlock, NoAthletesNotice, NoFamilyNotice } from './FamilyStates';
 import { useAthletes, useMyFamily } from './hooks';
+import { identityKey, type FamilyIdentity } from './identity';
 import { ATHLETE_STATE_NOTE } from './messages';
 import { Pagination } from './Pagination';
 
-function AthletesList({ familyId }: { familyId: string }) {
+function AthletesList({ identity }: { identity: FamilyIdentity }) {
   const [page, setPage] = useState(0);
-  const athletes = useAthletes(familyId, page, ATHLETES_PAGE_SIZE);
+  const athletes = useAthletes(identity, page, ATHLETES_PAGE_SIZE);
   // Only needed to tell "the family is not available" from "the family has no athletes".
-  const family = useMyFamily(familyId);
+  const family = useMyFamily(identity);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
 
@@ -80,7 +81,8 @@ export function AthletesPage() {
         <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Deportistas</h1>
         <p className="mt-2 text-muted">Los deportistas vinculados a tu familia.</p>
       </section>
-      {account.familyId ? <AthletesList familyId={account.familyId} /> : <NoFamilyNotice />}
+      {/* key: another identity restarts at page 1 with fresh state */}
+      {account.familyId ? <AthletesList key={identityKey(account.identity)} identity={account.identity} /> : <NoFamilyNotice />}
     </div>
   );
 }

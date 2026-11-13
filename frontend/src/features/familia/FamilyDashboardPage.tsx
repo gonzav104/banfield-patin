@@ -5,9 +5,10 @@ import { useFamilyAccount } from './account';
 import { ATHLETES_PREVIEW_SIZE, isFamilyUnavailable } from './api';
 import { ErrorBlock, FamilyUnavailableNotice, LoadingBlock, NoAthletesNotice, NoFamilyNotice } from './FamilyStates';
 import { useAthletes, useMyFamily } from './hooks';
+import { identityKey, type FamilyIdentity } from './identity';
 
-function FamilyCard({ familyId }: { familyId: string }) {
-  const family = useMyFamily(familyId);
+function FamilyCard({ identity }: { identity: FamilyIdentity }) {
+  const family = useMyFamily(identity);
   if (family.isPending) return <LoadingBlock label="Cargando tu familia…" />;
   if (family.isError) return <ErrorBlock error={family.error} onRetry={() => void family.refetch()} />;
   const { nombreReferencia, tutores } = family.data;
@@ -36,8 +37,8 @@ function FamilyCard({ familyId }: { familyId: string }) {
   );
 }
 
-function AthletesSummary({ familyId }: { familyId: string }) {
-  const athletes = useAthletes(familyId, 0, ATHLETES_PREVIEW_SIZE);
+function AthletesSummary({ identity }: { identity: FamilyIdentity }) {
+  const athletes = useAthletes(identity, 0, ATHLETES_PREVIEW_SIZE);
   if (athletes.isPending) return <LoadingBlock label="Cargando deportistas…" />;
   if (athletes.isError) return <ErrorBlock error={athletes.error} onRetry={() => void athletes.refetch()} />;
   const { contenido, totalElementos } = athletes.data;
@@ -65,14 +66,14 @@ function AthletesSummary({ familyId }: { familyId: string }) {
   );
 }
 
-function FamilySections({ familyId }: { familyId: string }) {
+function FamilySections({ identity }: { identity: FamilyIdentity }) {
   // Same key as FamilyCard: one request, shared. A 404 here means the family itself is not available.
-  const family = useMyFamily(familyId);
+  const family = useMyFamily(identity);
   if (isFamilyUnavailable(family.error)) return <FamilyUnavailableNotice />;
   return (
     <>
-      <FamilyCard familyId={familyId} />
-      <AthletesSummary familyId={familyId} />
+      <FamilyCard identity={identity} />
+      <AthletesSummary identity={identity} />
     </>
   );
 }
@@ -89,7 +90,8 @@ export function FamilyDashboardPage() {
         <h1 className="mt-1 break-words text-3xl font-extrabold tracking-tight">Hola, {account.user.nombre}</h1>
         <p className="mt-2 text-muted">Acá ves un resumen de tu familia en la escuela.</p>
       </section>
-      {account.familyId ? <FamilySections familyId={account.familyId} /> : <NoFamilyNotice />}
+      {/* key: another identity gets a fresh subtree, never the previous one's state */}
+      {account.familyId ? <FamilySections key={identityKey(account.identity)} identity={account.identity} /> : <NoFamilyNotice />}
     </div>
   );
 }
