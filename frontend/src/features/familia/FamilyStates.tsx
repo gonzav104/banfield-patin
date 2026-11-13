@@ -10,6 +10,8 @@ import {
   NO_ATHLETES_TITLE,
   NO_FAMILY_TEXT,
   NO_FAMILY_TITLE,
+  SHEET_NOT_FOUND_TEXT,
+  SHEET_NOT_FOUND_TITLE,
 } from './messages';
 
 function Notice({ title, children }: { title: string; children: ReactNode }) {
@@ -34,6 +36,11 @@ export function FamilyUnavailableNotice() {
 /** A valid family whose list of linked athletes is empty. */
 export function NoAthletesNotice() {
   return <Notice title={NO_ATHLETES_TITLE}>{NO_ATHLETES_TEXT}</Notice>;
+}
+
+/** One screen for every athlete that is not yours or does not exist: it never says which. */
+export function AthleteNotFoundNotice() {
+  return <Notice title={SHEET_NOT_FOUND_TITLE}>{SHEET_NOT_FOUND_TEXT}</Notice>;
 }
 
 export function LoadingBlock({ label }: { label: string }) {
