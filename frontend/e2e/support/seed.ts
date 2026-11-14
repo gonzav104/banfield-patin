@@ -86,6 +86,16 @@ export class AdminSeed {
     return { familyId: invitation.familia.id, email: user.email, password: user.password, nombre: user.nombre, name };
   }
 
+  /** A family created directly through the admin API (no invitation, no user). `version` is the optimistic revision. */
+  async createFamily(name: string): Promise<{ id: string; version: string }> {
+    return this.post('/api/admin/familias', { nombreReferencia: name }, `create family ${name}`);
+  }
+
+  /** Needs the revision currently stored (FE-05/U1): a brand-new family is "0". */
+  async deactivateFamily(familyId: string, version: string): Promise<void> {
+    await this.post(`/api/admin/familias/${familyId}/desactivar`, { versionEsperada: version }, 'deactivate family');
+  }
+
   async createAthlete(data: { nombre: string; apellido: string; fechaNacimiento?: string }): Promise<{ id: string; dni: string }> {
     const dni = syntheticDni();
     const created = await this.post<{ id: string }>('/api/admin/deportistas', { dni, ...data }, `create athlete ${data.nombre}`);
