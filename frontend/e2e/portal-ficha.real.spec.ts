@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { expect, test, type Browser, type BrowserContext, type Page, type Request } from '@playwright/test';
 import { athleteFichaSchema } from '../src/features/familia/schemas';
 import { dbQuery, hasDisposableDb, updatedRows } from './support/db';
+import { leakPattern } from './support/leak';
 import { AdminSeed, birthDateForAge, dateForms, loginAdminUi, schoolToday, type SeededFamily } from './support/seed';
 
 /**
@@ -60,6 +61,8 @@ const closeContext = async (context: BrowserContext) => {
   await context.close();
 };
 
+/** What identifies family A's complete athlete on a page (see support/leak.ts: a bare `007` also matched B's random suffix). */
+const A_DATA = leakPattern({ athleteName: CASES.complete.name, runnerNumber: '007', category: 'Sub-10', division: 'Primera A', familyName: 'E2E Ficha Familia A' });
 const sheetUrl = (key: CaseKey) => `/familia/deportistas/${ids[key]}`;
 const fichaApi = (id: string) => `/api/familia/deportistas/${id}/ficha`;
 const noHorizontalOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
@@ -465,7 +468,7 @@ test.describe('sessions and identity changes', () => {
       visited.push(page.url());
       await expect(page.getByRole('heading').first()).toBeVisible(); // settled: some screen is on show
       if (page.url().endsWith(sheetUrl('complete'))) await expect(notFoundNotice(page)).toBeVisible();
-      expect(await page.locator('body').innerText(), `history stop ${page.url()}`).not.toMatch(new RegExp(`${CASES.complete.name}|007|Sub-10`));
+      expect(await page.locator('body').innerText(), `history stop ${page.url()}`).not.toMatch(A_DATA);
     }
     // Observed: signing out and in replaces the entries, so the history keeps only the dashboard and A's sheet address is not in it.
     // The walk proves that no stop shows A's data; the address test below proves what B gets when it asks for that sheet.
@@ -478,8 +481,7 @@ test.describe('sessions and identity changes', () => {
     await expect(notFoundNotice(page)).toBeVisible();
     expect(requests.filter((r) => r.url === fichaApi(ids.complete)).map((r) => r.status)).toContain(404);
     const text = await page.locator('body').innerText();
-    expect(text).not.toContain(CASES.complete.name);
-    expect(text).not.toContain('007');
+    expect(text).not.toMatch(A_DATA); // name, runner number row, category, division and family name of A
 
     await page.goto(sheetUrl('foreign')); // B's own athlete does open
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.foreign.name);
