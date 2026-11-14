@@ -18,17 +18,28 @@ const VARIABLE_NAME = /^[a-z][a-z0-9_]*$/;
 // A constant script: the database and the psql variables arrive as positional arguments ("$1", "$@"), never inside the text.
 const PSQL = 'db="$1"; shift; exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$db" "$@"';
 
-/** True when the run is configured with a database container (frontend-e2e.sh sets it). It does not make it safe: see `dbQuery`. */
-export const hasDisposableDb = (): boolean => Boolean(process.env.E2E_DB_CONTAINER);
+/**
+ * The three states of the SQL environment, for the tests that need it:
+ *  - not configured (`E2E_DB_CONTAINER` unset or empty): returns false, and the test skips EXPLICITLY;
+ *  - configured and provably the disposable database: returns true;
+ *  - configured but invalid or unsafe: THROWS (the test fails before doing anything), it never turns into a skip.
+ */
+export function hasDisposableDb(): boolean {
+  if (!process.env.E2E_DB_CONTAINER) return false;
+  disposableContainer();
+  return true;
+}
 
-let verifiedContainer: string | null = null;
+let inspectedContainer: string | null = null;
 
 /** Returns the container only if it is provably the disposable one; throws otherwise (and never touches the database). */
 function disposableContainer(): string {
   const container = process.env.E2E_DB_CONTAINER ?? '';
-  if (verifiedContainer === container && container !== '') return container;
+  if (container === '') throw new Error('E2E SQL unavailable: E2E_DB_CONTAINER is not set.');
   if (!CONTAINER_NAME.test(container)) throw new Error('E2E SQL refused: E2E_DB_CONTAINER is not a container created by frontend-e2e.sh (bp-e2e-postgres-*).');
+  // E2E_DB_NAME only confirms the intent: psql always receives the constant below. It is checked on EVERY call, never cached.
   if (process.env.E2E_DB_NAME !== DISPOSABLE_DATABASE) throw new Error(`E2E SQL refused: E2E_DB_NAME must be exactly "${DISPOSABLE_DATABASE}".`);
+  if (inspectedContainer === container) return container; // only the (slow) label inspection is remembered
   let label = '';
   try {
     label = execFileSync('docker', ['inspect', '--format', `{{index .Config.Labels "${DISPOSABLE_LABEL}"}}`, container], { stdio: 'pipe' }).toString().trim();
@@ -36,7 +47,7 @@ function disposableContainer(): string {
     throw new Error('E2E SQL refused: the container could not be inspected.');
   }
   if (label !== 'true') throw new Error(`E2E SQL refused: the container does not carry the label ${DISPOSABLE_LABEL}=true that frontend-e2e.sh sets.`);
-  verifiedContainer = container;
+  inspectedContainer = container;
   return container;
 }
 
@@ -56,4 +67,13 @@ export function dbQuery(sql: string, variables: Record<string, string> = {}): st
     const stderr = (error as { stderr?: Buffer }).stderr?.toString().trim().split('\n').slice(0, 3).join(' | ') ?? '';
     throw new Error(`E2E SQL failed: ${stderr || 'psql exited with an error'}`);
   }
+}
+
+/**
+ * The number psql reports for an UPDATE: a line that is EXACTLY `UPDATE <n>` (so `UPDATE 10` is 10, never 1), or null if there
+ * is no such line. Callers assert the exact count they seeded.
+ */
+export function updatedRows(output: string): number | null {
+  const line = output.split(/\r?\n/).find((candidate) => /^UPDATE \d+$/.test(candidate));
+  return line === undefined ? null : Number(line.slice('UPDATE '.length));
 }

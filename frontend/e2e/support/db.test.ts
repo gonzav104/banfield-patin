@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dbQuery } from './db';
+import { dbQuery, hasDisposableDb, updatedRows } from './db';
 
 /**
  * The refusals of the SQL helper that need no Docker: every one of them happens BEFORE any container is touched, so none of
@@ -17,7 +17,7 @@ afterEach(() => {
 describe('dbQuery refuses anything that is not the disposable E2E database', () => {
   it('without a configured container', () => {
     delete process.env.E2E_DB_CONTAINER;
-    expect(() => dbQuery('select 1')).toThrow(/E2E SQL refused: E2E_DB_CONTAINER is not a container created by frontend-e2e\.sh/);
+    expect(() => dbQuery('select 1')).toThrow(/E2E SQL unavailable: E2E_DB_CONTAINER is not set/);
   });
 
   it.each(['postgres', 'supabase_db_other_project', 'bp-e2e-postgres', 'bp-e2e-postgres-x; rm -rf /', 'bp-e2e-postgres-x y', '../bp-e2e-postgres-1'])('for the container name %j', (name) => {
@@ -43,5 +43,47 @@ describe('dbQuery refuses anything that is not the disposable E2E database', () 
     process.env.E2E_DB_CONTAINER = 'bp-e2e-postgres-does-not-exist-0000';
     process.env.E2E_DB_NAME = 'bp_e2e';
     expect(() => dbQuery('select 1')).toThrow(/E2E SQL refused: the container could not be inspected/);
+  });
+});
+
+describe('hasDisposableDb: skip only when nothing is configured, fail when the configuration is invalid', () => {
+  it.each([undefined, ''])('is false (an explicit skip) when E2E_DB_CONTAINER is %j', (value) => {
+    if (value === undefined) delete process.env.E2E_DB_CONTAINER;
+    else process.env.E2E_DB_CONTAINER = value;
+    expect(hasDisposableDb()).toBe(false);
+  });
+
+  it.each(['postgres', 'supabase_db_other_project', 'bp-e2e-postgres'])('throws, it does not skip, for the container name %j', (name) => {
+    process.env.E2E_DB_CONTAINER = name;
+    process.env.E2E_DB_NAME = 'bp_e2e';
+    expect(() => hasDisposableDb()).toThrow(/E2E SQL refused/);
+  });
+
+  it.each([undefined, 'postgres', 'bp_e2e_other'])('throws for the database name %j', (name) => {
+    process.env.E2E_DB_CONTAINER = 'bp-e2e-postgres-local-123';
+    if (name === undefined) delete process.env.E2E_DB_NAME;
+    else process.env.E2E_DB_NAME = name;
+    expect(() => hasDisposableDb()).toThrow(/E2E_DB_NAME must be exactly/);
+  });
+
+  it('throws for a well-formed container that cannot be inspected', () => {
+    process.env.E2E_DB_CONTAINER = 'bp-e2e-postgres-does-not-exist-0000';
+    process.env.E2E_DB_NAME = 'bp_e2e';
+    expect(() => hasDisposableDb()).toThrow(/could not be inspected/);
+  });
+});
+
+describe('updatedRows reads the exact row count psql prints', () => {
+  it.each([
+    ['UPDATE 1\n', 1],
+    ['UPDATE 0\n', 0],
+    ['UPDATE 10\n', 10],
+    ['UPDATE 100\r\n', 100],
+    ['xUPDATE 1\n', null],
+    ['UPDATE 1 extra\n', null],
+    ['INSERT 0 1\n', null],
+    ['', null],
+  ])('%j -> %j', (output, rows) => {
+    expect(updatedRows(output)).toBe(rows);
   });
 });

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page, type Request } from '@playwright/test';
 import { athleteFichaSchema } from '../src/features/familia/schemas';
-import { dbQuery, hasDisposableDb } from './support/db';
+import { dbQuery, hasDisposableDb, updatedRows } from './support/db';
 import { AdminSeed, birthDateForAge, dateForms, loginAdminUi, schoolToday, type SeededFamily } from './support/seed';
 
 /**
@@ -273,7 +273,7 @@ test.describe('the cases of the sheet (real data)', () => {
     try {
       // Only the season this file seeded and activated, by id: exactly one row, nothing else of the database.
       const updated = dbQuery("UPDATE gestion_patin.temporada SET activa = false WHERE id = :'season'::uuid AND activa = true", { season: currentSeasonId });
-      expect(updated).toContain('UPDATE 1');
+      expect(updatedRows(updated), `psql said: ${updated.trim()}`).toBe(1); // exactly the seeded season
       await page.goto(sheetUrl('complete'));
       await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
       await expect(section(page, 'Temporada vigente')).toContainText('No hay datos de la temporada vigente para mostrar.');
@@ -440,6 +440,8 @@ test.describe('sessions and identity changes', () => {
 
     await page.getByRole('button', { name: 'Cerrar sesión' }).click();
     await expect(page).toHaveURL(/\/login$/);
+    // The URL changes before the screen does: wait for the login screen to be on show, and only then say nothing of A remains.
+    await expect(page.getByRole('heading', { name: 'Ingresá a tu portal' })).toBeVisible();
     expect(await page.locator('body').innerText()).not.toContain('E2E-Ficha');
     await loginFamilyUi(page, familyB);
     expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name);
@@ -452,9 +454,14 @@ test.describe('sessions and identity changes', () => {
     // The BROWSER HISTORY: walk back through every entry the browser keeps. At each stop, once the screen has settled, nothing of A
     // may be on show; and if A's sheet address is among the entries it must render as «not found» for B.
     const visited: string[] = [];
-    for (let steps = 0; steps < 8; steps += 1) {
+    const MAX_HISTORY_STEPS = 8; // far more entries than this flow can create; reaching the start is asserted below
+    let reachedStart = false;
+    for (let steps = 0; steps < MAX_HISTORY_STEPS; steps += 1) {
       await page.goBack({ waitUntil: 'domcontentloaded' });
-      if (page.url() === 'about:blank') break; // the start of the history: the page the browser opened before any navigation
+      if (page.url() === 'about:blank') {
+        reachedStart = true; // the start of the history: the page the browser opened before any navigation
+        break;
+      }
       visited.push(page.url());
       await expect(page.getByRole('heading').first()).toBeVisible(); // settled: some screen is on show
       if (page.url().endsWith(sheetUrl('complete'))) await expect(notFoundNotice(page)).toBeVisible();
@@ -462,6 +469,7 @@ test.describe('sessions and identity changes', () => {
     }
     // Observed: signing out and in replaces the entries, so the history keeps only the dashboard and A's sheet address is not in it.
     // The walk proves that no stop shows A's data; the address test below proves what B gets when it asks for that sheet.
+    expect(reachedStart, `the whole history was walked (stops: ${visited.join(' , ')})`).toBe(true);
     expect(visited.length, `history stops: ${visited.join(' , ')}`).toBeGreaterThanOrEqual(1);
     expect(requests.filter((r) => r.url === fichaApi(ids.complete) && r.status !== 404)).toEqual([]); // the server never gave B the data of A
 
@@ -479,37 +487,61 @@ test.describe('sessions and identity changes', () => {
     await closeContext(context);
   });
 
-  /** Delays the real answer of one sheet and records what the browser did with it: delivered, or cancelled by the application. */
-  async function slowSheet(page: Page, key: CaseKey, ms: number): Promise<{ outcomes: ('delivered' | 'cancelled')[]; stop: () => Promise<void> }> {
-    const outcomes: ('delivered' | 'cancelled')[] = [];
-    const pattern = `**${fichaApi(ids[key])}`;
+  /**
+   * Delays the real answer of one sheet and records what the BROWSER reports about that request: `finished` (the request completed
+   * and its body was delivered to the page) or `aborted` (the page cancelled it). These are the page's own `requestfinished` and
+   * `requestfailed` events; the delay handler's result proves nothing about the page and is not used. Neither event says whether
+   * the application then READ the answer: that is only visible through what the screen shows.
+   */
+  async function slowSheet(page: Page, key: CaseKey, ms: number): Promise<{ outcomes: ('finished' | 'aborted')[]; stop: () => Promise<void> }> {
+    const outcomes: ('finished' | 'aborted')[] = [];
+    const path = fichaApi(ids[key]);
+    const pattern = `**${path}`;
+    const isSheet = (request: Request) => new URL(request.url()).pathname === path;
+    const onFinished = (request: Request) => {
+      if (isSheet(request)) outcomes.push('finished');
+    };
+    const onFailed = (request: Request) => {
+      if (isSheet(request)) outcomes.push('aborted');
+    };
+    page.on('requestfinished', onFinished);
+    page.on('requestfailed', onFailed);
     await page.route(pattern, async (route) => {
       await new Promise((resolve) => setTimeout(resolve, ms));
-      try {
-        await route.fallback(); // on to the capturing route of the context, which fetches the real answer
-        outcomes.push('delivered');
-      } catch {
-        outcomes.push('cancelled'); // the application aborted the request: the browser never processes that answer
-      }
+      await route.fallback().catch(() => undefined); // on to the capturing route; if the page already cancelled, there is nothing to hand on
     });
-    return { outcomes, stop: () => page.unroute(pattern) };
+    return {
+      outcomes,
+      stop: async () => {
+        page.off('requestfinished', onFinished);
+        page.off('requestfailed', onFailed);
+        await page.unroute(pattern);
+      },
+    };
   }
 
-  test('SIMULATED slow answer (the real server answers late): the late answer is processed, shown on its own sheet only, and never on another route or for another user', async () => {
+  test('SIMULATED slow answer: the late answer is shown on its own sheet; after leaving it, nothing of it reaches another route or user', async () => {
     const { context, page } = await newContext();
     await loginFamilyUi(page, familyA);
+    const report = (scenario: string, outcomes: string[]) => {
+      console.info(`late-answer ${scenario}: the browser reported ${outcomes.join(',')}`); // observed, not forced
+      test.info().annotations.push({ type: 'late-answer', description: `${scenario}: ${outcomes.join(',')}` });
+    };
 
-    // 1) A late answer that is processed: the sheet stays on loading, with nothing private, and then shows its data.
+    // 1) The sheet that stays on screen: loading with nothing private, and then its data once the late answer comes. The browser
+    //    reports the request finished AND the screen shows the data, so here the late answer was really received and used.
     const own = await slowSheet(page, 'complete', 1500);
     await page.goto(sheetUrl('complete'));
     await expect(page.getByText('Cargando la ficha…')).toBeVisible();
     expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
-    expect(own.outcomes).toEqual(['delivered']); // the late answer really arrived and was processed
+    expect(own.outcomes).toEqual(['finished']);
     await own.stop();
 
-    // 2) Leaving a slow sheet for another one: the late answer still ARRIVES and is processed (the outcome is asserted), and the
-    //    screen that is on show by then keeps only its own data.
+    // 2) Leaving a slow sheet for another one. Whether the browser finishes or aborts that request is OBSERVED and reported, not
+    //    forced; the checks wait for the request to end either way and then require that nothing of it is on the screen. Only when it
+    //    ends `finished` has a late answer been through the browser; the application's handling of late answers that arrive after a
+    //    route or identity change is demonstrated by the unit tests (athlete-sheet-ui and ficha-identity), not by this scenario.
     const abandoned = await slowSheet(page, 'complete', 1500);
     await page.goto('/familia/deportistas');
     await page.getByRole('link', { name: new RegExp(CASES.complete.name) }).click();
@@ -517,21 +549,21 @@ test.describe('sessions and identity changes', () => {
     await page.getByRole('link', { name: 'Volver a deportistas' }).click();
     await page.getByRole('link', { name: new RegExp(CASES.suspended.name) }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.suspended.name);
-    await expect.poll(() => abandoned.outcomes.length, { timeout: 5000 }).toBe(1); // the delayed handler has finished
-    expect(abandoned.outcomes).toEqual(['delivered']); // it was not cancelled: the isolation checks below face a real late answer
+    await expect.poll(() => abandoned.outcomes.length, { timeout: 6000 }).toBeGreaterThan(0); // the request has ended, one way or the other
+    report('route change', abandoned.outcomes);
     expect(await page.locator('main').innerText()).not.toContain(CASES.complete.name);
     await expect(row(section(page, `Temporada ${YEAR}`), 'Estado deportivo')).toHaveText('Suspendido');
     await abandoned.stop();
 
-    // 3) Change of user while a sheet of A is loading: what the browser did with that late answer is asserted too, and B never sees A.
+    // 3) Change of user while a sheet of A is loading: same rule, and B never sees A.
     const switching = await slowSheet(page, 'complete', 1500);
     await page.goto(sheetUrl('complete'));
     await expect(page.getByText('Cargando la ficha…')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar sesión' }).click();
     await expect(page).toHaveURL(/\/login$/);
     await loginFamilyUi(page, familyB);
-    await expect.poll(() => switching.outcomes.length, { timeout: 5000 }).toBe(1);
-    expect(switching.outcomes).toEqual(['delivered']);
+    await expect.poll(() => switching.outcomes.length, { timeout: 6000 }).toBeGreaterThan(0);
+    report('user change', switching.outcomes);
     expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name);
     await switching.stop();
     await closeContext(context);
