@@ -138,8 +138,8 @@ npm run test:e2e    # Playwright — contra backend + PostgreSQL REALES
 ```bash
 export E2E_ADMIN_EMAIL=...      # el BOOTSTRAP_ADMIN_EMAIL
 export E2E_ADMIN_PASSWORD=...   # el BOOTSTRAP_ADMIN_PASSWORD
-export E2E_DB_CONTAINER=...     # opcional: contenedor Docker PostgreSQL DESCARTABLE, para forzar el vencimiento por SQL
-export E2E_DB_NAME=...          # opcional: base dentro de ese contenedor (por defecto, su POSTGRES_DB)
+export E2E_DB_CONTAINER=...     # opcional: contenedor PostgreSQL DESCARTABLE (ver la salvaguarda de abajo), para los 2 escenarios que usan SQL
+export E2E_DB_NAME=bp_e2e       # con E2E_DB_CONTAINER: la base debe llamarse exactamente bp_e2e
 npx playwright install chromium # una vez
 npm run test:e2e
 ```
@@ -158,13 +158,31 @@ de FAMILIA/anónimo sobre la API ADMIN. El backend limita por IP las validacione
 esa spec provoca 3, así que **reiniciá el backend (o esperá 15 minutos) entre corridas**.
 `portal-ficha.real.spec.ts` (FE-04, 22 pruebas) siembra, también por la API real de ADMIN, una temporada anterior (con datos distintos, que nunca deben verse) y la
 vigente, y ocho deportistas con un caso cada uno: completo (`007`), suspendido, inactivo, sin edad, sin fila en la temporada vigente, con campos nulos, con vínculo
-revocado y de otra familia. Comprueba: el recorrido listado → ficha → volver (clic, dirección directa, recarga, historial y teclado), cada caso, el contrato real (claves
-exactas; el esquema Zod acepta cada respuesta real y no descarta nada), el mismo 404 byte a byte para ajeno, inexistente y revocado, que un id inválido no llega al servidor,
-401 y 403, sesión vencida (con regreso a la ficha), cambio de familia en el mismo navegador (también con historial y dirección), respuestas lentas y caída **simuladas**
-(`page.route`, rotuladas), 360 y 390 px sin desborde y un barrido final que verifica que **ninguna** respuesta `/api/familia/*` de todo el archivo llevó fecha de nacimiento,
-DNI, CUIL ni domicilio. Una sola prueba usa SQL (sin temporada activa, sobre la base descartable y requiere `E2E_DB_CONTAINER`); se omite si no está definido.
-La edad de las pruebas es exacta (fechas de nacimiento relativas a hoy en la zona de la escuela), sin depender del día en que corren.
-Las capturas quedan en `e2e/artifacts/` (ignorado por Git); la ficha no genera capturas, trazas ni videos.
+revocado y de otra familia. La edad de las pruebas es exacta (fechas de nacimiento relativas a hoy en la zona de la escuela). La ficha no genera capturas, trazas ni videos.
+Las capturas de las demás pruebas quedan en `e2e/artifacts/` (ignorado por Git).
+
+**Qué demuestra cada nivel en FE-04** (para no atribuirle a una prueba lo que solo se infirió):
+
+| Garantía | E2E reales (navegador + Spring + PostgreSQL) | Pruebas unitarias o de integración | Sin verificar |
+| --- | --- | --- | --- |
+| Contrato de la ficha y del listado | Claves exactas de las respuestas HTTP; el esquema Zod acepta cada respuesta real y no descarta nada | `FamiliaPortalFichaHttpDbTest`, `FamiliaPortalListadoEdadHttpDbTest`, esquemas en Vitest | — |
+| Privacidad | Ninguna de las respuestas `/api/familia/*` **que estos E2E observaron** (ficha, listado y resumen de familia, todas leídas y esperadas) trae fecha de nacimiento, DNI, CUIL ni domicilio; tampoco la pantalla ni su HTML | Las mismas garantías en el backend | **El detalle de 15 campos (`GET /api/familia/deportistas/{id}`) sigue existiendo, con DNI, CUIL, fecha y domicilio, y estos E2E no lo prueban ni lo minimizan** (riesgo residual R8) |
+| 404 uniforme | Mismo cuerpo, byte a byte, para ajeno, inexistente y vínculo revocado; la pantalla muestra el mismo aviso; un id inválido no llega al servidor; 401 sin sesión y 403 para ADMIN | Otra escuela y las demás variantes de no acceso, byte a byte, en `FamiliaPortalFichaHttpDbTest` | — |
+| Cambio de familia | B pide la ficha de A y recibe 404; se recorre **todo** el historial del navegador sin datos de A en ninguna parada (cerrar e iniciar sesión reemplaza las entradas, así que la dirección de la ficha de A no queda en el historial); la dirección directa da el mismo resultado | `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` (caché por usuario, familia y deportista) | Un cambio de cookie hecho desde **otra pestaña**: no se probó |
+| Respuesta tardía | La respuesta llega y se procesa: se ve en su propia ficha tras la carga y **no** aparece al cambiar de ruta ni de usuario (se registra que el navegador la entregó) | Las respuestas retenidas y entregadas tarde, con control del orden, en `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` | El orden de llegada exacto de dos respuestas reales concurrentes no es determinista en E2E |
+| Sesión vencida | Vuelve al login sin datos y, al ingresar, a la misma ficha; también ante la siguiente petición | Estados tipados en Vitest | — |
+| ADMIN | Recibe 403 de la API y la pantalla «No tenés permiso…» (se espera esa pantalla antes de afirmar que no hay datos) | Guardas por rol en Vitest | — |
+| Móvil y teclado | 360 y 390 px sin desborde, enlace de regreso ≥ 44 px de alto, foco en el título y orden de lectura | Roles, nombres y foco en `athlete-sheet-ui.test.tsx` | Lector de pantalla real, herramienta automática de accesibilidad y dispositivos reales |
+| Edad | Exacta (9) en la respuesta y en pantalla | `FamiliaPortalFichaDbTest` con reloj fijo (instante que en UTC y en Buenos Aires cae en días distintos; 29/2, 0 y 120 años, futura) | Las pruebas HTTP del backend usan el reloj real y tienen una ventana de milisegundos en el cambio de día |
+
+Los escenarios con `page.route` (respuesta lenta y caída del servidor) están rotulados como **SIMULADOS**: la demora o la caída se inyectan, pero la respuesta es la del servidor real.
+
+**Salvaguarda del SQL de los E2E (`e2e/support/db.ts`):** solo dos escenarios usan SQL, porque la API de ADMIN no puede producir esos estados (invitación vencida y
+escuela sin temporada activa); cada sentencia se limita por id o por nombre sembrado y quien la llama comprueba que cambió exactamente 1 fila (`UPDATE 1`). Antes de ejecutar nada
+**se niega** salvo que: el contenedor se llame `bp-e2e-postgres-*`, la base sea exactamente `bp_e2e` y el contenedor lleve la etiqueta
+`com.banfieldpatin.e2e.disposable=true`, que solo le pone `.github/scripts/frontend-e2e.sh` al crear el suyo. Un contenedor de desarrollo, de otro proyecto o
+configurado a mano se rechaza sin tocar la base (si querés usar uno propio, tenés que crearlo a propósito con esa etiqueta). El SQL viaja por stdin y los valores
+como variables de psql citadas por psql; las credenciales no salen del contenedor. Sin `E2E_DB_CONTAINER`, esas pruebas se omiten.
 
 **Artefactos sin secretos (H-02):** Playwright no guarda trazas, videos ni capturas automáticas (registran cuerpos de
 peticiones y el texto de la página). Las capturas de evidencia enmascaran el QR, el secreto TOTP y los enlaces de
