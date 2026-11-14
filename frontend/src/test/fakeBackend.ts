@@ -33,6 +33,10 @@ export type FakeInvitationStatus = 'PENDIENTE' | 'USADA' | 'REVOCADA' | 'EXPIRAD
 interface FakeFamily {
   id: string;
   nombreReferencia: string;
+  /** Administrative listing data (GET /admin/familias/listado); the legacy search only reads the name. */
+  activa: boolean;
+  cantidadTutores: number;
+  cantidadDeportistasActivos: number;
 }
 
 interface FakeInvitation {
@@ -124,8 +128,15 @@ export class FakeBackend {
     return this;
   }
 
-  addFamily(nombreReferencia: string): FakeFamily {
-    const family = { id: `fam-${++this.counter}`, nombreReferencia };
+  addFamily(nombreReferencia: string, extra: Partial<Omit<FakeFamily, 'id' | 'nombreReferencia'>> = {}): FakeFamily {
+    const family: FakeFamily = {
+      id: `fam-${++this.counter}`,
+      nombreReferencia,
+      activa: true,
+      cantidadTutores: 0,
+      cantidadDeportistasActivos: 0,
+      ...extra,
+    };
     this.families.push(family);
     return family;
   }
@@ -230,6 +241,19 @@ export class FakeBackend {
     if (method === 'get' && path === '/admin/familias') {
       const search = (params.get('busqueda') ?? '').toLowerCase();
       return { status: 200, body: this.page(this.families.filter((f) => f.nombreReferencia.toLowerCase().includes(search)), params) };
+    }
+    if (method === 'get' && path === '/admin/familias/listado') {
+      // Mirrors the real endpoint: estado TODOS|ACTIVOS|INACTIVOS (unknown -> 400), case-insensitive name search
+      // (trimmed, at most 100 characters) and the backend order `lower(nombre), id`.
+      const estado = (params.get('estado') ?? '').trim() || 'TODOS';
+      if (!['TODOS', 'ACTIVOS', 'INACTIVOS'].includes(estado)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      const search = (params.get('busqueda') ?? '').trim().slice(0, 100).toLowerCase();
+      const rows = this.families
+        .filter((f) => (estado === 'TODOS' ? true : estado === 'ACTIVOS' ? f.activa : !f.activa))
+        .filter((f) => f.nombreReferencia.toLowerCase().includes(search))
+        .sort((a, b) => a.nombreReferencia.toLowerCase().localeCompare(b.nombreReferencia.toLowerCase()) || a.id.localeCompare(b.id))
+        .map(({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }) => ({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }));
+      return { status: 200, body: this.page(rows, params) };
     }
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');
