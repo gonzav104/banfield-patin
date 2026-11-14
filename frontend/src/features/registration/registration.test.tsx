@@ -181,7 +181,11 @@ describe('completing the registration (mock backend)', () => {
     const user = await fillRegistration();
     await user.click(screen.getByRole('button', { name: 'Crear mi cuenta' }));
 
-    await user.type(await screen.findByLabelText(/^Correo electrónico/), 'ana@example.com');
+    // Wait for the redirect to the login screen first: the registration form is still on screen until then and has an
+    // e-mail field with the same label, so typing too early went into the wrong form (a race the per-key pauses of
+    // userEvent hid until the machine was busy).
+    expect(await screen.findByText('Tu cuenta fue creada.')).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^Correo electrónico/), 'ana@example.com');
     await user.type(screen.getByLabelText(/^Contraseña/), 'una-clave-larga-1');
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
     expect(await screen.findByRole('heading', { name: 'Hola, Ana' })).toBeInTheDocument();
