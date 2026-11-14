@@ -20,7 +20,9 @@ import org.springframework.test.context.TestPropertySource;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalFichaService;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalService;
+import com.banfieldpatin.backend.familias.FamiliaRepository;
 import com.banfieldpatin.backend.familias.portal.dto.FichaDeportistaDeFamilia;
+import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -45,7 +47,9 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 	@Autowired
 	FamiliaPortalFichaService ficha;
 	@Autowired
-	FamiliaPortalService listado;
+	FamiliaRepository familias;
+	@Autowired
+	TutorRepository tutores;
 	@Autowired
 	DataSource dataSource;
 
@@ -128,28 +132,39 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 
 	// ---------- una sola regla de edad en la ficha y el listado ----------
 
+	/**
+	 * Determinista: los dos servicios se arman con el MISMO reloj fijo (2026-11-13 al mediodia en Buenos Aires) y las fechas
+	 * de nacimiento son absolutas, asi que nada depende del dia en que corra la prueba ni del cambio de dia. Se fija el
+	 * valor esperado de cada caso (no solo que ficha y listado coincidan).
+	 */
 	@Test
-	void laFichaYElListadoCalculanLaMismaEdadParaLasMismasFechasIncluidosLosBordes() {
-		java.time.LocalDate hoy = java.time.LocalDate.now(com.banfieldpatin.backend.familias.portal.EdadDeportista.ZONA_ESCUELA);
+	void laFichaYElListadoCalculanLaMismaEdadEsperadaParaLasMismasFechasIncluidosLosBordes() {
+		java.time.Clock reloj = java.time.Clock.fixed(java.time.Instant.parse("2026-11-13T15:00:00Z"), java.time.ZoneOffset.UTC);
+		var fichaFija = new FamiliaPortalFichaService(repositorio, reloj);
+		var listadoFijo = new FamiliaPortalService(familias, tutores, repositorio, reloj);
 		java.time.LocalDate[] fechas = { java.time.LocalDate.of(2016, 2, 29), java.time.LocalDate.of(2000, 2, 29),
-				java.time.LocalDate.of(2012, 2, 28), java.time.LocalDate.of(2012, 3, 1), hoy, hoy.minusDays(1),
-				hoy.plusDays(1), hoy.minusYears(120), hoy.minusYears(120).minusDays(1), hoy.minusYears(30).plusDays(1) };
+				java.time.LocalDate.of(2012, 2, 28), java.time.LocalDate.of(2012, 3, 1), java.time.LocalDate.of(2026, 11, 13),
+				java.time.LocalDate.of(2026, 11, 12), java.time.LocalDate.of(2026, 11, 14), java.time.LocalDate.of(1906, 11, 13),
+				java.time.LocalDate.of(1906, 11, 12), java.time.LocalDate.of(1905, 11, 13), java.time.LocalDate.of(1996, 11, 14) };
+		Integer[] esperadas = { 10, 26, 14, 14, 0, 0, null, 120, 120, null, 29 };
 		java.util.List<UUID> ids = new java.util.ArrayList<>();
 		int dni = 33100000;
 		for (java.time.LocalDate fecha : fechas) {
-			UUID d = datos.deportista(escuelaA, String.valueOf(dni++), "Edad", "Zeta" + dni, true);
+			UUID d = datos.deportista(escuelaA, String.valueOf(dni), "Edad", "Zeta" + dni, true);
+			dni++;
 			datos.vinculo(escuelaA, familia, d, "ACTIVO", false, adminId);
 			jdbc.sql("UPDATE gestion_patin.deportista SET fecha_nacimiento = :f WHERE id = :d").param("f", fecha).param("d", d)
 					.update();
 			ids.add(d);
 		}
 
-		var filas = listado.deportistas(usuario, org.springframework.data.domain.PageRequest.of(0, 100)).contenido();
+		var filas = listadoFijo.deportistas(usuario, org.springframework.data.domain.PageRequest.of(0, 100)).contenido();
 
 		for (int i = 0; i < ids.size(); i++) {
 			UUID id = ids.get(i);
 			var fila = filas.stream().filter(f -> f.id().equals(id)).findFirst().orElseThrow();
-			assertThat(fila.edad()).as("fecha %s", fechas[i]).isEqualTo(ficha.ficha(usuario, id).edad());
+			assertThat(fila.edad()).as("listado, nacido %s", fechas[i]).isEqualTo(esperadas[i]);
+			assertThat(fichaFija.ficha(usuario, id).edad()).as("ficha, nacido %s", fechas[i]).isEqualTo(esperadas[i]);
 		}
 	}
 
