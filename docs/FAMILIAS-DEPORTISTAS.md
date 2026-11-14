@@ -38,10 +38,10 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/admin/familias` | ADMIN | `page`, `size`, `busqueda` | `200` `Pagina<FamiliaResumen>` (solo activas; **ruta heredada, sin cambios**) | — |
 | `GET /api/admin/familias/listado` | ADMIN | `estado` (por defecto `TODOS`), `busqueda`, `page`, `size` | `200` `Pagina<{id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos}>` | `400 SOLICITUD_INVALIDA` (estado desconocido) |
 | `POST /api/admin/familias` | ADMIN | `{nombreReferencia}` (1..150) | `201` `FamiliaDetalle` + `Location` | `400 VALIDACION` |
-| `GET /api/admin/familias/{id}` | ADMIN | — | `200` `{id, nombreReferencia, activa, tutores}` con el DNI de cada tutor **enmascarado** (`dniEnmascarado`; también de una familia inactiva) | `404 FAMILIA_NO_ENCONTRADA` |
-| `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `404 FAMILIA_NO_ENCONTRADA` |
-| `POST /api/admin/familias/{id}/activar` | ADMIN | — | `200` `FamiliaDetalle` (idempotente) | `404 FAMILIA_NO_ENCONTRADA` |
-| `POST /api/admin/familias/{id}/desactivar` | ADMIN | — | `200` `FamiliaDetalle` (idempotente; sin cascada) | `404 FAMILIA_NO_ENCONTRADA` |
+| `GET /api/admin/familias/{id}` | ADMIN | — | `200` `{id, nombreReferencia, activa, tutores, version}` con el DNI de cada tutor **enmascarado** (`dniEnmascarado`; también de una familia inactiva) | `404 FAMILIA_NO_ENCONTRADA` |
+| `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia, versionEsperada}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `POST /api/admin/familias/{id}/activar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `POST /api/admin/familias/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente; sin cascada) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA` |
 | `GET /api/admin/tutores/{id}` | ADMIN | — | `200` `TutorRespuesta` (también de una familia inactiva) | `404 TUTOR_NO_ENCONTRADO` |
 | `PUT /api/admin/tutores/{id}` | ADMIN | igual que el alta (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA` |
@@ -287,3 +287,46 @@ conectada a Supabase, **escribe datos reales** en esa base. Lo ejecuta una perso
   verificó: una segunda vista previa mostró 0 filas a modificar en todas las tablas. Estado comprobado después en la base (solo lectura): Flyway 1 a 4 con éxito; 2 familias, 3
   deportistas y 1 usuario FAMILIA del smoke, todos inactivos; 4 vínculos en `REVOCADO` y ninguno `ACTIVO`; el tutor del smoke sigue activo (la limpieza suave no lo toca); el ADMIN
   real sigue activo con MFA.
+
+## 13. Revision optimista de Familia (FE-05 / U1)
+
+`version` es la revision de escritura del nombre/estado de Familia, no de sus tutores ni vinculos.
+El detalle ADMIN y las respuestas de alta/edicion/estado la devuelven como cadena decimal. No se agrega a listados,
+resumenes de invitaciones ni DTO del portal FAMILIA. Los tutores anidados conservan el DNI enmascarado.
+
+- Alta: `POST /api/admin/familias` conserva `{nombreReferencia}`; la revision inicial es `"0"`.
+- Edicion: `PUT /api/admin/familias/{id}` exige `{nombreReferencia, versionEsperada}`.
+- Estado: activar/desactivar exige `{versionEsperada}`. No hay cascadas.
+- `versionEsperada` debe ser una cadena de 1 a 19 digitos ASCII, sin signo ni espacios, dentro de 0 a
+  9223372036854775807. No se aceptan numeros JSON, decimales, exponentes, booleanos ni propiedades adicionales.
+  Ausencia/nulo: `400 VALIDACION`; formato/tipo/rango invalido: `400 SOLICITUD_INVALIDA`.
+- Revision vieja: `409 EDICION_DESACTUALIZADA`, incluso si el nombre o estado solicitado ya coincide. El error
+  tiene mensaje fijo, sin datos personales, id ni revision vigente. No hay guardado forzado.
+- Revision vigente y sin cambios: `200`, misma revision, sin UPDATE ni auditoria de exito adicional.
+- Cambio real: revision incrementada por JPA y auditoria en la misma transaccion. `@Version` condiciona el UPDATE;
+  `LockModeType.OPTIMISTIC` verifica tambien la version al terminar una transaccion sin cambios.
+  Un conflicto de JPA al flush/commit produce el mismo 409 y revierte todos los efectos de esa transaccion.
+  La contencion pesimista conserva el codigo distinto `CONFLICTO_CONCURRENCIA`.
+
+La migracion V7 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo. Inicializa registros anteriores
+sin cambiar sus datos ni relaciones. Invitaciones sigue creando mediante `Familia.crear`, tambien con revision cero;
+no crea automaticamente un usuario. V1–V6 permanecen intactas.
+
+### Compatibilidad y despliegue
+
+El campo del detalle es aditivo; los cuerpos de PUT y cambios de estado cambian intencionalmente. Los consumidores
+conocidos de esas escrituras eran pruebas backend y se adaptan en U1. El frontend FE-01–FE-04 no las utiliza:
+Invitaciones consulta el listado legacy y su alta no cambia. Los clientes API externos deben obtener el detalle y
+mandar la revision observada. Nunca asumir que ausencia de revision autoriza una escritura.
+
+No mezclar instancias antiguas que permitan escrituras sin revision con las nuevas durante el corte. Aplicar V7
+antes de iniciar la version nueva; coordinar el retiro de escritores antiguos y la actualizacion de clientes antes de
+habilitar el contrato obligatorio. No existe un modo permanente de compatibilidad sin version. Las escrituras SQL
+manuales no quedan protegidas por JPA: no son un canal administrativo soportado.
+
+Ante timeout de escritura el resultado es incierto: consultar antes de decidir un nuevo intento. Ante conflicto,
+recargar explicitamente y revisar los cambios; no sustituir automaticamente la revision de un formulario viejo.
+
+Pruebas focales: `FamiliaGestionAdminControllerWebMvcTest`, `FamiliaAdminServiceTest`, `OpenApiVersionFamiliaTest`,
+`FamiliaConcurrenciaDbTest` y `V7VersionFamiliaDbTest`. Las pruebas concurrentes retienen una transaccion y comprueban
+el bloqueo real en `pg_stat_activity` antes de liberar el commit; no dependen solo de temporizadores.

@@ -30,6 +30,7 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
+import com.banfieldpatin.backend.familias.dto.FamiliaActualizacion;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
 import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
@@ -59,7 +60,7 @@ class FamiliaAdminServiceTest {
 		tutores = mock(TutorRepository.class);
 		vinculos = mock(FamiliaDeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria);
+		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria, mock(jakarta.persistence.EntityManager.class));
 		when(familias.saveAndFlush(any(Familia.class))).thenAnswer(inv -> {
 			Familia f = inv.getArgument(0);
 			if (f.getId() == null) {
@@ -190,13 +191,28 @@ class FamiliaAdminServiceTest {
 		verifyNoInteractions(tutores, vinculos);
 	}
 
+	@Test
+	void revisionObsoletaRechazaInclusoNombreOEstadoCoincidente() {
+		Familia f = existente(true);
+		org.springframework.test.util.ReflectionTestUtils.setField(f, "version", 1L);
+		for (Runnable operacion : List.<Runnable>of(
+				() -> servicio.actualizar(admin, familiaId, new FamiliaActualizacion(f.getNombreReferencia(), 0L), DATOS),
+				() -> servicio.activar(admin, familiaId, 0L, DATOS),
+				() -> servicio.desactivar(admin, familiaId, 0L, DATOS))) {
+			assertThatThrownBy(operacion::run).isInstanceOfSatisfying(ExcepcionNegocio.class,
+					e -> assertThat(e.getCodigo()).isEqualTo("EDICION_DESACTUALIZADA"));
+		}
+		verify(familias, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
 	// ---------- actualizar ----------
 
 	@Test
 	void actualizarAuditaSoloCuandoElNombreCambiaConNombresDeCampoSinValores() {
 		existente(true);
 
-		FamiliaDetalle detalle = servicio.actualizar(admin, familiaId, new FamiliaSolicitud("Gomez"), DATOS);
+		FamiliaDetalle detalle = servicio.actualizar(admin, familiaId, new FamiliaActualizacion("Gomez", 0L), DATOS);
 
 		assertThat(detalle.nombreReferencia()).isEqualTo("Gomez");
 		EventoAuditoria evento = unicoEvento();
@@ -209,7 +225,7 @@ class FamiliaAdminServiceTest {
 	void actualizarConElMismoNombreNoEscribeNiAudita() {
 		existente(true);
 
-		servicio.actualizar(admin, familiaId, new FamiliaSolicitud("Familia Prueba"), DATOS);
+		servicio.actualizar(admin, familiaId, new FamiliaActualizacion("Familia Prueba", 0L), DATOS);
 
 		verify(familias, never()).saveAndFlush(any());
 		verifyNoInteractions(auditoria);
@@ -219,7 +235,7 @@ class FamiliaAdminServiceTest {
 	void actualizarEstaPermitidoSobreUnaFamiliaInactivaYNoCambiaSuEstado() {
 		Familia f = existente(false);
 
-		FamiliaDetalle detalle = servicio.actualizar(admin, familiaId, new FamiliaSolicitud("Otro"), DATOS);
+		FamiliaDetalle detalle = servicio.actualizar(admin, familiaId, new FamiliaActualizacion("Otro", 0L), DATOS);
 
 		assertThat(detalle.activa()).isFalse();
 		assertThat(f.isActiva()).isFalse();
@@ -229,7 +245,7 @@ class FamiliaAdminServiceTest {
 	void actualizarDeOtraEscuelaDa404SinEscribir() {
 		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, familiaId, new FamiliaSolicitud("X"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, familiaId, new FamiliaActualizacion("X", 0L), DATOS))
 				.isInstanceOfSatisfying(ExcepcionNegocio.class,
 						e -> assertThat(e.getCodigo()).isEqualTo("FAMILIA_NO_ENCONTRADA"));
 		verify(familias, never()).saveAndFlush(any());
@@ -242,7 +258,7 @@ class FamiliaAdminServiceTest {
 	void desactivarCambiaElEstadoYAuditaUnaVez() {
 		Familia f = existente(true);
 
-		FamiliaDetalle detalle = servicio.desactivar(admin, familiaId, DATOS);
+		FamiliaDetalle detalle = servicio.desactivar(admin, familiaId, 0L, DATOS);
 
 		assertThat(detalle.activa()).isFalse();
 		assertThat(f.isActiva()).isFalse();
@@ -255,8 +271,8 @@ class FamiliaAdminServiceTest {
 	void desactivarEsIdempotenteYNoAuditaLaSegundaVez() {
 		existente(true);
 
-		servicio.desactivar(admin, familiaId, DATOS);
-		servicio.desactivar(admin, familiaId, DATOS);
+		servicio.desactivar(admin, familiaId, 0L, DATOS);
+		servicio.desactivar(admin, familiaId, 0L, DATOS);
 
 		verify(auditoria, org.mockito.Mockito.times(1)).registrar(any());
 		verify(familias, org.mockito.Mockito.times(1)).saveAndFlush(any());
@@ -265,12 +281,12 @@ class FamiliaAdminServiceTest {
 	@Test
 	void activarEsIdempotenteYAuditaSoloElCambioReal() {
 		existente(true);
-		servicio.activar(admin, familiaId, DATOS);
+		servicio.activar(admin, familiaId, 0L, DATOS);
 		verifyNoInteractions(auditoria);
 
 		Familia inactiva = FixturesDominio.familia(familiaId, escuelaId, false);
 		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.of(inactiva));
-		FamiliaDetalle detalle = servicio.activar(admin, familiaId, DATOS);
+		FamiliaDetalle detalle = servicio.activar(admin, familiaId, 0L, DATOS);
 
 		assertThat(detalle.activa()).isTrue();
 		assertThat(unicoEvento().accion()).isEqualTo(AccionAuditoria.FAMILIA_ACTIVADA);
@@ -280,7 +296,7 @@ class FamiliaAdminServiceTest {
 	void activarYDesactivarNoTienenCascadaSoloTocanElRepositorioDeFamilias() {
 		existente(true);
 
-		servicio.desactivar(admin, familiaId, DATOS);
+		servicio.desactivar(admin, familiaId, 0L, DATOS);
 
 		verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
 		verify(familias).saveAndFlush(any(Familia.class));
@@ -294,8 +310,8 @@ class FamiliaAdminServiceTest {
 	void activarYDesactivarDeOtraEscuelaDan404() {
 		when(familias.findByIdAndEscuelaId(eq(familiaId), eq(escuelaId))).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.activar(admin, familiaId, DATOS)).isInstanceOf(ExcepcionNegocio.class);
-		assertThatThrownBy(() -> servicio.desactivar(admin, familiaId, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		assertThatThrownBy(() -> servicio.activar(admin, familiaId, 0L, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		assertThatThrownBy(() -> servicio.desactivar(admin, familiaId, 0L, DATOS)).isInstanceOf(ExcepcionNegocio.class);
 		verifyNoInteractions(auditoria);
 	}
 }

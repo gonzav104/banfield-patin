@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import jakarta.persistence.OptimisticLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -73,6 +75,14 @@ public class ManejadorGlobalErrores {
 		log.warn("Conflicto de concurrencia por bloqueo de base de datos (409): operacion={} excepcion={}", operacion(request),
 				e.getClass().getName());
 		return responder(HttpStatus.CONFLICT, ErrorRespuesta.de("CONFLICTO_CONCURRENCIA", MENSAJE_CONCURRENCIA));
+	}
+
+	/** Sin traza ni mensaje de Hibernate: pueden contener SQL o valores del recurso. */
+	@ExceptionHandler({ OptimisticLockingFailureException.class, OptimisticLockException.class })
+	ResponseEntity<ErrorRespuesta> edicionDesactualizada(Exception e, HttpServletRequest request) {
+		log.warn("Edicion desactualizada (409): operacion={} excepcion={}", operacion(request), e.getClass().getName());
+		return responder(HttpStatus.CONFLICT, ErrorRespuesta.de("EDICION_DESACTUALIZADA",
+				"El registro fue modificado. Es necesario volver a cargarlo antes de guardar."));
 	}
 
 	/** Metodo HTTP + patron de la ruta (nunca la URL real, que puede llevar ids). */

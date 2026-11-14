@@ -22,6 +22,8 @@ import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.dto.FamiliaAdminResumen;
 import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
+import com.banfieldpatin.backend.familias.dto.FamiliaActualizacion;
+import com.banfieldpatin.backend.familias.dto.FamiliaVersionEsperada;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,19 +69,19 @@ public class FamiliaGestionAdminController {
 
 	@PutMapping("/{id}")
 	public FamiliaDetalle actualizar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			@Valid @RequestBody FamiliaSolicitud solicitud, HttpServletRequest request) {
+			@Valid @RequestBody FamiliaActualizacion solicitud, HttpServletRequest request) {
 		return servicio.actualizar(UsuarioAutenticado.desde(jwt), id, solicitud, DatosSolicitud.de(request));
 	}
 
 	@PostMapping("/{id}/activar")
 	public FamiliaDetalle activar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			HttpServletRequest request) {
-		return servicio.activar(UsuarioAutenticado.desde(jwt), id, DatosSolicitud.de(request));
+			@Valid @RequestBody FamiliaVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.activar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(), DatosSolicitud.de(request));
 	}
 
 	@PostMapping("/{id}/desactivar")
 	public FamiliaDetalle desactivar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			HttpServletRequest request) {
-		return servicio.desactivar(UsuarioAutenticado.desde(jwt), id, DatosSolicitud.de(request));
+			@Valid @RequestBody FamiliaVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.desactivar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(), DatosSolicitud.de(request));
 	}
 }

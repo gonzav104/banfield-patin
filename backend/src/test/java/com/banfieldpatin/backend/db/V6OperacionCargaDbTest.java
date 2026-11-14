@@ -47,7 +47,8 @@ class V6OperacionCargaDbTest {
               mime_type,tamanio_bytes,cargado_por) VALUES(:e,:d,'OTRO','sintetico.pdf',:k,'application/pdf',10,:a)
             """).param("e", escuela).param("d", atleta).param("k", UUID.randomUUID().toString()).param("a", autor).update();
         documentosV5 = snapshotDocumentos();
-        migrar(ds, "latest");
+        // Este fixture valida V6; las migraciones posteriores tienen sus propias pruebas.
+        migrar(ds, "6");
     }
     @AfterEach void cerrar() { if (base != null) PostgresDescartable.eliminarBase(base); }
     private DriverManagerDataSource fuente(String nombre) {
@@ -110,14 +111,14 @@ class V6OperacionCargaDbTest {
     @Test void actualizaV5SinCambiarDocumentosYReintentoFlywayEsInocuo() {
         assertThat(snapshotDocumentos()).isEqualTo(documentosV5);
         assertThat(jdbc.sql("SELECT max(version::int) FROM gestion_patin.flyway_schema_history WHERE success").query(Integer.class).single()).isEqualTo(6);
-        assertThat(migrar(ds, "latest")).isZero();
+        assertThat(migrar(ds, "6")).isZero();
         UUID id = nueva();
         assertThat(version(id)).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM pg_indexes WHERE schemaname='gestion_patin' AND tablename='operacion_carga_documental'").query(Integer.class).single()).isEqualTo(3);
     }
     @Test void migracionLimpia() {
         String limpia = PostgresDescartable.crearBase("v6_limpia");
-        try { assertThat(migrar(fuente(limpia), "latest")).isEqualTo(6); }
+        try { assertThat(migrar(fuente(limpia), "6")).isEqualTo(6); }
         finally { PostgresDescartable.eliminarBase(limpia); }
     }
     @Test void admiteTutorOTROYSolicitudSinInventarAnualidad() {

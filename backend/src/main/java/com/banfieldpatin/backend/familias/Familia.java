@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -32,6 +33,10 @@ public class Familia {
 
 	@Column(nullable = false)
 	private boolean activa;
+
+	@Version
+	@Column(nullable = false)
+	private long version;
 
 	/** Alta de una familia activa (creada en linea al emitir una invitacion). */
 	public static Familia crear(UUID escuelaId, String nombreReferencia) {

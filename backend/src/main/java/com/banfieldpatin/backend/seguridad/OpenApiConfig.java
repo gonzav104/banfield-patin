@@ -97,9 +97,9 @@ public class OpenApiConfig {
 			entry("GET /api/admin/familias/listado", ruta(200)),
 			entry("POST /api/admin/familias", creada()),
 			entry("GET /api/admin/familias/{id}", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
-			entry("PUT /api/admin/familias/{id}", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
-			entry("POST /api/admin/familias/{id}/activar", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
-			entry("POST /api/admin/familias/{id}/desactivar", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
+			entry("PUT /api/admin/familias/{id}", ruta(200, "404 FAMILIA_NO_ENCONTRADA", "409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			entry("POST /api/admin/familias/{id}/activar", ruta(200, "404 FAMILIA_NO_ENCONTRADA", "409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			entry("POST /api/admin/familias/{id}/desactivar", ruta(200, "404 FAMILIA_NO_ENCONTRADA", "409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
 			// --- Tutores
 			entry("POST /api/admin/familias/{familiaId}/tutores",
 					creada("404 FAMILIA_NO_ENCONTRADA", "409 FAMILIA_INACTIVA")),
