@@ -33,6 +33,24 @@ export async function loginAdminUi(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+/** Today's calendar date in the SCHOOL's time zone (the one the backend uses to compute ages), as YYYY-MM-DD. */
+export const schoolToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+
+/**
+ * A birth date that makes someone EXACTLY `age` years old today: born `age` years and one day ago, so the birthday has
+ * already passed whatever day the test runs. It lets a test expect a precise age instead of a range.
+ */
+export function birthDateForAge(age: number): string {
+  const [year, month, day] = schoolToday().split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(year - age, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+/** The same date in the formats a screen or a log could print it in (ISO, dd/mm/yyyy, mm/dd/yyyy, dd-mm-yyyy). */
+export function dateForms(iso: string): string[] {
+  const [year, month, day] = iso.split('-') as [string, string, string];
+  return [iso, `${day}/${month}/${year}`, `${month}/${day}/${year}`, `${day}-${month}-${year}`];
+}
+
 export const syntheticDni = (): string => `9${String(randomBytes(4).readUInt32BE() % 100_000_000).padStart(8, '0')}`;
 
 export interface SeededFamily {

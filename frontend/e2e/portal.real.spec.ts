@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { AdminSeed, loginAdminUi, type SeededFamily } from './support/seed';
+import { AdminSeed, birthDateForAge, dateForms, loginAdminUi, type SeededFamily } from './support/seed';
 
 /**
  * REAL flows of the family portal (FE-03, first unit): browser -> Vite proxy -> Spring backend -> PostgreSQL.
@@ -21,6 +21,10 @@ const CARD = /E2E-Atleta-\d\d Sintetico/; // the card also holds the avatar init
 const INACTIVE = 5;
 const WITHOUT_BIRTH_DATE = 12;
 const REVOKED = 13;
+/** Born 9 years and 1 day ago (school time zone): exactly 9 years old today, whatever day this runs. */
+const AGE = 9;
+const BIRTH_DATE = birthDateForAge(AGE);
+const BIRTH_DATE_FORMS = new RegExp([...dateForms(BIRTH_DATE).map((form) => form.replace(/[/\\-]/g, (c) => `\\${c}`)), 'fechaNacimiento'].join('|'));
 
 let browserRef: Browser;
 let adminContext: BrowserContext;
@@ -60,7 +64,7 @@ test.beforeAll(async ({ browser }) => {
     const created = await seed.createAthlete({
       nombre: NAME(n),
       apellido: 'Sintetico',
-      ...(n === WITHOUT_BIRTH_DATE ? {} : { fechaNacimiento: '2014-03-10' }),
+      ...(n === WITHOUT_BIRTH_DATE ? {} : { fechaNacimiento: BIRTH_DATE }),
     });
     athleteIds.push(created.id);
     dnis.push(created.dni);
@@ -107,8 +111,8 @@ test.describe('family portal (real backend)', () => {
     // The age on screen is the one the SERVER computed: the client has no birth date to calculate with.
     const cuerpoPrimeraPagina = (await (await primeraPagina).json()) as { contenido: { nombre: string; edad: number | null }[] };
     const edadDelServidor = cuerpoPrimeraPagina.contenido.find((a) => a.nombre === NAME(1))?.edad;
-    expect(edadDelServidor).toBeGreaterThanOrEqual(2); // born 2014: 11 or 12 depending on the day this runs
-    await expect(athleteCards(page).filter({ hasText: NAME(1) })).toContainText(`${edadDelServidor} años`);
+    expect(edadDelServidor).toBe(AGE); // exact: the seeded birth date makes the athlete 9 today
+    await expect(athleteCards(page).filter({ hasText: NAME(1) })).toContainText(`${AGE} años`);
     await expect(page.getByText('Página 1 de 2 · 12 en total')).toBeVisible();
     await expect(athleteCards(page)).toHaveCount(10);
     await expect(athleteCards(page).first()).toContainText(NAME(1));
@@ -150,11 +154,11 @@ test.describe('family portal (real backend)', () => {
     expect(everything).not.toMatch(/"(dni|cuil|domicilio|telefonoContacto|escuelaId|familiaId)"/);
     expect(everything).not.toMatch(/cuil|domicilio/i);
     const athleteKeys = bodies.flatMap((body) => (JSON.parse(body) as { contenido?: object[] }).contenido ?? []).flatMap((a) => Object.keys(a));
-    // The family list carries the age the server computed and NO birth date (seeded as 2014-03-10 for the athletes).
+    // The family list carries the age the server computed and NO birth date (seeded relative to today: exactly 9 years old).
     expect(new Set(athleteKeys)).toEqual(new Set(['id', 'nombre', 'apellido', 'edad', 'activo']));
-    expect(bodies.join('\n')).not.toMatch(/2014-03-10|fechaNacimiento/); // not one byte of any portal response
+    expect(bodies.join('\n')).not.toMatch(BIRTH_DATE_FORMS); // not one byte of any portal response
     const pantalla = `${await page.content()}\n${await page.locator('body').innerText()}`;
-    expect(pantalla).not.toMatch(/2014-03-10|10\/03\/2014|03\/10\/2014|10-03-2014|fechaNacimiento/); // nor the page
+    expect(pantalla).not.toMatch(BIRTH_DATE_FORMS); // nor the page
     expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
     // The app logs nothing. The only tolerated console line is the browser's own note about the EXPECTED 401 of
     // GET /api/auth/me when the login screen is opened without a session.
@@ -166,7 +170,7 @@ test.describe('family portal (real backend)', () => {
   test('the administrator keeps the birth date the family no longer receives', async () => {
     const detalle = await adminContext.request.get(`/api/admin/deportistas/${athleteIds[0]}`);
     expect(detalle.status()).toBe(200);
-    expect(((await detalle.json()) as { fechaNacimiento: string | null }).fechaNacimiento).toBe('2014-03-10'); // stored, unchanged
+    expect(((await detalle.json()) as { fechaNacimiento: string | null }).fechaNacimiento).toBe(BIRTH_DATE); // stored, unchanged
     const sinFecha = await adminContext.request.get(`/api/admin/deportistas/${athleteIds[WITHOUT_BIRTH_DATE - 1]}`);
     expect(((await sinFecha.json()) as { fechaNacimiento: string | null }).fechaNacimiento).toBeNull();
   });
