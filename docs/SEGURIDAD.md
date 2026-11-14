@@ -130,6 +130,14 @@ El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPO
   `escuelaId`, `esPrincipal`, datos del vínculo, marcas de tiempo y el DNI y el estado del tutor. Un deportista inactivo con vínculo `ACTIVO` es visible con
   `activo=false` (la inactividad deportiva no revoca el acceso); con vínculo revocado, no.
 - **Datos deportivos anuales (`temp-3`).** `GET /api/familia/deportistas/{deportistaId}/temporadas[/{temporadaId}]` aplica la misma regla: el `WHERE` de una sola sentencia con el alcance de la familia (`ALCANCE_FAMILIA_JOINS` + `ALCANCE_FAMILIA_FILTRO`, cuyo texto conjunto es idéntico al anterior a partirlo y está fijado por `AlcanceFamiliaTest`) más la visibilidad: solo años menores o iguales al de la temporada activa de la escuela, y ninguno sin temporada activa. Un único `404` por endpoint para cualquier causa (cuerpo idéntico byte a byte), sin diagnosticar; un deportista propio sin temporadas visibles da `200 []`. Ver [TEMPORADAS.md](TEMPORADAS.md) sección 9.
+- **Ficha mínima (`FE-04`).** `GET /api/familia/deportistas/{deportistaId}/ficha` devuelve una **lista cerrada** de campos (nombre, apellido, `edad`, `activo` y la temporada
+  vigente) para que los datos sensibles innecesarios **no salgan del servidor**: no incluye DNI, CUIL, **fecha de nacimiento** (se envía solo la edad, calculada en
+  `America/Argentina/Buenos_Aires`), nacionalidad, domicilio, teléfono ni correo, y la proyección interna que lleva la fecha para calcularla nunca se serializa. Son dos sentencias,
+  **ambas con el alcance completo de la familia** (la segunda no confía en la primera), en una transacción de solo lectura `REPEATABLE_READ`: una respuesta `200` es siempre la de **una
+  instantánea** en la que el vínculo era `ACTIVO`; una revocación confirmada **entre** las dos sentencias no se ve en esa solicitud (no produce un `404` ni una mezcla) y la
+  solicitud siguiente da el `404` uniforme (`FamiliaPortalFichaDbTest`). Los demás casos de no acceso dan el mismo `404` byte a byte que el detalle
+  (`FamiliaPortalFichaHttpDbTest`). **Riesgo residual:** `GET /api/familia/deportistas/{id}` (15 campos, con DNI, CUIL, fecha de nacimiento y domicilio) sigue existiendo, sin
+  consumidor en las pantallas y sin cambios.
 - **Sin escritura y sin auditoría.** No existe ninguna ruta que escriba bajo `/api/familia/` (`InventarioRutasTest`); cualquier otro método da `405` (con CSRF) o `403 CSRF_INVALIDO`.
   Las lecturas del portal no se auditan.
 - **La revalidación central cubre al usuario y a la familia.** El portal no repite el `exists` de usuario: la revalidación de la sesión (sección 2) corre antes de

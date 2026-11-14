@@ -1,5 +1,7 @@
 package com.banfieldpatin.backend.familias.portal;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,12 +36,14 @@ public class FamiliaPortalService {
 	private final FamiliaRepository familias;
 	private final TutorRepository tutores;
 	private final FamiliaDeportistaRepository vinculos;
+	private final Clock reloj;
 
 	public FamiliaPortalService(FamiliaRepository familias, TutorRepository tutores,
-			FamiliaDeportistaRepository vinculos) {
+			FamiliaDeportistaRepository vinculos, Clock reloj) {
 		this.familias = familias;
 		this.tutores = tutores;
 		this.vinculos = vinculos;
+		this.reloj = reloj;
 	}
 
 	/** La familia propia y sus tutores activos (2 sentencias). 404 FAMILIA_NO_ENCONTRADA si el alcance no devuelve nada. */
@@ -56,13 +60,19 @@ public class FamiliaPortalService {
 		return MiFamiliaRespuesta.de(familia, deLaFamilia);
 	}
 
-	/** Deportistas con vinculo ACTIVO (incluidos los inactivos, con {@code activo=false}); pagina vacia si no hay ninguno. */
+	/**
+	 * Deportistas con vinculo ACTIVO (incluidos los inactivos, con {@code activo=false}); pagina vacia si no hay ninguno. La
+	 * edad de cada fila se calcula con la regla unica {@link EdadDeportista} y UNA sola fecha de referencia por pagina.
+	 */
 	@Transactional(readOnly = true)
 	public Pagina<DeportistaDeFamilia> deportistas(UsuarioAutenticado usuario, Pageable pagina) {
 		if (usuario.familiaId() == null) {
 			return Pagina.de(new PageImpl<DeportistaDeFamilia>(List.of(), pagina, 0), d -> d);
 		}
-		return Pagina.de(vinculos.deportistasDelPortal(usuario.familiaId(), usuario.escuelaId(), pagina), d -> d);
+		LocalDate hoy = EdadDeportista.hoy(reloj);
+		return Pagina.de(vinculos.deportistasDelPortal(usuario.familiaId(), usuario.escuelaId(), pagina),
+				d -> new DeportistaDeFamilia(d.id(), d.nombre(), d.apellido(),
+						EdadDeportista.calcular(d.fechaNacimiento(), hoy), d.activo()));
 	}
 
 	/** Un deportista de la propia familia (1 sentencia); cualquier otro id es el mismo 404 DEPORTISTA_NO_ENCONTRADO. */

@@ -8,6 +8,7 @@ import com.banfieldpatin.backend.compartido.RelojConfig;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
+import com.banfieldpatin.backend.familias.portal.FamiliaPortalFichaService;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalService;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalTemporadasService;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
@@ -22,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @TestConfiguration
 @Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class, LockTimeoutVinculos.class,
-		FamiliaPortalService.class, FamiliaPortalTemporadasService.class, AuditoriaService.class, RelojConfig.class })
+		FamiliaPortalService.class, FamiliaPortalTemporadasService.class, FamiliaPortalFichaService.class, AuditoriaService.class, RelojConfig.class })
 class ConfigFamiliasAdminDb {
 
 	@Bean

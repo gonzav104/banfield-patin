@@ -4,6 +4,7 @@ import { AdminLoginPage } from '@/features/auth/AdminLoginPage';
 import { PublicOnly, RequireMfaPending, RequireRole } from '@/features/auth/guards';
 import { AdminHomePage } from '@/features/auth/HomePages';
 import { AthletesPage } from '@/features/familia/AthletesPage';
+import { AthleteSheetPage } from '@/features/familia/AthleteSheetPage';
 import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
@@ -50,6 +51,7 @@ export function AppRoutes() {
         <Route element={<FamiliaLayout />}>
           <Route path="/familia" element={<FamilyDashboardPage />} />
           <Route path="/familia/deportistas" element={<AthletesPage />} />
+          <Route path="/familia/deportistas/:deportistaId" element={<AthleteSheetPage />} />
           <Route path="/familia/*" element={<Navigate to="/familia" replace />} />
         </Route>
       </Route>

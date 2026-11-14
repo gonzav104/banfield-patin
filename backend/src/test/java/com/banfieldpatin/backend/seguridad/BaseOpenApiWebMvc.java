@@ -34,6 +34,8 @@ import com.banfieldpatin.backend.familias.invitaciones.RegistroPorInvitacionServ
 import com.banfieldpatin.backend.familias.invitaciones.ValidarInvitacionService;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalController;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalService;
+import com.banfieldpatin.backend.familias.portal.FamiliaPortalFichaController;
+import com.banfieldpatin.backend.familias.portal.FamiliaPortalFichaService;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalTemporadasController;
 import com.banfieldpatin.backend.familias.portal.FamiliaPortalTemporadasService;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminController;
@@ -69,7 +71,7 @@ import tools.jackson.databind.json.JsonMapper;
 		MfaAdminController.class, FamiliaAdminController.class, FamiliaGestionAdminController.class,
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
-		FamiliaPortalTemporadasController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class })
+		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })
@@ -131,6 +133,8 @@ abstract class BaseOpenApiWebMvc {
 	protected DeportistaTemporadaAdminService deportistaTemporadaAdminService;
 	@MockitoBean
 	protected FamiliaPortalTemporadasService familiaPortalTemporadasService;
+	@MockitoBean
+	protected FamiliaPortalFichaService familiaPortalFichaService;
 
 	@MockitoBean
 	protected DocumentoConsultaService documentoConsultaService;

@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { dbQuery, hasDisposableDb, updatedRows } from './support/db';
 import { adminCredentials, loadState, saveState } from './support/state';
 import { freshCode } from './support/totp';
 
@@ -27,15 +27,6 @@ let browserRef: Browser;
 let adminContext: BrowserContext;
 let admin: Page;
 let usedLink = '';
-
-function dbQuery(sql: string): void {
-  const container = process.env.E2E_DB_CONTAINER;
-  if (!container) throw new Error('E2E_DB_CONTAINER is required for the expired-invitation test.');
-  // psql reads the credentials from the container's own environment: nothing sensitive leaves it.
-  // E2E_DB_NAME selects a disposable database inside that container (default: the container's POSTGRES_DB).
-  const database = process.env.E2E_DB_NAME ? `'${process.env.E2E_DB_NAME.replace(/[^A-Za-z0-9_]/g, '')}'` : '"$POSTGRES_DB"';
-  execFileSync('docker', ['exec', container, 'sh', '-c', `psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d ${database} -c "${sql}"`], { stdio: 'pipe' });
-}
 
 function tokenOf(link: string): string {
   return LINK_PATTERN.exec(link)?.[1] ?? '';
@@ -189,13 +180,16 @@ test.describe('invitation lifecycle (real backend)', () => {
   });
 
   test('an expired invitation is shown as expired to the admin and its link is unavailable', async () => {
-    test.skip(!process.env.E2E_DB_CONTAINER, 'Set E2E_DB_CONTAINER (disposable dev DB container) to force expiry through SQL.');
+    // Unset: an explicit skip. Set but not provably the disposable database: this line THROWS, before anything is created.
+    test.skip(!hasDisposableDb(), 'Set E2E_DB_CONTAINER (the disposable container of frontend-e2e.sh) to force expiry through SQL.');
     const expiredFamily = `E2E Vencida ${suffix}`;
     const link = await createInvitationInUi(admin, { newFamily: expiredFamily });
     await admin.getByRole('button', { name: 'Listo, ya lo copié' }).click();
-    dbQuery(
-      `update gestion_patin.invitacion set creado_en = now() - interval '3 days', expira_en = now() - interval '1 day' where familia_id in (select id from gestion_patin.familia where nombre_referencia = '${expiredFamily}')`,
+    const updated = dbQuery(
+      `update gestion_patin.invitacion set creado_en = now() - interval '3 days', expira_en = now() - interval '1 day' where familia_id in (select id from gestion_patin.familia where nombre_referencia = :'family')`,
+      { family: expiredFamily },
     );
+    expect(updatedRows(updated), `psql said: ${updated.trim()}`).toBe(1); // exactly the invitation just created for this family
 
     await admin.getByLabel('Estado').selectOption('EXPIRADA');
     const row = admin.getByRole('listitem').filter({ hasText: expiredFamily });

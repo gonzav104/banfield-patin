@@ -4,8 +4,8 @@ React + TypeScript estricto + Vite + React Router + TanStack Query + Tailwind v4
 Stack y reglas: ver [`AGENTS.md`](./AGENTS.md). Estado actual: **FE-01 — autenticación y sesiones**
 (login de familias, login ADMIN con MFA/TOTP, rutas protegidas, logout) y **FE-02 — invitaciones y registro de familias**
 (panel ADMIN de invitaciones + registro por enlace) y **FE-03 (primera unidad) — portal de familias, solo lectura**
-(dashboard y listado de deportistas vinculados). No incluye detalle de deportista, temporada, edición, competencias,
-rifas, empadronamiento ni carga documental.
+(dashboard y listado de deportistas vinculados) y **FE-04 — ficha del deportista y temporada vigente** (solo lectura).
+No incluye edición, licencias, empadronamiento, aptos físicos, competencias, rifas ni carga documental.
 
 ## Ejecutar localmente
 
@@ -82,16 +82,39 @@ Una cuenta FAMILIA ve, desde el teléfono o la computadora:
 | Ruta | Qué muestra |
 | --- | --- |
 | `/familia` | saludo, nombre de la familia, tutores (solo nombre y parentesco), total de deportistas vinculados y hasta 3 de ellos |
-| `/familia/deportistas` | listado paginado (10 por página): nombre, apellido, edad y estado **Activo/Inactivo** |
+| `/familia/deportistas` | listado paginado (10 por página): nombre, apellido, edad y estado **Activo/Inactivo**; cada tarjeta es un enlace a la ficha |
+| `/familia/deportistas/:deportistaId` | ficha del deportista (FE-04): edad, estado en la escuela y datos de la temporada vigente (ver abajo) |
 
 - Datos reales: `GET /api/familia/mi-familia` y `GET /api/familia/deportistas?page&size` (paginación del backend; el total sale de `totalElementos`).
   La familia **sale de la sesión**: el cliente nunca envía un identificador de familia y el backend es la autoridad.
 - «Activo/Inactivo» es el estado administrativo del deportista en la escuela. **No** es una inscripción ni un estado de temporada.
 - No se muestra DNI, CUIL, domicilio, teléfono ni identificadores; los datos que la interfaz no necesita se descartan al validar la respuesta.
 - Tres situaciones distintas: cuenta sin familia asociada (no se llama a `/api/familia/*`), familia no disponible (`404 FAMILIA_NO_ENCONTRADA`) y familia sin deportistas.
-- Navegación: barra inferior en pantallas chicas y lateral desde `md` (respeta las safe areas); la edad se calcula con la fecha de nacimiento y, si falta o es inválida, se muestra «Edad no informada».
+- Navegación: barra inferior en pantallas chicas y lateral desde `md` (respeta las safe areas). La **edad la calcula el backend** (el listado ya no recibe la
+  fecha de nacimiento); si falta o no es válida, la respuesta trae `edad: null` y se muestra «Edad no informada».
 - Aislamiento en el cliente: las claves de caché llevan usuario y familia, y si `/api/auth/me` revela otra identidad se descarta el estado privado
   (la pantalla nunca muestra datos de la identidad anterior). Ver el hallazgo y su corrección en `odd/tasks/fe-03-portal-familias.md` (L6, L7).
+
+#### Ficha del deportista (FE-04, solo lectura)
+
+Flujo completo de la familia: `/login` → `/familia` → **Deportistas** → tarjeta del deportista → ficha → **← Volver a deportistas**. También se abre por la
+dirección (`/familia/deportistas/<id>`), con recarga y con el historial del navegador. Al abrir la ficha, el foco queda en su título.
+
+- **Qué muestra:** nombre y apellido; sección «Datos del deportista» con **Edad** y **Estado en la escuela** (Activo/Inactivo); sección «Temporada {año}» con
+  Categoría, Rama, Divisional, **Número de corredor** y **Estado deportivo** (Activo/Inactivo/Suspendido); y una nota que explica que el estado en la escuela y el
+  estado deportivo son dos cosas distintas. El número de corredor es texto: `007` no se convierte en `7`.
+- **Qué no inventa:** «Suspendido» se muestra tal cual, sin motivo ni causa. Un campo nulo se muestra «No informado». Sin datos en la temporada vigente (el
+  deportista no tiene fila o la escuela no tiene temporada activa) aparece un texto neutro y **nunca** una temporada anterior.
+- **Contrato (backend, solo lectura):** `GET /api/familia/deportistas/{deportistaId}/ficha` →
+  `{nombre, apellido, edad, activo, temporadaVigente: {anio, categoria, rama, divisional, numeroCorredor, estadoDeportivo} | null}`. Es una lista cerrada: no trae DNI,
+  CUIL, fecha de nacimiento, domicilio, contacto ni identificadores. El esquema Zod (`athleteFichaSchema`) es estricto con los tipos y los largos del backend y descarta
+  lo que no conoce. La edad se calcula con la zona `America/Argentina/Buenos_Aires`. El listado trae `{id, nombre, apellido, edad, activo}`.
+- **Autorización:** la familia sale de la sesión. Un deportista de otra familia, uno inexistente, uno con vínculo revocado y uno de otra escuela dan el **mismo 404**
+  (`DEPORTISTA_NO_ENCONTRADO`), y la pantalla muestra el mismo aviso «No encontramos este deportista» sin distinguirlos. Un id que no es UUID no llega al servidor.
+  Sin sesión el servidor responde 401 y la dirección lleva al login; un ADMIN recibe 403 (el portal es solo de FAMILIA).
+- **Aislamiento:** las claves de caché llevan usuario, familia y deportista; no hay datos de relleno mientras carga; la pantalla se monta con una `key` de identidad y
+  deportista; una respuesta tardía de otra identidad o de otra ruta no se muestra (**demostrado con pruebas unitarias**; el E2E solo lo observa, ver la matriz de abajo). Durante la carga no hay datos privados en pantalla.
+- **Mientras no cargue:** estado de carga («Cargando la ficha…»), sesión vencida (vuelve al login y, después de ingresar, a la misma ficha) y error de red con «Reintentar» (la sesión se conserva).
 
 Para verlo con datos, un ADMIN crea y vincula deportistas con la API de administración (`POST /api/admin/deportistas`,
 `POST /api/admin/familias/{id}/deportistas`); esta unidad no incluye pantallas de administración de deportistas.
@@ -115,8 +138,8 @@ npm run test:e2e    # Playwright — contra backend + PostgreSQL REALES
 ```bash
 export E2E_ADMIN_EMAIL=...      # el BOOTSTRAP_ADMIN_EMAIL
 export E2E_ADMIN_PASSWORD=...   # el BOOTSTRAP_ADMIN_PASSWORD
-export E2E_DB_CONTAINER=...     # opcional: contenedor Docker PostgreSQL DESCARTABLE, para forzar el vencimiento por SQL
-export E2E_DB_NAME=...          # opcional: base dentro de ese contenedor (por defecto, su POSTGRES_DB)
+export E2E_DB_CONTAINER=...     # opcional: contenedor PostgreSQL DESCARTABLE (ver la salvaguarda de abajo), para los 2 escenarios que usan SQL
+export E2E_DB_NAME=bp_e2e       # con E2E_DB_CONTAINER: la base debe llamarse exactamente bp_e2e
 npx playwright install chromium # una vez
 npm run test:e2e
 ```
@@ -133,7 +156,41 @@ Depende del administrador enrolado por `auth.real.spec.ts` (se ejecuta después,
 no hay sesión automática → login; enlace usado, revocado y vencido (este último requiere `E2E_DB_CONTAINER`); permisos
 de FAMILIA/anónimo sobre la API ADMIN. El backend limita por IP las validaciones **fallidas** (5 cada 15 min, en memoria):
 esa spec provoca 3, así que **reiniciá el backend (o esperá 15 minutos) entre corridas**.
-Las capturas quedan en `e2e/artifacts/` (ignorado por Git).
+`portal-ficha.real.spec.ts` (FE-04, 22 pruebas) siembra, también por la API real de ADMIN, una temporada anterior (con datos distintos, que nunca deben verse) y la
+vigente, y ocho deportistas con un caso cada uno: completo (`007`), suspendido, inactivo, sin edad, sin fila en la temporada vigente, con campos nulos, con vínculo
+revocado y de otra familia. La edad de las pruebas es exacta (fechas de nacimiento relativas a hoy en la zona de la escuela). La ficha no genera capturas, trazas ni videos.
+Las capturas de las demás pruebas quedan en `e2e/artifacts/` (ignorado por Git).
+
+**Qué demuestra cada nivel en FE-04** (para no atribuirle a una prueba lo que solo se infirió):
+
+| Garantía | E2E reales (navegador + Spring + PostgreSQL) | Pruebas unitarias o de integración | Sin verificar |
+| --- | --- | --- | --- |
+| Contrato de la ficha y del listado | Claves exactas de las respuestas HTTP; el esquema Zod acepta cada respuesta real y no descarta nada | `FamiliaPortalFichaHttpDbTest`, `FamiliaPortalListadoEdadHttpDbTest`, esquemas en Vitest | — |
+| Privacidad | Ninguna de las respuestas `/api/familia/*` **que estos E2E observaron** (ficha, listado y resumen de familia, todas leídas y esperadas) trae fecha de nacimiento, DNI, CUIL ni domicilio; tampoco la pantalla ni su HTML | Las mismas garantías en el backend | **El detalle de 15 campos (`GET /api/familia/deportistas/{id}`) sigue existiendo, con DNI, CUIL, fecha y domicilio, y estos E2E no lo prueban ni lo minimizan** (riesgo residual R8) |
+| 404 uniforme | Mismo cuerpo, byte a byte, para ajeno, inexistente y vínculo revocado; la pantalla muestra el mismo aviso; un id inválido no llega al servidor; 401 sin sesión y 403 para ADMIN | Otra escuela y las demás variantes de no acceso, byte a byte, en `FamiliaPortalFichaHttpDbTest` | — |
+| Cambio de familia | B pide la ficha de A y recibe 404; se recorre **todo** el historial del navegador sin datos de A en ninguna parada (cerrar e iniciar sesión reemplaza las entradas, así que la dirección de la ficha de A no queda en el historial); la dirección directa da el mismo resultado | `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` (caché por usuario, familia y deportista) | Un cambio de cookie hecho desde **otra pestaña**: no se probó |
+| Respuesta tardía | **En la propia ficha:** la respuesta demorada llega (el navegador informa `requestfinished`) y la pantalla pasa de «Cargando la ficha…» a sus datos. **Al cambiar de ruta o de usuario:** se *observa* qué hizo el navegador con la petición pendiente (en las corridas de FE-04: cambio de ruta → la terminó; cambio de usuario → la abortó) y se exige que nada de la ficha anterior quede en pantalla. El E2E **no fuerza** que la respuesta llegue ni demuestra que la aplicación la haya leído | Respuestas retenidas y entregadas tarde, con el orden controlado: cambio de identidad, de usuario y de ruta en `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` | Que la aplicación lea y descarte bien una respuesta **real** que llega tras un cambio de identidad: solo se demuestra con el simulador; en E2E depende de que el navegador cancele o no la petición y no se fuerza |
+| Sesión vencida | Vuelve al login sin datos y, al ingresar, a la misma ficha; también ante la siguiente petición | Estados tipados en Vitest | — |
+| ADMIN | Recibe 403 de la API y la pantalla «No tenés permiso…» (se espera esa pantalla antes de afirmar que no hay datos) | Guardas por rol en Vitest | — |
+| Móvil y teclado | 360 y 390 px sin desborde, enlace de regreso ≥ 44 px de alto, foco en el título y orden de lectura | Roles, nombres y foco en `athlete-sheet-ui.test.tsx` | Lector de pantalla real, herramienta automática de accesibilidad y dispositivos reales |
+| Edad | Exacta (9) en la respuesta y en pantalla | `FamiliaPortalFichaDbTest` con reloj fijo (instante que en UTC y en Buenos Aires cae en días distintos; 29/2, 0 y 120 años, futura) | Las pruebas HTTP del backend usan el reloj real y tienen una ventana de milisegundos en el cambio de día |
+
+**Nota de corrección.** El mensaje del commit `2faecae` afirma que «la aplicación no cancela la petición: la respuesta llega, se procesa» al cambiar de ruta o de usuario.
+Esa frase quedó **refutada** por la revisión `review-89948f41c8a6f81a` y por observación posterior (el navegador la aborta en el cambio de usuario); el commit
+no se reescribió y la corrección está en `e04b891` y en este texto.
+
+Los escenarios con `page.route` (respuesta lenta y caída del servidor) están rotulados como **SIMULADOS**: la demora o la caída se inyectan, pero la respuesta es la del servidor real.
+
+**Salvaguarda del SQL de los E2E (`e2e/support/db.ts`):** solo dos escenarios usan SQL, porque la API de ADMIN no puede producir esos estados (invitación vencida y
+escuela sin temporada activa); cada sentencia se limita por id o por nombre sembrado y quien la llama comprueba que cambió exactamente 1 fila (`UPDATE 1`). Antes de ejecutar nada
+**se niega** salvo que: el contenedor se llame `bp-e2e-postgres-*`, la base sea exactamente `bp_e2e` y el contenedor lleve la etiqueta
+`com.banfieldpatin.e2e.disposable=true`, que solo le pone `.github/scripts/frontend-e2e.sh` al crear el suyo. Un contenedor de desarrollo, de otro proyecto o
+configurado a mano se rechaza sin tocar la base (si querés usar uno propio, tenés que crearlo a propósito con esa etiqueta). El SQL viaja por stdin y los valores
+como variables de psql citadas por psql; las credenciales no salen del contenedor. Tres estados, que no se confunden: **sin `E2E_DB_CONTAINER`** esas
+pruebas se **omiten** de forma explícita; **con un contenedor demostrablemente descartable** se ejecutan; y **con una configuración inválida o insegura** (nombre,
+base o etiqueta incorrectos, o contenedor que no se puede inspeccionar) la prueba **falla antes de crear nada**, nunca se omite en silencio. `E2E_DB_NAME` solo confirma
+la intención (psql siempre usa `bp_e2e`) y se vuelve a comprobar en cada llamada. **Límite:** nombre y etiqueta se pueden falsificar a propósito; protegen de errores
+de configuración, no de quien quiera saltarse la salvaguarda.
 
 **Artefactos sin secretos (H-02):** Playwright no guarda trazas, videos ni capturas automáticas (registran cuerpos de
 peticiones y el texto de la página). Las capturas de evidencia enmascaran el QR, el secreto TOTP y los enlaces de
@@ -175,8 +232,16 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 
 - La landing no vive en esta app: `/` redirige a `/login`.
 - El logo es una marca provisional (SVG); falta integrar el recurso oficial.
+- **Detalle de 15 campos sin uso:** `GET /api/familia/deportistas/{id}` sigue existiendo en el backend (incluye DNI, CUIL, fecha de nacimiento y domicilio) y ninguna pantalla lo
+  usa. Queda como riesgo residual R8 (ver `docs/SEGURIDAD.md`); no se modificó.
+- **Compatibilidad de despliegue (FE-04, no validada en producción).** La ficha y la edad calculada por el backend cambian el contrato del listado. Para pasar de FE-03 a
+  FE-04 **sin degradación visual** el orden es: (1) backend aditivo (agrega `edad` y la ficha, conserva `fechaNacimiento`), (2) frontend nuevo (lee `edad`) y (3) backend final
+  (retira `fechaNacimiento` del listado). Si se despliega el backend final antes que el frontend nuevo, el listado de FE-03 muestra «Edad no informada»; si se despliega el
+  frontend nuevo contra un backend sin `edad`, también. No existe una estrategia de despliegue verificada que evite ese orden. **Ningún despliegue productivo fue validado.**
 - E2E solo en Chromium (escritorio); móvil verificado por emulación de viewport, no en dispositivos reales.
-- Portal de familias: no hay detalle de deportista, temporada vigente ni edición; los datos se consideran vigentes 60 s (`staleTime`): pasado ese tiempo se vuelven a pedir al volver a la pestaña o a la ventana (`refetchOnWindowFocus`), al volver a entrar a la pantalla o con «Reintentar». No hay actualización periódica en segundo plano.
+- Portal de familias: la ficha es de solo lectura y no incluye licencia, empadronamiento, aptos, historial de temporadas ni edición; los datos se consideran vigentes 60 s (`staleTime`): pasado ese tiempo se vuelven a pedir al volver a la pestaña o a la ventana (`refetchOnWindowFocus`), al volver a entrar a la pantalla o con «Reintentar». No hay actualización periódica en segundo plano.
+- **Cookies entre pestañas: riesgo residual, NO probado.** Los E2E de la ficha cubren el cambio de familia y de usuario **en la misma pestaña** (cierre de sesión e
+  ingreso, historial y dirección; las respuestas tardías de un cambio de identidad **solo** las demuestran las pruebas unitarias); un cambio de la cookie hecho desde **otra pestaña** no se probó de forma específica.
 - Si otra pestaña inicia sesión con otra persona, esta pestaña conserva su identidad hasta el siguiente `/api/auth/me` (foco o próxima petición); ninguna petición mezcla datos y el backend es la autoridad.
 - No se puede distinguir en pantalla *por qué* una invitación no está disponible (vencida, revocada, usada, inválida): el backend lo oculta a propósito.
 - El enlace de invitación solo existe en la respuesta de creación; no hay forma de recuperarlo luego.

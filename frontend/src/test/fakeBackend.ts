@@ -57,11 +57,27 @@ export interface FakeTutor {
   email: string | null;
 }
 
+export interface FakeCurrentSeason {
+  anio: number;
+  categoria: string | null;
+  rama: string | null;
+  divisional: string | null;
+  numeroCorredor: string | null;
+  estadoDeportivo: 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
+}
+
+const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface FakeAthlete {
   id: string;
   nombre: string;
   apellido: string;
-  fechaNacimiento: string | null;
+  /** Stored by the server and available to ADMIN; the family list does NOT send it (only `edad`). Tests may force it in via `extra`. */
+  fechaNacimiento?: string | null;
+  /** What the server computes (backend `EdadDeportista`); null without a reliable birth date. The client shows it as is. */
+  edad?: number | null;
+  /** The current-season data the server returns in the sheet (null = no data). The season SELECTION is the backend's. */
+  vigente?: FakeCurrentSeason | null;
   activo: boolean;
   /** Fields the REAL list never sends (DNI, address...): used to prove the client never renders what it does not need. */
   extra?: Record<string, unknown>;
@@ -276,7 +292,7 @@ export class FakeBackend {
   }
 
   addAthlete(athlete: Omit<FakeAthlete, 'id'>): FakeAthlete {
-    const created = { ...athlete, id: `ath-${++this.counter}` };
+    const created = { ...athlete, id: `00000000-0000-4000-8000-${String(++this.counter).padStart(12, '0')}` }; // UUID, like the real ids
     this.athletes.set(created.id, created);
     return created;
   }
@@ -307,6 +323,18 @@ export class FakeBackend {
       if (!family || !family.activa) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
       return { status: 200, body: { id: family.id, nombreReferencia: family.nombreReferencia, tutores: family.tutores } };
     }
+    const sheet = /^\/familia\/deportistas\/([^/]+)\/ficha$/.exec(path);
+    if (sheet) {
+      // Mirrors GET /api/familia/deportistas/{id}/ficha: a closed list of fields, and ONE 404 for every cause.
+      const id = sheet[1]!;
+      if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      const athlete = family && family.links.get(id) === true ? this.athletes.get(id) : undefined;
+      if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      return {
+        status: 200,
+        body: { nombre: athlete.nombre, apellido: athlete.apellido, edad: athlete.edad ?? null, activo: athlete.activo, temporadaVigente: athlete.vigente ?? null, ...athlete.extra },
+      };
+    }
     if (path === '/familia/deportistas') {
       const visible = family ? [...family.links].filter(([, active]) => active).map(([id]) => this.athletes.get(id)!) : [];
       visible.sort(
@@ -324,7 +352,7 @@ export class FakeBackend {
         id: a.id,
         nombre: a.nombre,
         apellido: a.apellido,
-        fechaNacimiento: a.fechaNacimiento,
+        edad: a.edad ?? null, // the birth date is NOT sent in the list anymore (backend U4)
         activo: a.activo,
         ...a.extra,
       }));

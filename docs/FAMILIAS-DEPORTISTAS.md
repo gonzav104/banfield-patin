@@ -57,10 +57,11 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar` | ADMIN | — | `200` `VinculoRespuesta` (idempotente; permitido con familia inactiva) | `404 VINCULO_NO_ENCONTRADO`, `409 VINCULO_NO_ACTIVO` (PENDIENTE o RECHAZADO), `409 CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal` | ADMIN | — | `200` `VinculoRespuesta` (idempotente) | `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 VINCULO_NO_ENCONTRADO`, `409 VINCULO_NO_ACTIVO`, `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
 | `GET /api/familia/mi-familia` | FAMILIA | — | `200` `{id, nombreReferencia, tutores: [{id, nombre, apellido, parentesco, telefono, email}]}` (solo tutores activos) | `404 FAMILIA_NO_ENCONTRADA` |
-| `GET /api/familia/deportistas` | FAMILIA | `page`, `size` | `200` `Pagina<{id, nombre, apellido, fechaNacimiento, activo}>` | — |
+| `GET /api/familia/deportistas` | FAMILIA | `page`, `size` | `200` `Pagina<{id, nombre, apellido, edad, activo}>`; `edad` (entero o `null`) la calcula el servidor con la **misma regla que la ficha**; la fecha de nacimiento **no se envía** en esta respuesta (sigue almacenada y disponible para ADMIN) | — |
 | `GET /api/familia/deportistas/{id}` | FAMILIA | — | `200` `{id, nombre, apellido, dni, cuil, fechaNacimiento, nacionalidad, domicilio, otrosDatosDomicilio, localidad, partido, codigoPostal, telefonoContacto, emailFederativo, activo}` | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
 | `GET /api/familia/deportistas/{deportistaId}/temporadas` | FAMILIA | — | `200` `List<{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}>` de las temporadas **visibles** (año descendente, sin paginar; `[]` si el deportista es propio y no tiene ninguna visible) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
 | `GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}` | FAMILIA | — | `200` `{temporadaId, anio, temporadaActiva, categoria, rama, divisional, numeroCorredor, estadoDeportivo}` | `400` (id no UUID), `404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA` (uniforme: una sola respuesta para cualquier causa) |
+| `GET /api/familia/deportistas/{deportistaId}/ficha` | FAMILIA | — | `200` `{nombre, apellido, edad, activo, temporadaVigente}`; `edad` entero o `null`; `temporadaVigente` es `{anio, categoria, rama, divisional, numeroCorredor, estadoDeportivo}` o `null` (lista cerrada: sin id, DNI, CUIL, fecha de nacimiento, nacionalidad, domicilio, teléfono ni correo) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme: el mismo cuerpo byte a byte que el de `/deportistas/{id}`) |
 
 `DELETE` y `PATCH` no existen en ninguna ruta de este módulo (`405 METODO_NO_PERMITIDO`): una familia, un deportista o un vínculo se desactivan o revocan, nunca se
 borran. `VinculoRespuesta` es `{vinculoId, familiaId, familiaNombre, deportistaId, deportistaNombre, deportistaApellido, deportistaActivo, estado, esPrincipal,
@@ -157,6 +158,32 @@ superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotad
   y borra la cookie en **todas** las rutas (incluida `/api/auth/me`); reactivar restablece la sesión sin nuevo login. Si la base no responde, `503` y la cookie queda
   intacta. El predicado `f.activa = true` se conserva en la consulta del portal como defensa en profundidad y se prueba solo a nivel de repositorio.
 - **Datos deportivos anuales (`temp-3`):** `GET /api/familia/deportistas/{deportistaId}/temporadas[/{temporadaId}]` (solo lectura, regla de visibilidad y `404` uniforme por endpoint) se documenta en [TEMPORADAS.md](TEMPORADAS.md) sección 9; el historial ≤ 1 sentencia (2 si vino vacío) y el detalle ≤ 1.
+- **Ficha mínima (`FE-04`):** `GET /api/familia/deportistas/{deportistaId}/ficha` reúne en una respuesta de lista cerrada el nombre, el apellido, la **edad calculada en el servidor**, `activo`
+  (estado en la escuela) y la temporada **vigente** (la activa de la escuela; `estadoDeportivo` es el de la temporada y es otro plano que `activo`). La fecha de nacimiento
+  **no sale del servidor**: la edad se cuenta a la fecha de hoy en `America/Argentina/Buenos_Aires`, el 29/2 cumple el 1/3 en los años sin 29/2 y es `null` si la fecha falta,
+  es futura o supera 120 años. `temporadaVigente` es `null` (con `200`) si la escuela no tiene temporada activa o el deportista no tiene fila en ella, sin decir por qué; un
+  deportista que no es de la familia da el `404` uniforme. Son **dos sentencias**, **cada una con el alcance completo de la familia** (vínculo ACTIVO, familia activa, misma familia
+  y escuela del JWT; la visibilidad de temporadas reutiliza los fragmentos del historial), dentro de **una transacción de solo lectura `REPEATABLE_READ`**: ambas leen la misma
+  instantánea. Consecuencia exacta: un cambio confirmado **antes** de la primera sentencia se ve (una revocación da `404`); uno confirmado **después** no se ve en esa solicitud
+  (la respuesta es la de la instantánea, coherente, sin mezclar instantes) y la **solicitud siguiente** ya lo nota. Techo: ≤ 2 sentencias (1 si el resultado es `404`).
+- **Edad en el listado (`FE-04`):** cada fila del listado trae `edad`, calculada en el servidor con la **misma regla única** que la ficha (`EdadDeportista`: hoy en
+  `America/Argentina/Buenos_Aires`, el 29/2 cumple el 1/3 en los años sin 29/2, `null` si la fecha falta, es futura o supera 120 años) y con **una sola fecha de referencia por
+  página**, de modo que el mismo deportista tiene la misma edad en el listado y en la ficha. La **fecha de nacimiento ya no sale** en esta respuesta (antes se enviaba junto con `edad`
+  durante la transición, y se retiró cuando el cliente pasó a leer `edad`): la familia solo necesita la edad. La fecha **sigue siendo un dato esencial del dominio**
+  (empadronamiento, licencias, categorías, Listas de Buena Fe): continúa almacenada, sin cambios, y disponible para ADMIN (`DeportistaDetalle`, `DeportistaSolicitud`); la
+  minimización es solo de las respuestas del portal. Paginación, orden, alcance y autorización no cambiaron. Si una futura pantalla de consulta, verificación o actualización
+  de datos justifica mostrar la fecha exacta a la familia autorizada, se evaluará entonces con su propio contrato mínimo.
+- **Riesgo residual conocido:** `GET /api/familia/deportistas/{id}` (15 campos, con DNI, CUIL, fecha de nacimiento y domicilio) sigue existiendo, **no lo usa ninguna pantalla** y no
+  se modificó. La ficha mínima no lo reemplaza ni lo restringe; cuando se diseñe una pantalla de consulta, verificación o actualización de datos se definirá un contrato mínimo propio
+  por pantalla. La fecha de nacimiento sigue siendo un dato esencial del dominio (empadronamiento, licencias, categorías, Listas de Buena Fe): la minimización es solo de las
+  respuestas del portal.
+- **Cierre de `FE-04` (flujo, alcance y despliegue).** Flujo de la familia: login → `/familia` → listado de deportistas → ficha (`/familia/deportistas/:deportistaId`) → volver; la
+  pantalla está descrita en el [README del frontend](../frontend/README.md). **Alcance:** solo lectura de la ficha mínima y la temporada vigente; no incluye licencia, empadronamiento,
+  aptos físicos, historial de temporadas, edición ni la fecha exacta de nacimiento. **Evidencia automatizada:** pruebas de unidad, de integración con PostgreSQL real y 22 E2E reales
+  de la ficha (contrato real, 404 uniforme, aislamiento, sesión vencida, móvil y un barrido de privacidad **limitado a las respuestas que esos E2E observaron**: ficha, listado y resumen de familia; el detalle de 15 campos no se prueba ni se minimiza); los E2E no prueban cookies cambiadas desde **otra pestaña** (riesgo
+  residual documentado). **Compatibilidad de despliegue:** la transición sin degradación visual exige la secuencia **backend aditivo (ficha y `edad` con `fechaNacimiento`) →
+  frontend nuevo (lee `edad`) → backend final (sin `fechaNacimiento` en el listado)**; con otro orden el listado muestra «Edad no informada» hasta completar la secuencia. No hay una
+  estrategia de despliegue verificada que evite ese orden y **ningún despliegue productivo fue validado**.
 - Techos de sentencias de Hibernate (medidos con más de 5 filas): `mi-familia` ≤ 2, listado ≤ 2 (con cualquier `page`/`size`), detalle ≤ 1; la revalidación central
   suma una sentencia JDBC aparte por solicitud autenticada.
 

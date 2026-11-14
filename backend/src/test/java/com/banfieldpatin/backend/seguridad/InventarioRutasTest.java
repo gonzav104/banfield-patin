@@ -226,13 +226,15 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void elPortalConservaLasLecturasYAgregaSoloLaCargaDocumental() throws Exception {
+	void elPortalConservaLasLecturasYAgregaLaFichaMinimaYLaCargaDocumental() throws Exception {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
 				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/tutores/{id}/documentos",
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
-				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "POST /api/familia/deportistas/{id}/documentos");
+				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}",
+				// Ficha minima de un deportista propio (FE-04): datos generales y temporada vigente, sin datos sensibles.
+				"GET /api/familia/deportistas/{deportistaId}/ficha", "POST /api/familia/deportistas/{id}/documentos");
 	}
 }

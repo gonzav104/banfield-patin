@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createQueryClient } from '@/app/providers';
 import { ApiError } from '@/lib/api-error';
+import { http } from '@/lib/http';
 import type { FakeBackend } from '@/test/fakeBackend';
 import { createBackend, family } from '@/test/render';
 import { fetchAthletes, fetchMyFamily, isFamilyUnavailable } from './api';
@@ -43,15 +44,50 @@ describe('family portal API (mock backend)', () => {
   });
 
   it('requests athletes by page and size only, never with a family identifier', async () => {
-    const athlete = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', fechaNacimiento: '2016-05-01', activo: true, extra: { dni: '12345678', domicilio: 'Calle Falsa 123' } });
+    const athlete = backend.addAthlete({
+      nombre: 'Ana',
+      apellido: 'Paz',
+      edad: 9,
+      activo: true,
+      // An over-sharing server (old, misconfigured): the client must still drop all of it, birth date included.
+      extra: { fechaNacimiento: '2016-05-01', dni: '12345678', domicilio: 'Calle Falsa 123' },
+    });
     backend.linkAthlete('familia-1', athlete.id);
 
     const page = await fetchAthletes({ page: 0, size: 10 });
 
     const url = new URL(portalRequests().at(-1)!.url, 'http://fake.local');
     expect([...url.searchParams.keys()].sort()).toEqual(['page', 'size']);
-    expect(page.contenido[0]).toEqual({ id: athlete.id, nombre: 'Ana', apellido: 'Paz', fechaNacimiento: '2016-05-01', activo: true });
-    expect(JSON.stringify(page)).not.toMatch(/12345678|Calle Falsa/); // an over-sharing server still leaks nothing to the UI
+    // The age comes from the server as is; anything else (a birth date a server should not send) is dropped by validation.
+    expect(page.contenido[0]).toEqual({ id: athlete.id, nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true });
+    expect(JSON.stringify(page)).not.toMatch(/12345678|Calle Falsa|2016-05-01|fechaNacimiento/); // an over-sharing server leaks nothing
+  });
+
+  it('the real list no longer sends the birth date, and if a server did, the client would not keep it', async () => {
+    const normal = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true });
+    const sobreComparte = backend.addAthlete({ nombre: 'Beto', apellido: 'Paz', edad: 7, activo: true, extra: { fechaNacimiento: '2018-02-02' } });
+    backend.linkAthlete('familia-1', normal.id).linkAthlete('familia-1', sobreComparte.id);
+
+    const raw = (await http.get<{ contenido: Record<string, unknown>[] }>('/familia/deportistas?page=0&size=10')).data;
+    const parsed = await fetchAthletes({ page: 0, size: 10 });
+
+    expect(Object.keys(raw.contenido[0]!).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']); // the contract after U4
+    expect(raw.contenido[1]).toHaveProperty('fechaNacimiento'); // a misbehaving server
+    for (const athlete of parsed.contenido) expect(Object.keys(athlete).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']);
+  });
+
+  it('keeps a null age as null and tolerates a server that does not send the age yet', async () => {
+    const sinFecha = backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: null, activo: true });
+    backend.linkAthlete('familia-1', sinFecha.id);
+    expect((await fetchAthletes({ page: 0, size: 10 })).contenido[0]?.edad).toBeNull();
+
+    // Frontend deployed before the backend (or an older backend): `edad` is absent. The list must not fail.
+    backend.override('get', '/familia/deportistas?page=0&size=10', {
+      status: 200,
+      body: { contenido: [{ id: 'x1', nombre: 'Ana', apellido: 'Paz', activo: true }], pagina: 0, tamanio: 10, totalElementos: 1 },
+    });
+    const page = await fetchAthletes({ page: 0, size: 10 });
+    expect(page.contenido[0]?.edad).toBeUndefined();
   });
 
   it('uses the real pagination: the page and the total come from the server', async () => {
@@ -151,6 +187,18 @@ describe('family portal hooks (mock backend)', () => {
     expect(result.current.data).toBeUndefined(); // the regression: this used to be family A's athletes
     expect(result.current.isPlaceholderData).toBe(false);
     await waitFor(() => expect(result.current.data?.contenido.map((a) => a.nombre)).toEqual(['Ajena']));
+  });
+
+  it('the query cache never holds a birth date, even if a server sent it', async () => {
+    backend.linkAthlete('familia-1', backend.addAthlete({ nombre: 'Ana', apellido: 'Paz', edad: 9, activo: true, extra: { fechaNacimiento: '2016-05-01' } }).id);
+    const client = createQueryClient();
+    const identity = { userId: 'u-family', familyId: 'familia-1' };
+    const { result } = renderHook(() => useAthletes(identity, 0, 10), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const cached = JSON.stringify(client.getQueryCache().getAll().map((q) => q.state.data));
+    expect(cached).toContain('"edad":9');
+    expect(cached).not.toMatch(/fechaNacimiento|2016-05-01/);
   });
 
   it('two users of the same family do not share an entry either', () => {

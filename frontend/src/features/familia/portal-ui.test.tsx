@@ -22,8 +22,9 @@ function addAthletes(count: number, familyId = 'familia-1') {
     const athlete = backend.addAthlete({
       nombre: `Atleta ${String(i).padStart(2, '0')}`,
       apellido: 'Prueba',
-      fechaNacimiento: '2015-06-15',
+      edad: 11,
       activo: true,
+      extra: { fechaNacimiento: '2015-06-15' }, // an over-sharing server: the client must never show or keep it
     });
     backend.linkAthlete(familyId, athlete.id);
   }
@@ -160,11 +161,11 @@ describe('athletes list (/familia/deportistas)', () => {
     expect(screen.getByRole('heading', { name: 'Deportistas vinculados' })).toHaveFocus();
   });
 
-  it('shows name, age and status in the backend order, with the status as text', async () => {
-    const mk = (nombre: string, apellido: string, fechaNacimiento: string | null, activo: boolean) =>
-      backend.linkAthlete('familia-1', backend.addAthlete({ nombre, apellido, fechaNacimiento, activo }).id);
-    const year = new Date().getFullYear();
-    mk('Bruno', 'Zárate', `${year - 9}-01-01`, true);
+  it('shows name, the age the SERVER sent and the status in the backend order, with the status as text', async () => {
+    // The birth dates are decoys that would give other ages if the client calculated anything: it must not.
+    const mk = (nombre: string, apellido: string, edad: number | null, activo: boolean) =>
+      backend.linkAthlete('familia-1', backend.addAthlete({ nombre, apellido, edad, activo, extra: { fechaNacimiento: edad === null ? '2015-01-01' : '1990-01-01' } }).id);
+    mk('Bruno', 'Zárate', 9, true);
     mk('Ana', 'Álvarez', null, false);
     renderApp('/familia/deportistas');
 
@@ -172,11 +173,48 @@ describe('athletes list (/familia/deportistas)', () => {
     const rows = screen.getAllByRole('listitem').filter((li) => /Álvarez|Zárate/.test(li.textContent ?? ''));
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Ana Álvarez')).toBeInTheDocument();
-    expect(within(rows[0]!).getByText('Edad no informada')).toBeInTheDocument();
+    expect(within(rows[0]!).getByText('Edad no informada')).toBeInTheDocument(); // edad null, even with a date present
     expect(within(rows[0]!).getByText('Inactivo')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Bruno Zárate')).toBeInTheDocument();
-    expect(within(rows[1]!).getByText('9 años')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('9 años')).toBeInTheDocument(); // the server's age, not 1990 - today
     expect(within(rows[1]!).getByText('Activo')).toBeInTheDocument();
+  });
+
+  it('shows "Edad no informada" for a server that does not send the age yet, without failing the list', async () => {
+    backend.override('get', '/familia/deportistas?page=0&size=10', {
+      status: 200,
+      body: { contenido: [{ id: 'x1', nombre: 'Ana', apellido: 'Paz', activo: true }], pagina: 0, tamanio: 10, totalElementos: 1 },
+    });
+    renderApp('/familia/deportistas');
+
+    expect(await screen.findByText('Ana Paz')).toBeInTheDocument();
+    expect(screen.getByText('Edad no informada')).toBeInTheDocument();
+  });
+
+  it('never renders the exact birth date, on the list or the dashboard, even if a server sent it', async () => {
+    addAthletes(4);
+    const user = userEvent.setup();
+    renderApp('/familia');
+    await screen.findByText('4 vinculados');
+    const dashboard = document.body.innerHTML;
+    await user.click(screen.getByRole('link', { name: 'Ver todos los deportistas (4)' }));
+    await screen.findByText('Página 1 de 1 · 4 en total');
+    const list = document.body.innerHTML;
+
+    for (const html of [dashboard, list]) {
+      expect(html).toContain('11 años');
+      expect(html).not.toMatch(/2015-06-15|15\/06\/2015|06\/15\/2015|15-06-2015|fechaNacimiento/);
+    }
+  });
+
+  it('keeps the birth date out of the private query cache', async () => {
+    addAthletes(2);
+    const { queryClient } = renderApp('/familia/deportistas');
+    await screen.findByText('Atleta 01 Prueba');
+
+    const cached = JSON.stringify(queryClient.getQueryCache().getAll().filter((q) => q.queryKey[0] === 'familia').map((q) => q.state.data));
+    expect(cached).toContain('"edad":11');
+    expect(cached).not.toMatch(/2015-06-15|fechaNacimiento/);
   });
 
   it('explains that Activo/Inactivo is the school status and never suggests an enrolment', async () => {
@@ -197,9 +235,8 @@ describe('athletes list (/familia/deportistas)', () => {
     const athlete = backend.addAthlete({
       nombre: 'Ana',
       apellido: 'Paz',
-      fechaNacimiento: '2016-05-01',
       activo: true,
-      extra: { dni: '98765432', cuil: '27-98765432-1', domicilio: 'Calle Falsa 123', escuelaId: 'escuela-1', familiaId: 'familia-1', telefono: '11-4444-0000' },
+      extra: { fechaNacimiento: '2016-05-01', dni: '98765432', cuil: '27-98765432-1', domicilio: 'Calle Falsa 123', escuelaId: 'escuela-1', familiaId: 'familia-1', telefono: '11-4444-0000' },
     });
     backend.linkAthlete('familia-1', athlete.id);
     renderApp('/familia/deportistas');

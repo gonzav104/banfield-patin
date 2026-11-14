@@ -33,6 +33,24 @@ export async function loginAdminUi(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+/** Today's calendar date in the SCHOOL's time zone (the one the backend uses to compute ages), as YYYY-MM-DD. */
+export const schoolToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+
+/**
+ * A birth date that makes someone EXACTLY `age` years old today: born `age` years and one day ago, so the birthday has
+ * already passed whatever day the test runs. It lets a test expect a precise age instead of a range.
+ */
+export function birthDateForAge(age: number): string {
+  const [year, month, day] = schoolToday().split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(year - age, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+/** The same date in the formats a screen or a log could print it in (ISO, dd/mm/yyyy, mm/dd/yyyy, dd-mm-yyyy). */
+export function dateForms(iso: string): string[] {
+  const [year, month, day] = iso.split('-') as [string, string, string];
+  return [iso, `${day}/${month}/${year}`, `${month}/${day}/${year}`, `${day}-${month}-${year}`];
+}
+
 export const syntheticDni = (): string => `9${String(randomBytes(4).readUInt32BE() % 100_000_000).padStart(8, '0')}`;
 
 export interface SeededFamily {
@@ -49,6 +67,8 @@ async function expectOk<T>(response: Awaited<ReturnType<APIRequestContext['post'
 }
 
 /** ADMIN-side seeding. `admin` is the request context of a browser context already signed in as the administrator. */
+export type SportsRow = { categoria?: string; rama?: string; divisional?: string; numeroCorredor?: string; estadoDeportivo?: 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO' };
+
 export class AdminSeed {
   constructor(private readonly admin: APIRequestContext) {}
 
@@ -82,5 +102,20 @@ export class AdminSeed {
 
   async revoke(familyId: string, athleteId: string): Promise<void> {
     await this.post(`/api/admin/familias/${familyId}/deportistas/${athleteId}/revocar`, {}, 'revoke link');
+  }
+
+  /** The season of that year (created when missing); it is only created, not activated. */
+  async season(anio: number): Promise<{ id: string; anio: number; activa: boolean }> {
+    const page = await expectOk<{ contenido: { id: string; anio: number; activa: boolean }[] }>(await this.admin.get('/api/admin/temporadas?page=0&size=100'), 'list seasons');
+    return page.contenido.find((t) => t.anio === anio) ?? (await this.post<{ id: string; anio: number; activa: boolean }>('/api/admin/temporadas', { anio }, `create season ${anio}`));
+  }
+
+  async activateSeason(seasonId: string): Promise<void> {
+    await this.post(`/api/admin/temporadas/${seasonId}/activar`, {}, 'activate season');
+  }
+
+  /** The sports data of one athlete in one season (what the family sees as «Temporada vigente» when that season is active). */
+  async addSportsRow(athleteId: string, seasonId: string, row: SportsRow): Promise<void> {
+    await this.post(`/api/admin/deportistas/${athleteId}/temporadas`, { temporadaId: seasonId, ...row }, 'add sports row');
   }
 }
