@@ -39,7 +39,7 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `GET /api/admin/familias/listado` | ADMIN | `estado` (por defecto `TODOS`), `busqueda`, `page`, `size` | `200` `Pagina<{id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos}>` | `400 SOLICITUD_INVALIDA` (estado desconocido) |
 | `POST /api/admin/familias` | ADMIN | `{nombreReferencia}` (1..150) | `201` `FamiliaDetalle` + `Location` | `400 VALIDACION` |
 | `GET /api/admin/familias/{id}` | ADMIN | — | `200` `{id, nombreReferencia, activa, tutores, version}` con el DNI de cada tutor **enmascarado** (`dniEnmascarado`; también de una familia inactiva) | `404 FAMILIA_NO_ENCONTRADA` |
-| `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia, versionEsperada}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia, versionEsperada}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{id}/activar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente; sin cascada) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA` |
@@ -316,12 +316,16 @@ no crea automaticamente un usuario. V1–V6 permanecen intactas.
 
 El campo del detalle es aditivo; los cuerpos de PUT y cambios de estado cambian intencionalmente. Los consumidores
 conocidos de esas escrituras eran pruebas backend y se adaptan en U1. El frontend FE-01–FE-04 no las utiliza:
-Invitaciones consulta el listado legacy y su alta no cambia. Los clientes API externos deben obtener el detalle y
+Invitaciones consulta el listado legacy y su alta no cambia. Desde FE-05/U3 el frontend ADMIN sí las utiliza (editar el
+nombre, activar y desactivar desde el detalle): manda la revisión que vio al abrir la edición o la confirmación y ante un
+`409 EDICION_DESACTUALIZADA` no la renueva sola ni fuerza el guardado. Los clientes API externos deben obtener el detalle y
 mandar la revision observada. Nunca asumir que ausencia de revision autoriza una escritura.
 
 No mezclar instancias antiguas que permitan escrituras sin revision con las nuevas durante el corte. Aplicar V7
 antes de iniciar la version nueva; coordinar el retiro de escritores antiguos y la actualizacion de clientes antes de
-habilitar el contrato obligatorio. No existe un modo permanente de compatibilidad sin version. Las escrituras SQL
+habilitar el contrato obligatorio. Orden para el frontend con edición (FE-05/U3): V7, luego el backend con el contrato
+de revisión y recién después ese frontend; contra un backend anterior, el cuerpo con `versionEsperada` se rechaza como
+propiedad no admitida. No existe un modo permanente de compatibilidad sin version. Las escrituras SQL
 manuales no quedan protegidas por JPA: no son un canal administrativo soportado.
 
 Ante timeout de escritura el resultado es incierto: consultar antes de decidir un nuevo intento. Ante conflicto,
