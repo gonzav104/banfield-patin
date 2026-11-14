@@ -287,3 +287,9 @@ conectada a Supabase, **escribe datos reales** en esa base. Lo ejecuta una perso
   verificó: una segunda vista previa mostró 0 filas a modificar en todas las tablas. Estado comprobado después en la base (solo lectura): Flyway 1 a 4 con éxito; 2 familias, 3
   deportistas y 1 usuario FAMILIA del smoke, todos inactivos; 4 vínculos en `REVOCADO` y ninguno `ACTIVO`; el tutor del smoke sigue activo (la limpieza suave no lo toca); el ADMIN
   real sigue activo con MFA.
+
+## 13. Revision optimista de Familia (FE-05 / U1)
+
+La migracion V7 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo. Inicializa registros anteriores
+sin cambiar sus datos ni relaciones. Invitaciones sigue creando mediante `Familia.crear`, tambien con revision cero;
+no crea automaticamente un usuario. V1–V6 permanecen intactas.
