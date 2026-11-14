@@ -4,8 +4,8 @@ React + TypeScript estricto + Vite + React Router + TanStack Query + Tailwind v4
 Stack y reglas: ver [`AGENTS.md`](./AGENTS.md). Estado actual: **FE-01 — autenticación y sesiones**
 (login de familias, login ADMIN con MFA/TOTP, rutas protegidas, logout) y **FE-02 — invitaciones y registro de familias**
 (panel ADMIN de invitaciones + registro por enlace) y **FE-03 (primera unidad) — portal de familias, solo lectura**
-(dashboard y listado de deportistas vinculados) y **FE-04 — ficha del deportista y temporada vigente** (solo lectura).
-No incluye edición, licencias, empadronamiento, aptos físicos, competencias, rifas ni carga documental.
+(dashboard y listado de deportistas vinculados) y **FE-04 — ficha del deportista y temporada vigente** (solo lectura) y **FE-05 / U2 — familias en el panel ADMIN**
+(listado, detalle de solo lectura y alta). No incluye edición de familias, licencias, empadronamiento, aptos físicos, competencias, rifas ni carga documental.
 
 ## Ejecutar localmente
 
@@ -119,6 +119,24 @@ dirección (`/familia/deportistas/<id>`), con recarga y con el historial del nav
 Para verlo con datos, un ADMIN crea y vincula deportistas con la API de administración (`POST /api/admin/deportistas`,
 `POST /api/admin/familias/{id}/deportistas`); esta unidad no incluye pantallas de administración de deportistas.
 
+### 6. Familias en el panel ADMIN (FE-05 / U2)
+
+Menú **Familias** (`/admin/familias`), siempre con ADMIN + MFA completada y limitado a la escuela de la sesión:
+
+| Ruta | Qué hace | Contrato backend |
+| --- | --- | --- |
+| `/admin/familias` | Listado paginado (20), búsqueda por nombre y filtro Todas/Activas/Inactivas | `GET /api/admin/familias/listado` |
+| `/admin/familias/:id` | Detalle de solo lectura: estado y tutores con el DNI **enmascarado** | `GET /api/admin/familias/{id}` |
+| `/admin/familias/nueva` | Alta con el nombre de referencia (máx. 150); al crear lleva al detalle | `POST /api/admin/familias` |
+
+- **Privacidad:** el término de búsqueda y el nombre de la familia **no** van en la URL de navegación, ni en storage ni en consola (el término sí viaja
+  como parámetro de la petición `GET`, que el backend no registra). Estado y página sí van en la URL (`?estado=…&pagina=…`).
+- **Crear una familia no crea una cuenta de usuario:** el acceso sigue gestionándose con **Invitaciones**. La pantalla de alta y el detalle sin tutores lo aclaran.
+- **Resultado incierto:** el alta nunca se reintenta sola. Ante un corte de red, un timeout o un 5xx se explica que no se sabe si se creó y se pide revisar el
+  listado antes de reintentar; el botón se deshabilita mientras la petición está en curso (evita duplicados por doble clic).
+- **Sin pantallas todavía:** edición, activar/desactivar y tutores (unidades posteriores). La revisión optimista (`version`, FE-05/U1) se valida en el esquema pero
+  no se muestra: la usará la edición.
+
 ## Pruebas
 
 ```bash
@@ -156,6 +174,10 @@ Depende del administrador enrolado por `auth.real.spec.ts` (se ejecuta después,
 no hay sesión automática → login; enlace usado, revocado y vencido (este último requiere `E2E_DB_CONTAINER`); permisos
 de FAMILIA/anónimo sobre la API ADMIN. El backend limita por IP las validaciones **fallidas** (5 cada 15 min, en memoria):
 esa spec provoca 3, así que **reiniciá el backend (o esperá 15 minutos) entre corridas**.
+`familias-listado.real.spec.ts` y `familias-detalle-alta.real.spec.ts` (FE-05/U2) siembran familias, tutores y un deportista **por la API real de ADMIN** y comprueban:
+listado en dos páginas reales, búsqueda y filtro sin el término en URL/consola/storage, detalle con DNI enmascarado (la propia API ya no lo trae completo), «no encontrado»
+uniforme (id inexistente y mal formado), alta con doble clic que crea **una** familia, validación sin petición, 360 px, y 401/403 sobre la API y las pantallas. La caída de red
+del alta es una prueba **simulada** (`page.route`). El aislamiento entre dos escuelas lo cubren las pruebas de base de datos del backend.
 `portal-ficha.real.spec.ts` (FE-04, 22 pruebas) siembra, también por la API real de ADMIN, una temporada anterior (con datos distintos, que nunca deben verse) y la
 vigente, y ocho deportistas con un caso cada uno: completo (`007`), suspendido, inactivo, sin edad, sin fila en la temporada vigente, con campos nulos, con vínculo
 revocado y de otra familia. La edad de las pruebas es exacta (fechas de nacimiento relativas a hoy en la zona de la escuela). La ficha no genera capturas, trazas ni videos.

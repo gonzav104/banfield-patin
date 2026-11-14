@@ -37,6 +37,20 @@ interface FakeFamily {
   activa: boolean;
   cantidadTutores: number;
   cantidadDeportistasActivos: number;
+  /** Administrative detail (GET /admin/familias/{id}): tutors with the DNI ALREADY masked, as the backend sends it. */
+  tutores: FakeAdminTutor[];
+  version: number;
+}
+
+export interface FakeAdminTutor {
+  id: string;
+  nombre: string;
+  apellido: string;
+  dniEnmascarado: string | null;
+  telefono: string | null;
+  email: string | null;
+  parentesco: string | null;
+  activo: boolean;
 }
 
 interface FakeInvitation {
@@ -135,6 +149,8 @@ export class FakeBackend {
       activa: true,
       cantidadTutores: 0,
       cantidadDeportistasActivos: 0,
+      tutores: [],
+      version: 0,
       ...extra,
     };
     this.families.push(family);
@@ -197,6 +213,10 @@ export class FakeBackend {
     };
   }
 
+  private familyDetail(f: FakeFamily) {
+    return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => ({ ...t, familiaId: f.id })), version: String(f.version) };
+  }
+
   private page<T>(items: T[], params: URLSearchParams) {
     const size = Number(params.get('size') ?? 20);
     const page = Number(params.get('page') ?? 0);
@@ -254,6 +274,22 @@ export class FakeBackend {
         .sort((a, b) => a.nombreReferencia.toLowerCase().localeCompare(b.nombreReferencia.toLowerCase()) || a.id.localeCompare(b.id))
         .map(({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }) => ({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }));
       return { status: 200, body: this.page(rows, params) };
+    }
+    const detail = /^\/admin\/familias\/([^/]+)$/.exec(path);
+    if (method === 'get' && detail) {
+      const family = this.families.find((f) => f.id === detail[1]);
+      if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+      return { status: 200, body: this.familyDetail(family) };
+    }
+    if (method === 'post' && path === '/admin/familias') {
+      // Mirrors FamiliaSolicitud: only nombreReferencia, @NotBlank, at most 150 characters, the backend strips it.
+      const input = (body ?? {}) as Record<string, unknown>;
+      if (Object.keys(input).some((k) => k !== 'nombreReferencia')) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      const name = typeof input.nombreReferencia === 'string' ? input.nombreReferencia.trim() : '';
+      if (name === '' || name.length > 150) {
+        return { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'nombreReferencia', mensaje: 'detalle del servidor' }] } };
+      }
+      return { status: 201, body: this.familyDetail(this.addFamily(name)) };
     }
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');

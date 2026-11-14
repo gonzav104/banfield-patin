@@ -96,6 +96,14 @@ export class AdminSeed {
     await this.post(`/api/admin/familias/${familyId}/desactivar`, { versionEsperada: version }, 'deactivate family');
   }
 
+  /** A tutor of an existing family, through the admin API. Returns the plain DNI (synthetic) so tests can prove it never leaks. */
+  async createTutor(familyId: string, data: { nombre: string; apellido: string; telefono?: string; email?: string; parentesco?: string; withDni?: boolean }): Promise<{ id: string; dni: string | null }> {
+    const { withDni = true, ...rest } = data;
+    const dni = withDni ? syntheticDni() : null;
+    const created = await this.post<{ id: string }>(`/api/admin/familias/${familyId}/tutores`, { ...rest, ...(dni ? { dni } : {}) }, `create tutor ${data.nombre}`);
+    return { id: created.id, dni };
+  }
+
   async createAthlete(data: { nombre: string; apellido: string; fechaNacimiento?: string }): Promise<{ id: string; dni: string }> {
     const dni = syntheticDni();
     const created = await this.post<{ id: string }>('/api/admin/deportistas', { dni, ...data }, `create athlete ${data.nombre}`);
