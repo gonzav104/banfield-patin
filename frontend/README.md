@@ -113,7 +113,7 @@ dirección (`/familia/deportistas/<id>`), con recarga y con el historial del nav
   (`DEPORTISTA_NO_ENCONTRADO`), y la pantalla muestra el mismo aviso «No encontramos este deportista» sin distinguirlos. Un id que no es UUID no llega al servidor.
   Sin sesión el servidor responde 401 y la dirección lleva al login; un ADMIN recibe 403 (el portal es solo de FAMILIA).
 - **Aislamiento:** las claves de caché llevan usuario, familia y deportista; no hay datos de relleno mientras carga; la pantalla se monta con una `key` de identidad y
-  deportista; una respuesta tardía de otra identidad o de otra ruta nunca se muestra. Durante la carga no hay datos privados en pantalla.
+  deportista; una respuesta tardía de otra identidad o de otra ruta no se muestra (**demostrado con pruebas unitarias**; el E2E solo lo observa, ver la matriz de abajo). Durante la carga no hay datos privados en pantalla.
 - **Mientras no cargue:** estado de carga («Cargando la ficha…»), sesión vencida (vuelve al login y, después de ingresar, a la misma ficha) y error de red con «Reintentar» (la sesión se conserva).
 
 Para verlo con datos, un ADMIN crea y vincula deportistas con la API de administración (`POST /api/admin/deportistas`,
@@ -169,11 +169,15 @@ Las capturas de las demás pruebas quedan en `e2e/artifacts/` (ignorado por Git)
 | Privacidad | Ninguna de las respuestas `/api/familia/*` **que estos E2E observaron** (ficha, listado y resumen de familia, todas leídas y esperadas) trae fecha de nacimiento, DNI, CUIL ni domicilio; tampoco la pantalla ni su HTML | Las mismas garantías en el backend | **El detalle de 15 campos (`GET /api/familia/deportistas/{id}`) sigue existiendo, con DNI, CUIL, fecha y domicilio, y estos E2E no lo prueban ni lo minimizan** (riesgo residual R8) |
 | 404 uniforme | Mismo cuerpo, byte a byte, para ajeno, inexistente y vínculo revocado; la pantalla muestra el mismo aviso; un id inválido no llega al servidor; 401 sin sesión y 403 para ADMIN | Otra escuela y las demás variantes de no acceso, byte a byte, en `FamiliaPortalFichaHttpDbTest` | — |
 | Cambio de familia | B pide la ficha de A y recibe 404; se recorre **todo** el historial del navegador sin datos de A en ninguna parada (cerrar e iniciar sesión reemplaza las entradas, así que la dirección de la ficha de A no queda en el historial); la dirección directa da el mismo resultado | `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` (caché por usuario, familia y deportista) | Un cambio de cookie hecho desde **otra pestaña**: no se probó |
-| Respuesta tardía | La respuesta llega y se procesa: se ve en su propia ficha tras la carga y **no** aparece al cambiar de ruta ni de usuario (se registra que el navegador la entregó) | Las respuestas retenidas y entregadas tarde, con control del orden, en `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` | El orden de llegada exacto de dos respuestas reales concurrentes no es determinista en E2E |
+| Respuesta tardía | **En la propia ficha:** la respuesta demorada llega (el navegador informa `requestfinished`) y la pantalla pasa de «Cargando la ficha…» a sus datos. **Al cambiar de ruta o de usuario:** se *observa* qué hizo el navegador con la petición pendiente (en las corridas de FE-04: cambio de ruta → la terminó; cambio de usuario → la abortó) y se exige que nada de la ficha anterior quede en pantalla. El E2E **no fuerza** que la respuesta llegue ni demuestra que la aplicación la haya leído | Respuestas retenidas y entregadas tarde, con el orden controlado: cambio de identidad, de usuario y de ruta en `athlete-sheet-ui.test.tsx` y `ficha-identity.test.tsx` | Que la aplicación lea y descarte bien una respuesta **real** que llega tras un cambio de identidad: solo se demuestra con el simulador; en E2E depende de que el navegador cancele o no la petición y no se fuerza |
 | Sesión vencida | Vuelve al login sin datos y, al ingresar, a la misma ficha; también ante la siguiente petición | Estados tipados en Vitest | — |
 | ADMIN | Recibe 403 de la API y la pantalla «No tenés permiso…» (se espera esa pantalla antes de afirmar que no hay datos) | Guardas por rol en Vitest | — |
 | Móvil y teclado | 360 y 390 px sin desborde, enlace de regreso ≥ 44 px de alto, foco en el título y orden de lectura | Roles, nombres y foco en `athlete-sheet-ui.test.tsx` | Lector de pantalla real, herramienta automática de accesibilidad y dispositivos reales |
 | Edad | Exacta (9) en la respuesta y en pantalla | `FamiliaPortalFichaDbTest` con reloj fijo (instante que en UTC y en Buenos Aires cae en días distintos; 29/2, 0 y 120 años, futura) | Las pruebas HTTP del backend usan el reloj real y tienen una ventana de milisegundos en el cambio de día |
+
+**Nota de corrección.** El mensaje del commit `2faecae` afirma que «la aplicación no cancela la petición: la respuesta llega, se procesa» al cambiar de ruta o de usuario.
+Esa frase quedó **refutada** por la revisión `review-89948f41c8a6f81a` y por observación posterior (el navegador la aborta en el cambio de usuario); el commit
+no se reescribió y la corrección está en `e04b891` y en este texto.
 
 Los escenarios con `page.route` (respuesta lenta y caída del servidor) están rotulados como **SIMULADOS**: la demora o la caída se inyectan, pero la respuesta es la del servidor real.
 
@@ -182,7 +186,11 @@ escuela sin temporada activa); cada sentencia se limita por id o por nombre semb
 **se niega** salvo que: el contenedor se llame `bp-e2e-postgres-*`, la base sea exactamente `bp_e2e` y el contenedor lleve la etiqueta
 `com.banfieldpatin.e2e.disposable=true`, que solo le pone `.github/scripts/frontend-e2e.sh` al crear el suyo. Un contenedor de desarrollo, de otro proyecto o
 configurado a mano se rechaza sin tocar la base (si querés usar uno propio, tenés que crearlo a propósito con esa etiqueta). El SQL viaja por stdin y los valores
-como variables de psql citadas por psql; las credenciales no salen del contenedor. Sin `E2E_DB_CONTAINER`, esas pruebas se omiten.
+como variables de psql citadas por psql; las credenciales no salen del contenedor. Tres estados, que no se confunden: **sin `E2E_DB_CONTAINER`** esas
+pruebas se **omiten** de forma explícita; **con un contenedor demostrablemente descartable** se ejecutan; y **con una configuración inválida o insegura** (nombre,
+base o etiqueta incorrectos, o contenedor que no se puede inspeccionar) la prueba **falla antes de crear nada**, nunca se omite en silencio. `E2E_DB_NAME` solo confirma
+la intención (psql siempre usa `bp_e2e`) y se vuelve a comprobar en cada llamada. **Límite:** nombre y etiqueta se pueden falsificar a propósito; protegen de errores
+de configuración, no de quien quiera saltarse la salvaguarda.
 
 **Artefactos sin secretos (H-02):** Playwright no guarda trazas, videos ni capturas automáticas (registran cuerpos de
 peticiones y el texto de la página). Las capturas de evidencia enmascaran el QR, el secreto TOTP y los enlaces de
@@ -233,7 +241,7 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 - E2E solo en Chromium (escritorio); móvil verificado por emulación de viewport, no en dispositivos reales.
 - Portal de familias: la ficha es de solo lectura y no incluye licencia, empadronamiento, aptos, historial de temporadas ni edición; los datos se consideran vigentes 60 s (`staleTime`): pasado ese tiempo se vuelven a pedir al volver a la pestaña o a la ventana (`refetchOnWindowFocus`), al volver a entrar a la pantalla o con «Reintentar». No hay actualización periódica en segundo plano.
 - **Cookies entre pestañas: riesgo residual, NO probado.** Los E2E de la ficha cubren el cambio de familia y de usuario **en la misma pestaña** (cierre de sesión e
-  ingreso, historial, dirección y respuestas tardías); un cambio de la cookie hecho desde **otra pestaña** no se probó de forma específica.
+  ingreso, historial y dirección; las respuestas tardías de un cambio de identidad **solo** las demuestran las pruebas unitarias); un cambio de la cookie hecho desde **otra pestaña** no se probó de forma específica.
 - Si otra pestaña inicia sesión con otra persona, esta pestaña conserva su identidad hasta el siguiente `/api/auth/me` (foco o próxima petición); ninguna petición mezcla datos y el backend es la autoridad.
 - No se puede distinguir en pantalla *por qué* una invitación no está disponible (vencida, revocada, usada, inválida): el backend lo oculta a propósito.
 - El enlace de invitación solo existe en la respuesta de creación; no hay forma de recuperarlo luego.
