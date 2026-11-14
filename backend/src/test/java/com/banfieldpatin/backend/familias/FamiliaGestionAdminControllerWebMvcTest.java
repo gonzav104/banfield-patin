@@ -91,7 +91,7 @@ class FamiliaGestionAdminControllerWebMvcTest {
 	}
 
 	private FamiliaDetalle detalle(boolean activa) {
-		return new FamiliaDetalle(familiaId, "Perez", activa, List.of());
+		return new FamiliaDetalle(familiaId, "Perez", activa, List.of(), "0");
 	}
 
 	// ---------- listado ----------
@@ -234,13 +234,89 @@ class FamiliaGestionAdminControllerWebMvcTest {
 		org.mockito.Mockito.verifyNoMoreInteractions(servicio);
 	}
 
+	@Test
+	void u1DetalleIncluyeVersionDecimal() throws Exception {
+		when(servicio.obtener(any(), eq(familiaId))).thenReturn(detalle(true));
+		mvc.perform(get("/api/admin/familias/" + familiaId).cookie(admin()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.version").value("0"));
+	}
+
+	@Test
+	void u1ActualizarSinVersionEs400() throws Exception {
+		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"Perez\"}"))
+				.andExpect(status().isBadRequest());
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void revisionesAusentesInvalidasYTiposNoCadenaSeRechazanEnTodosLosComandos() throws Exception {
+		for (String valor : new String[] { null, "null", "0", "0.0", "true", "[]", "{}", "\"\"", "\"-1\"",
+				"\" 0\"", "\"1.0\"", "\"1e2\"", "\"9223372036854775808\"", "\"١\"" }) {
+			String version = valor == null ? "" : ",\"versionEsperada\":" + valor;
+			mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"Prueba\"" + version + "}"))
+					.andExpect(status().isBadRequest());
+			for (String accion : new String[] { "activar", "desactivar" }) {
+				mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/" + accion), admin(),
+						valor == null ? "{}" : "{\"versionEsperada\":" + valor + "}"))
+						.andExpect(status().isBadRequest());
+			}
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void estadoNoAceptaCuerpoAusenteNiPropiedadesAdicionales() throws Exception {
+		for (String accion : new String[] { "activar", "desactivar" }) {
+			mvc.perform(conCsrf(post("/api/admin/familias/" + familiaId + "/" + accion)).cookie(admin()))
+					.andExpect(status().isBadRequest());
+			mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/" + accion), admin(),
+					"{\"versionEsperada\":\"0\",\"activa\":true}"))
+					.andExpect(status().isBadRequest());
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void conflictoOptimistaTieneRespuestaFijaSinDatosNiVersionVigente() throws Exception {
+		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(
+				new org.springframework.orm.ObjectOptimisticLockingFailureException("Familia", familiaId));
+		String json = mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(),
+				"{\"nombreReferencia\":\"Prueba\",\"versionEsperada\":\"0\"}"))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
+				.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+		assertThat(json).doesNotContain(familiaId.toString(), "Prueba", "version", "nombreReferencia");
+	}
+
+	@Test
+	void contencionPesimistaConservaElCodigoDistinto() throws Exception {
+		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(
+				new org.springframework.dao.CannotAcquireLockException("Mensaje interno sintetico"));
+		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(),
+				"{\"nombreReferencia\":\"Prueba\",\"versionEsperada\":\"0\"}"))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("CONFLICTO_CONCURRENCIA"));
+	}
+
+	@Test
+	void mfaPendienteNoAccedeAlDetalleNiALosComandos() throws Exception {
+		Cookie pendiente = new Cookie("BP_SESION", tokens.emitirMfaPendiente(adminId, escuelaId));
+		mvc.perform(get("/api/admin/familias/" + familiaId).cookie(pendiente)).andExpect(status().isForbidden());
+		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), pendiente,
+				"{\"nombreReferencia\":\"Prueba\",\"versionEsperada\":\"0\"}"))
+				.andExpect(status().isForbidden());
+		for (String accion : new String[] { "activar", "desactivar" }) {
+			mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/" + accion), pendiente,
+					"{\"versionEsperada\":\"0\"}" )).andExpect(status().isForbidden());
+		}
+		verifyNoInteractions(servicio);
+	}
+
 	// ---------- actualizar ----------
 
 	@Test
 	void actualizarDevuelve200() throws Exception {
 		when(servicio.actualizar(any(), eq(familiaId), any(), any())).thenReturn(detalle(true));
 
-		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"Perez\"}"))
+		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"Perez\",\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.nombreReferencia").value("Perez"));
 	}
@@ -266,7 +342,7 @@ class FamiliaGestionAdminControllerWebMvcTest {
 	void actualizarDeOtraEscuelaDa404() throws Exception {
 		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(FamiliaAdminService.familiaNoEncontrada());
 
-		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"X\"}"))
+		mvc.perform(cuerpo(put("/api/admin/familias/" + familiaId), admin(), "{\"nombreReferencia\":\"X\",\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.codigo").value("FAMILIA_NO_ENCONTRADA"));
 	}
@@ -275,21 +351,21 @@ class FamiliaGestionAdminControllerWebMvcTest {
 
 	@Test
 	void activarYDesactivarDevuelven200ConElDetalle() throws Exception {
-		when(servicio.activar(any(), eq(familiaId), any())).thenReturn(detalle(true));
-		when(servicio.desactivar(any(), eq(familiaId), any())).thenReturn(detalle(false));
+		when(servicio.activar(any(), eq(familiaId), eq(0L), any())).thenReturn(detalle(true));
+		when(servicio.desactivar(any(), eq(familiaId), eq(0L), any())).thenReturn(detalle(false));
 
-		mvc.perform(conCsrf(post("/api/admin/familias/" + familiaId + "/activar")).cookie(admin()))
+		mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/activar"), admin(), "{\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.activa").value(true));
-		mvc.perform(conCsrf(post("/api/admin/familias/" + familiaId + "/desactivar")).cookie(admin()))
+		mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/desactivar"), admin(), "{\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.activa").value(false));
 	}
 
 	@Test
 	void activarDeOtraEscuelaDa404() throws Exception {
-		when(servicio.activar(any(), any(), any())).thenThrow(
+		when(servicio.activar(any(), any(), any(), any())).thenThrow(
 				new ExcepcionNegocio(HttpStatus.NOT_FOUND, "FAMILIA_NO_ENCONTRADA", "La familia no existe."));
 
-		mvc.perform(conCsrf(post("/api/admin/familias/" + familiaId + "/activar")).cookie(admin()))
+		mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/activar"), admin(), "{\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isNotFound());
 	}
 
@@ -354,7 +430,7 @@ class FamiliaGestionAdminControllerWebMvcTest {
 				null, null);
 		when(servicio.obtener(any(), eq(familiaId))).thenReturn(new FamiliaDetalle(familiaId, "Gomez", true,
 				List.of(com.banfieldpatin.backend.familias.tutores.dto.TutorResumen.de(conDni),
-						com.banfieldpatin.backend.familias.tutores.dto.TutorResumen.de(sinDni))));
+						com.banfieldpatin.backend.familias.tutores.dto.TutorResumen.de(sinDni)), "0"));
 
 		String cuerpo = mvc.perform(get("/api/admin/familias/" + familiaId).cookie(admin())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.tutores[0].dniEnmascarado").value("•••••456"))

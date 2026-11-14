@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * Alta y reemplazo completo (PUT) de una familia. La escuela sale del JWT y el estado solo cambia por
+ * Alta de una familia. El reemplazo usa FamiliaActualizacion con revision obligatoria. La escuela sale del JWT y el estado solo cambia por
  * activar/desactivar: cualquier otra propiedad (escuelaId, activa, activo, estado, ...) se rechaza con
  * 400 SOLICITUD_INVALIDA (el any-setter lanza y Jackson lo reporta como cuerpo ilegible, sin eco del valor).
  */

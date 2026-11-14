@@ -56,7 +56,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 
 	@Test
 	void postFamiliasResponde201ConLocation() throws Exception {
-		when(familiaAdminService.crear(any(), any(), any())).thenReturn(new FamiliaDetalle(ID, "Familia Prueba", true, List.of()));
+		when(familiaAdminService.crear(any(), any(), any())).thenReturn(new FamiliaDetalle(ID, "Familia Prueba", true, List.of(), "0"));
 
 		mvc.perform(conCsrf(json(post("/api/admin/familias"), "{\"nombreReferencia\":\"Familia Prueba\"}"), sesion(Rol.ADMIN)))
 				.andExpect(status().isCreated()).andExpect(header().string("Location", "/api/admin/familias/" + ID));

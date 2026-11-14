@@ -111,7 +111,7 @@ class DniEnmascaradoDbTest extends BaseVinculosDb {
 		assertThat(JsonDeContrato.claves(arbol)).contains("dniEnmascarado").doesNotContain("dni");
 		assertThat(JsonDeContrato.filtracionesDeDni(arbol, List.of("27123456", "4412345"))).isEmpty();
 		// Tambien las respuestas de escritura de familia (activar) llevan el tutor enmascarado.
-		FamiliaDetalle tras = familiasAdmin.activar(admin, familia, DATOS);
+		FamiliaDetalle tras = familiasAdmin.activar(admin, familia, Long.valueOf(familiasAdmin.obtener(admin, familia).version()), DATOS);
 		assertThat(JsonDeContrato.filtracionesDeDni(json.valueToTree(tras), List.of("27123456", "4412345"))).isEmpty();
 		// El detalle individual del tutor SI conserva el DNI completo (y se guarda normalizado).
 		assertThat(tutoresAdmin.obtener(admin, conDni.id()).dni()).isEqualTo("27123456");

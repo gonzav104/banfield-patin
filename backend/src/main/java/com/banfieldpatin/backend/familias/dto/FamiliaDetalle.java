@@ -7,13 +7,13 @@ import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorResumen;
 
 /** Detalle de una familia para un ADMIN; sin escuelaId. */
-public record FamiliaDetalle(UUID id, String nombreReferencia, boolean activa, List<TutorResumen> tutores) {
+public record FamiliaDetalle(UUID id, String nombreReferencia, boolean activa, List<TutorResumen> tutores, String version) {
 
 	public FamiliaDetalle {
 		tutores = List.copyOf(tutores);
 	}
 
 	public static FamiliaDetalle de(Familia f, List<TutorResumen> tutores) {
-		return new FamiliaDetalle(f.getId(), f.getNombreReferencia(), f.isActiva(), tutores);
+		return new FamiliaDetalle(f.getId(), f.getNombreReferencia(), f.isActiva(), tutores, Long.toString(f.getVersion()));
 	}
 }

@@ -20,7 +20,11 @@ import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.dto.FamiliaAdminResumen;
 import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
+import com.banfieldpatin.backend.familias.dto.FamiliaActualizacion;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import com.banfieldpatin.backend.familias.tutores.ConteoTutores;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorResumen;
@@ -43,13 +47,15 @@ public class FamiliaAdminService {
 	private final TutorRepository tutores;
 	private final FamiliaDeportistaRepository vinculos;
 	private final AuditoriaService auditoria;
+	private final EntityManager em;
 
 	public FamiliaAdminService(FamiliaRepository familias, TutorRepository tutores,
-			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria) {
+			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, EntityManager em) {
 		this.familias = familias;
 		this.tutores = tutores;
 		this.vinculos = vinculos;
 		this.auditoria = auditoria;
+		this.em = em;
 	}
 
 	public static ExcepcionNegocio familiaNoEncontrada() {
@@ -97,9 +103,9 @@ public class FamiliaAdminService {
 
 	/** Reemplazo completo; auditoria solo si el nombre cambio. Permitido sobre una familia inactiva. */
 	@Transactional
-	public FamiliaDetalle actualizar(UsuarioAutenticado admin, UUID id, FamiliaSolicitud solicitud,
+	public FamiliaDetalle actualizar(UsuarioAutenticado admin, UUID id, FamiliaActualizacion solicitud,
 			DatosSolicitud datos) {
-		Familia familia = cargar(admin, id);
+		Familia familia = cargarParaModificar(admin, id, solicitud.versionEsperada());
 		if (familia.renombrar(solicitud.nombreReferencia())) {
 			familias.saveAndFlush(familia);
 			registrar(admin, AccionAuditoria.FAMILIA_ACTUALIZADA, familia,
@@ -109,8 +115,8 @@ public class FamiliaAdminService {
 	}
 
 	@Transactional
-	public FamiliaDetalle activar(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
-		Familia familia = cargar(admin, id);
+	public FamiliaDetalle activar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Familia familia = cargarParaModificar(admin, id, versionEsperada);
 		if (familia.activar()) {
 			familias.saveAndFlush(familia);
 			registrar(admin, AccionAuditoria.FAMILIA_ACTIVADA, familia, Map.of(), datos);
@@ -119,13 +125,35 @@ public class FamiliaAdminService {
 	}
 
 	@Transactional
-	public FamiliaDetalle desactivar(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
-		Familia familia = cargar(admin, id);
+	public FamiliaDetalle desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Familia familia = cargarParaModificar(admin, id, versionEsperada);
 		if (familia.desactivar()) {
 			familias.saveAndFlush(familia);
 			registrar(admin, AccionAuditoria.FAMILIA_DESACTIVADA, familia, Map.of(), datos);
 		}
 		return detalle(familia, admin.escuelaId());
+	}
+
+	public static ExcepcionNegocio edicionDesactualizada() {
+		return new ExcepcionNegocio(HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA",
+				"El registro fue modificado. Es necesario volver a cargarlo antes de guardar.");
+	}
+
+	/**
+	 * La comparacion detecta formularios viejos; @Version agrega el predicado atomico al UPDATE.
+	 * OPTIMISTIC comprueba tambien la revision al completar una transaccion sin cambios (sin UPDATE).
+	 * El commit ocurre antes de entregar el DTO al controller; cualquier conflicto revierte tambien la auditoria.
+	 */
+	private Familia cargarParaModificar(UsuarioAutenticado admin, UUID id, Long versionEsperada) {
+		Familia familia = cargar(admin, id);
+		if (versionEsperada == null || versionEsperada < 0) {
+			throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "VALIDACION", "La revisión es obligatoria y no negativa.");
+		}
+		if (familia.getVersion() != versionEsperada) {
+			throw edicionDesactualizada();
+		}
+		em.lock(familia, LockModeType.OPTIMISTIC);
+		return familia;
 	}
 
 	private Familia cargar(UsuarioAutenticado admin, UUID id) {

@@ -19,6 +19,7 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.dto.FamiliaDetalle;
+import com.banfieldpatin.backend.familias.dto.FamiliaActualizacion;
 import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
 import com.banfieldpatin.backend.familias.invitaciones.GeneradorTokenInvitacion;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -112,10 +113,10 @@ class MapeoFamiliasAdminDbTest extends BaseDbTest {
 	void actualizarAuditaSoloCuandoElNombreCambiaYSinValores() {
 		UUID id = servicio.crear(admin, new FamiliaSolicitud("Perez"), DATOS).id();
 
-		servicio.actualizar(admin, id, new FamiliaSolicitud("Perez"), DATOS);
+		servicio.actualizar(admin, id, new FamiliaActualizacion("Perez", Long.valueOf(servicio.obtener(admin, id).version())), DATOS);
 		assertThat(auditorias(escuelaA, "FAMILIA_ACTUALIZADA")).isZero();
 
-		FamiliaDetalle cambiada = servicio.actualizar(admin, id, new FamiliaSolicitud("Gomez"), DATOS);
+		FamiliaDetalle cambiada = servicio.actualizar(admin, id, new FamiliaActualizacion("Gomez", Long.valueOf(servicio.obtener(admin, id).version())), DATOS);
 
 		assertThat(cambiada.nombreReferencia()).isEqualTo("Gomez");
 		assertThat(fila(id).get("nombre_referencia")).isEqualTo("Gomez");
@@ -130,7 +131,7 @@ class MapeoFamiliasAdminDbTest extends BaseDbTest {
 	void actualizarUnaFamiliaInactivaEstaPermitidoYNoCambiaSuEstado() {
 		UUID id = datos.familia(escuelaA, "Vieja", false);
 
-		FamiliaDetalle detalle = servicio.actualizar(admin, id, new FamiliaSolicitud("Nueva"), DATOS);
+		FamiliaDetalle detalle = servicio.actualizar(admin, id, new FamiliaActualizacion("Nueva", Long.valueOf(servicio.obtener(admin, id).version())), DATOS);
 
 		assertThat(detalle.activa()).isFalse();
 		assertThat(fila(id).get("activa")).isEqualTo(false);
@@ -141,15 +142,15 @@ class MapeoFamiliasAdminDbTest extends BaseDbTest {
 	void desactivarYActivarAuditanSoloElCambioRealYSonIdempotentes() {
 		UUID id = datos.familia(escuelaA, "Perez", true);
 
-		assertThat(servicio.activar(admin, id, DATOS).activa()).isTrue();
+		assertThat(servicio.activar(admin, id, Long.valueOf(servicio.obtener(admin, id).version()), DATOS).activa()).isTrue();
 		assertThat(auditoriasTotales(escuelaA)).isZero();
 
-		assertThat(servicio.desactivar(admin, id, DATOS).activa()).isFalse();
-		assertThat(servicio.desactivar(admin, id, DATOS).activa()).isFalse();
+		assertThat(servicio.desactivar(admin, id, Long.valueOf(servicio.obtener(admin, id).version()), DATOS).activa()).isFalse();
+		assertThat(servicio.desactivar(admin, id, Long.valueOf(servicio.obtener(admin, id).version()), DATOS).activa()).isFalse();
 		assertThat(auditorias(escuelaA, "FAMILIA_DESACTIVADA")).isEqualTo(1);
 
-		assertThat(servicio.activar(admin, id, DATOS).activa()).isTrue();
-		assertThat(servicio.activar(admin, id, DATOS).activa()).isTrue();
+		assertThat(servicio.activar(admin, id, Long.valueOf(servicio.obtener(admin, id).version()), DATOS).activa()).isTrue();
+		assertThat(servicio.activar(admin, id, Long.valueOf(servicio.obtener(admin, id).version()), DATOS).activa()).isTrue();
 		assertThat(auditorias(escuelaA, "FAMILIA_ACTIVADA")).isEqualTo(1);
 		assertThat(fila(id).get("activa")).isEqualTo(true);
 	}
@@ -167,7 +168,7 @@ class MapeoFamiliasAdminDbTest extends BaseDbTest {
 		UUID invitacion = datos.invitacionPendiente(escuelaA, familia, adminId, GeneradorTokenInvitacion.sha256Hex(UUID.randomUUID().toString()));
 		String antes = estadoDependiente(escuelaA);
 
-		servicio.desactivar(admin, familia, DATOS);
+		servicio.desactivar(admin, familia, Long.valueOf(servicio.obtener(admin, familia).version()), DATOS);
 
 		assertThat(fila(familia).get("activa")).isEqualTo(false);
 		assertThat(estadoDependiente(escuelaA)).isEqualTo(antes);
@@ -202,10 +203,10 @@ class MapeoFamiliasAdminDbTest extends BaseDbTest {
 
 		assertThatThrownBy(() -> servicio.obtener(admin, ajena)).isInstanceOfSatisfying(ExcepcionNegocio.class,
 				e -> assertThat(e.getCodigo()).isEqualTo("FAMILIA_NO_ENCONTRADA"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, ajena, new FamiliaSolicitud("Robada"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, ajena, new FamiliaActualizacion("Robada", 0L), DATOS))
 				.isInstanceOf(ExcepcionNegocio.class);
-		assertThatThrownBy(() -> servicio.desactivar(admin, ajena, DATOS)).isInstanceOf(ExcepcionNegocio.class);
-		assertThatThrownBy(() -> servicio.activar(admin, UUID.randomUUID(), DATOS))
+		assertThatThrownBy(() -> servicio.desactivar(admin, ajena, 0L, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		assertThatThrownBy(() -> servicio.activar(admin, UUID.randomUUID(), 0L, DATOS))
 				.isInstanceOf(ExcepcionNegocio.class);
 
 		assertThat(fila(ajena).get("nombre_referencia")).isEqualTo("Ajena");
