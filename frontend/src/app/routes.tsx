@@ -7,6 +7,7 @@ import { AthletesPage } from '@/features/familia/AthletesPage';
 import { AthleteSheetPage } from '@/features/familia/AthleteSheetPage';
 import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { AdminFamiliasPage } from '@/features/admin-familias/AdminFamiliasPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { RegistrationPage } from '@/features/registration/RegistrationPage';
 import { LoadingScreen, NotFoundScreen } from '@/features/auth/screens';
@@ -59,6 +60,7 @@ export function AppRoutes() {
       <Route element={<RequireRole role="ADMIN" />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminHomePage />} />
+          <Route path="/admin/familias" element={<AdminFamiliasPage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>

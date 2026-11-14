@@ -7,6 +7,7 @@ import { LogoutButton } from './LogoutButton';
 
 const navItems = [
   { to: '/admin', label: 'Inicio', end: true },
+  { to: '/admin/familias', label: 'Familias', end: false },
   { to: '/admin/invitaciones', label: 'Invitaciones', end: false },
 ];
 
