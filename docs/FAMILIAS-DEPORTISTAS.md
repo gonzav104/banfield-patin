@@ -177,6 +177,13 @@ superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotad
   se modificó. La ficha mínima no lo reemplaza ni lo restringe; cuando se diseñe una pantalla de consulta, verificación o actualización de datos se definirá un contrato mínimo propio
   por pantalla. La fecha de nacimiento sigue siendo un dato esencial del dominio (empadronamiento, licencias, categorías, Listas de Buena Fe): la minimización es solo de las
   respuestas del portal.
+- **Cierre de `FE-04` (flujo, alcance y despliegue).** Flujo de la familia: login → `/familia` → listado de deportistas → ficha (`/familia/deportistas/:deportistaId`) → volver; la
+  pantalla está descrita en el [README del frontend](../frontend/README.md). **Alcance:** solo lectura de la ficha mínima y la temporada vigente; no incluye licencia, empadronamiento,
+  aptos físicos, historial de temporadas, edición ni la fecha exacta de nacimiento. **Evidencia automatizada:** pruebas de unidad, de integración con PostgreSQL real y 22 E2E reales
+  de la ficha (contrato real, 404 uniforme, aislamiento, sesión vencida, móvil y barrido de privacidad); los E2E no prueban cookies cambiadas desde **otra pestaña** (riesgo
+  residual documentado). **Compatibilidad de despliegue:** la transición sin degradación visual exige la secuencia **backend aditivo (ficha y `edad` con `fechaNacimiento`) →
+  frontend nuevo (lee `edad`) → backend final (sin `fechaNacimiento` en el listado)**; con otro orden el listado muestra «Edad no informada» hasta completar la secuencia. No hay una
+  estrategia de despliegue verificada que evite ese orden y **ningún despliegue productivo fue validado**.
 - Techos de sentencias de Hibernate (medidos con más de 5 filas): `mi-familia` ≤ 2, listado ≤ 2 (con cualquier `page`/`size`), detalle ≤ 1; la revalidación central
   suma una sentencia JDBC aparte por solicitud autenticada.
 
