@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
@@ -7,8 +7,8 @@ import { Pagination } from '@/features/familia/Pagination';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { useDebouncedValue } from '@/features/invitations/useDebouncedValue';
 import { ApiError } from '@/lib/api-error';
-import { cn } from '@/lib/utils';
 import { FAMILY_PAGE_SIZE, SEARCH_MAX_LENGTH } from './api';
+import { FamilyStatusBadge } from './FamilyStatusBadge';
 import { useFamilyList } from './hooks';
 import { listErrorMessage } from './messages';
 import { familyStatusFilterSchema, type FamilyAdminSummary, type FamilyStatusFilter } from './schemas';
@@ -32,23 +32,14 @@ function readPage(value: string | null): number {
   return value !== null && /^[1-9][0-9]{0,5}$/.test(value) ? Number(value) - 1 : 0;
 }
 
-function StatusBadge({ active }: { active: boolean }) {
-  return (
-    <span
-      className={cn(
-        'inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold',
-        active ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-neutral-400 bg-neutral-100 text-neutral-800',
-      )}
-    >
-      {active ? 'Activa' : 'Inactiva'}
-    </span>
-  );
-}
-
 function FamilyRow({ family }: { family: FamilyAdminSummary }) {
   return (
     <li className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] md:items-center">
-      <p className="min-w-0 break-words font-semibold">{family.nombreReferencia}</p>
+      <p className="min-w-0 break-words font-semibold">
+        <Link to={`/admin/familias/${encodeURIComponent(family.id)}`} className="text-ink underline-offset-4 hover:underline focus-visible:underline">
+          {family.nombreReferencia}
+        </Link>
+      </p>
       <dl className="text-sm text-muted">
         <div className="flex gap-1">
           <dt>Tutores:</dt>
@@ -60,7 +51,7 @@ function FamilyRow({ family }: { family: FamilyAdminSummary }) {
         </div>
       </dl>
       <div className="md:justify-self-end">
-        <StatusBadge active={family.activa} />
+        <FamilyStatusBadge active={family.activa} />
       </div>
     </li>
   );
@@ -95,10 +86,15 @@ export function AdminFamiliasPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <header>
-        <p className="text-sm font-semibold text-brand-700">Administración</p>
-        <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Familias</h1>
-        <p className="mt-2 text-muted">Consultá las familias de la escuela y cuántos tutores y deportistas activos tiene cada una.</p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-brand-700">Administración</p>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Familias</h1>
+          <p className="mt-2 text-muted">Consultá las familias de la escuela y cuántos tutores y deportistas activos tiene cada una.</p>
+        </div>
+        <Button asChild>
+          <Link to="/admin/familias/nueva">Nueva familia</Link>
+        </Button>
       </header>
 
       <section aria-label="Filtros" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
