@@ -67,6 +67,8 @@ async function expectOk<T>(response: Awaited<ReturnType<APIRequestContext['post'
 }
 
 /** ADMIN-side seeding. `admin` is the request context of a browser context already signed in as the administrator. */
+export type SportsRow = { categoria?: string; rama?: string; divisional?: string; numeroCorredor?: string; estadoDeportivo?: 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO' };
+
 export class AdminSeed {
   constructor(private readonly admin: APIRequestContext) {}
 
@@ -100,5 +102,20 @@ export class AdminSeed {
 
   async revoke(familyId: string, athleteId: string): Promise<void> {
     await this.post(`/api/admin/familias/${familyId}/deportistas/${athleteId}/revocar`, {}, 'revoke link');
+  }
+
+  /** The season of that year (created when missing); it is only created, not activated. */
+  async season(anio: number): Promise<{ id: string; anio: number; activa: boolean }> {
+    const page = await expectOk<{ contenido: { id: string; anio: number; activa: boolean }[] }>(await this.admin.get('/api/admin/temporadas?page=0&size=100'), 'list seasons');
+    return page.contenido.find((t) => t.anio === anio) ?? (await this.post<{ id: string; anio: number; activa: boolean }>('/api/admin/temporadas', { anio }, `create season ${anio}`));
+  }
+
+  async activateSeason(seasonId: string): Promise<void> {
+    await this.post(`/api/admin/temporadas/${seasonId}/activar`, {}, 'activate season');
+  }
+
+  /** The sports data of one athlete in one season (what the family sees as «Temporada vigente» when that season is active). */
+  async addSportsRow(athleteId: string, seasonId: string, row: SportsRow): Promise<void> {
+    await this.post(`/api/admin/deportistas/${athleteId}/temporadas`, { temporadaId: seasonId, ...row }, 'add sports row');
   }
 }

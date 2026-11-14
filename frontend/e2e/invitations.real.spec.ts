@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { dbQuery } from './support/db';
 import { adminCredentials, loadState, saveState } from './support/state';
 import { freshCode } from './support/totp';
 
@@ -27,15 +27,6 @@ let browserRef: Browser;
 let adminContext: BrowserContext;
 let admin: Page;
 let usedLink = '';
-
-function dbQuery(sql: string): void {
-  const container = process.env.E2E_DB_CONTAINER;
-  if (!container) throw new Error('E2E_DB_CONTAINER is required for the expired-invitation test.');
-  // psql reads the credentials from the container's own environment: nothing sensitive leaves it.
-  // E2E_DB_NAME selects a disposable database inside that container (default: the container's POSTGRES_DB).
-  const database = process.env.E2E_DB_NAME ? `'${process.env.E2E_DB_NAME.replace(/[^A-Za-z0-9_]/g, '')}'` : '"$POSTGRES_DB"';
-  execFileSync('docker', ['exec', container, 'sh', '-c', `psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d ${database} -c "${sql}"`], { stdio: 'pipe' });
-}
 
 function tokenOf(link: string): string {
   return LINK_PATTERN.exec(link)?.[1] ?? '';
