@@ -42,3 +42,24 @@ export async function getFamily(id: string): Promise<FamilyDetail> {
 export async function createFamily(nombreReferencia: string): Promise<FamilyDetail> {
   return parse(familyDetailSchema, await apiWrite('post', '/admin/familias', { nombreReferencia }));
 }
+
+/**
+ * PUT /api/admin/familias/{id}. `version` is the revision the administrator saw when starting the edit: it is sent as it
+ * is, never refreshed on the way. Never retried (apiWrite): a failed write is ambiguous.
+ */
+export async function updateFamily(input: { id: string; nombreReferencia: string; version: string }): Promise<FamilyDetail> {
+  return parse(
+    familyDetailSchema,
+    await apiWrite('put', `/admin/familias/${encodeURIComponent(input.id)}`, { nombreReferencia: input.nombreReferencia, versionEsperada: input.version }),
+  );
+}
+
+export type FamilyStatusAction = 'activar' | 'desactivar';
+
+/** POST /api/admin/familias/{id}/activar|desactivar with the revision seen when the confirmation was opened. */
+export async function changeFamilyStatus(input: { id: string; action: FamilyStatusAction; version: string }): Promise<FamilyDetail> {
+  return parse(
+    familyDetailSchema,
+    await apiWrite('post', `/admin/familias/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }),
+  );
+}

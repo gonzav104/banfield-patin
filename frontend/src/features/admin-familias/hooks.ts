@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/lib/api-error';
-import { createFamily, getFamily, listFamilies, type FamilyListParams } from './api';
+import { changeFamilyStatus, createFamily, getFamily, listFamilies, updateFamily, type FamilyListParams, type FamilyStatusAction } from './api';
 import type { FamilyDetail } from './schemas';
 
 /** Prefix of every family-related query (list, detail and the invitation picker): one invalidation refreshes them all. */
@@ -30,4 +30,24 @@ export function useCreateFamily() {
       return queryClient.invalidateQueries({ queryKey: familiesKey });
     },
   });
+}
+
+/** After a successful write the response (the new current state, with its new revision) replaces the cached detail. */
+function useFamilyWrite<TInput extends { id: string }>(write: (input: TInput) => Promise<FamilyDetail>) {
+  const queryClient = useQueryClient();
+  return useMutation<FamilyDetail, ApiError, TInput>({
+    mutationFn: write,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(familyDetailKey(saved.id), saved);
+      return queryClient.invalidateQueries({ queryKey: familiesKey });
+    },
+  });
+}
+
+export function useUpdateFamily() {
+  return useFamilyWrite((input: { id: string; nombreReferencia: string; version: string }) => updateFamily(input));
+}
+
+export function useChangeFamilyStatus() {
+  return useFamilyWrite((input: { id: string; action: FamilyStatusAction; version: string }) => changeFamilyStatus(input));
 }

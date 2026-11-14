@@ -43,3 +43,6 @@ export const familyDetailSchema = z.object({
   version: z.string().regex(/^[0-9]{1,19}$/),
 });
 export type FamilyDetail = z.infer<typeof familyDetailSchema>;
+
+/** The same rule as the backend's FamiliaSolicitud/FamiliaActualizacion: not blank once trimmed, at most 150 characters. */
+export const familyNameSchema = z.string().trim().min(1, 'Ingresá un nombre de referencia.').max(150, 'Máximo 150 caracteres.');
