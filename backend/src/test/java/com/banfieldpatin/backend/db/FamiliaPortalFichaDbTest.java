@@ -133,13 +133,15 @@ class FamiliaPortalFichaDbTest extends BaseVinculosDb {
 	// ---------- una sola regla de edad en la ficha y el listado ----------
 
 	/**
-	 * Determinista: los dos servicios se arman con el MISMO reloj fijo (2026-11-13 al mediodia en Buenos Aires) y las fechas
-	 * de nacimiento son absolutas, asi que nada depende del dia en que corra la prueba ni del cambio de dia. Se fija el
-	 * valor esperado de cada caso (no solo que ficha y listado coincidan).
+	 * Determinista: los dos servicios se arman con el MISMO reloj fijo y las fechas de nacimiento son absolutas, asi que nada
+	 * depende del dia en que corra la prueba. El instante es 2026-11-14T02:00Z: en UTC ya es el 14 de noviembre, pero en Buenos
+	 * Aires (la zona de la escuela) todavia es el 13 a las 23:00. Por eso distingue la zona: con la fecha de UTC, quien nacio el
+	 * 14/11/2026 tendria 0 anios y no seria una fecha futura. Se fija el valor esperado de cada caso (no solo que ficha y listado
+	 * coincidan).
 	 */
 	@Test
 	void laFichaYElListadoCalculanLaMismaEdadEsperadaParaLasMismasFechasIncluidosLosBordes() {
-		java.time.Clock reloj = java.time.Clock.fixed(java.time.Instant.parse("2026-11-13T15:00:00Z"), java.time.ZoneOffset.UTC);
+		java.time.Clock reloj = java.time.Clock.fixed(java.time.Instant.parse("2026-11-14T02:00:00Z"), java.time.ZoneOffset.UTC);
 		var fichaFija = new FamiliaPortalFichaService(repositorio, reloj);
 		var listadoFijo = new FamiliaPortalService(familias, tutores, repositorio, reloj);
 		java.time.LocalDate[] fechas = { java.time.LocalDate.of(2016, 2, 29), java.time.LocalDate.of(2000, 2, 29),

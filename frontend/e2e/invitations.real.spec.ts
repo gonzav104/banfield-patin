@@ -184,9 +184,11 @@ test.describe('invitation lifecycle (real backend)', () => {
     const expiredFamily = `E2E Vencida ${suffix}`;
     const link = await createInvitationInUi(admin, { newFamily: expiredFamily });
     await admin.getByRole('button', { name: 'Listo, ya lo copié' }).click();
-    dbQuery(
-      `update gestion_patin.invitacion set creado_en = now() - interval '3 days', expira_en = now() - interval '1 day' where familia_id in (select id from gestion_patin.familia where nombre_referencia = '${expiredFamily}')`,
+    const updated = dbQuery(
+      `update gestion_patin.invitacion set creado_en = now() - interval '3 days', expira_en = now() - interval '1 day' where familia_id in (select id from gestion_patin.familia where nombre_referencia = :'family')`,
+      { family: expiredFamily },
     );
+    expect(updated).toContain('UPDATE 1'); // exactly the invitation just created for this family
 
     await admin.getByLabel('Estado').selectOption('EXPIRADA');
     const row = admin.getByRole('listitem').filter({ hasText: expiredFamily });

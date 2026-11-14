@@ -44,8 +44,21 @@ let familyB: SeededFamily;
 let currentSeasonId = '';
 const ids = {} as Record<CaseKey, string>;
 const dnis: string[] = [];
-/** Every /api/familia response any family context received during this file, for the final privacy sweep. */
-const portalResponses: { url: string; status: number; body: string }[] = [];
+/**
+ * Every /api/familia response the family contexts of this file observed, for the final sweep. The body is read by the test
+ * itself, in a route that fetches the real answer and hands it on to the page (reading it from the page's own response event
+ * lost bodies when the page navigated first). A request that could not be fetched is recorded with its error, never dropped.
+ */
+const portalResponses: { url: string; status: number; body: string | null; captureError: string | null }[] = [];
+const pendingCaptures = new Set<Promise<void>>();
+const settleCaptures = async () => {
+  await Promise.all([...pendingCaptures]);
+};
+/** Waits for the answers still being captured and only then closes the context. */
+const closeContext = async (context: BrowserContext) => {
+  await settleCaptures();
+  await context.close();
+};
 
 const sheetUrl = (key: CaseKey) => `/familia/deportistas/${ids[key]}`;
 const fichaApi = (id: string) => `/api/familia/deportistas/${id}/ficha`;
@@ -53,12 +66,22 @@ const noHorizontalOverflow = (page: Page) => page.evaluate(() => document.docume
 
 async function newContext(): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browserRef.newContext({ baseURL: 'http://127.0.0.1:5173' });
-  context.on('response', (response) => {
-    if (!response.url().includes('/api/familia/')) return;
-    void response.text().then(
-      (body) => portalResponses.push({ url: new URL(response.url()).pathname, status: response.status(), body }),
-      () => undefined,
-    );
+  await context.route('**/api/familia/**', (route) => {
+    const capture = (async () => {
+      const url = new URL(route.request().url()).pathname;
+      try {
+        const response = await route.fetch();
+        const body = await response.text();
+        portalResponses.push({ url, status: response.status(), body, captureError: null });
+        await route.fulfill({ response, body }).catch(() => undefined); // the page may have left already: the answer was observed anyway
+      } catch (error) {
+        portalResponses.push({ url, status: 0, body: null, captureError: String(error).split('\n')[0] ?? 'unknown' });
+        await route.abort().catch(() => undefined);
+      }
+    })();
+    pendingCaptures.add(capture);
+    void capture.finally(() => pendingCaptures.delete(capture));
+    return capture;
   });
   return { context, page: await context.newPage() };
 }
@@ -152,7 +175,7 @@ test.describe('flow of a family: list, sheet, back', () => {
     await page.getByRole('link', { name: 'Volver a deportistas' }).click();
     await expect(page).toHaveURL(/\/familia\/deportistas$/);
     await expect(page.getByText(/en total/)).toBeVisible();
-    await context.close();
+    await closeContext(context);
   });
 
   test('direct access by address and reload with a valid session; the browser history returns to the list', async () => {
@@ -170,7 +193,7 @@ test.describe('flow of a family: list, sheet, back', () => {
     await expect(page).toHaveURL(/\/familia\/deportistas$/);
     await page.goForward();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.suspended.name);
-    await context.close();
+    await closeContext(context);
   });
 
   test('keyboard: the card is a link, Enter opens the sheet with focus on its title and the way back is reachable', async () => {
@@ -190,7 +213,7 @@ test.describe('flow of a family: list, sheet, back', () => {
     await expect(back).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/familia\/deportistas$/);
-    await context.close();
+    await closeContext(context);
   });
 });
 
@@ -202,7 +225,7 @@ test.describe('the cases of the sheet (real data)', () => {
     await expect(row(season, 'Estado deportivo')).toHaveText('Suspendido');
     await expect(row(season, 'Número de corredor')).toHaveText('15');
     expect(await page.locator('main').innerText()).not.toMatch(/motivo|causa|sanci[oó]n|raz[oó]n|porque/i);
-    await context.close();
+    await closeContext(context);
   });
 
   test('an inactive athlete: «Estado en la escuela» Inactivo and «Estado deportivo» Activo are two different things', async () => {
@@ -210,7 +233,7 @@ test.describe('the cases of the sheet (real data)', () => {
     await openSheet(page, familyA, 'inactive');
     await expect(row(section(page, 'Datos del deportista'), 'Estado en la escuela')).toHaveText('Inactivo');
     await expect(row(section(page, `Temporada ${YEAR}`), 'Estado deportivo')).toHaveText('Activo');
-    await context.close();
+    await closeContext(context);
   });
 
   test('a null age is «Edad no informada», never 0 or a guess', async () => {
@@ -218,7 +241,7 @@ test.describe('the cases of the sheet (real data)', () => {
     await openSheet(page, familyA, 'noAge');
     await expect(row(section(page, 'Datos del deportista'), 'Edad')).toHaveText('Edad no informada');
     await expect(row(section(page, `Temporada ${YEAR}`), 'Número de corredor')).toHaveText('033');
-    await context.close();
+    await closeContext(context);
   });
 
   test('no row in the current season: neutral text, no cause and nothing from the previous season', async () => {
@@ -230,7 +253,7 @@ test.describe('the cases of the sheet (real data)', () => {
     const text = await page.locator('main').innerText();
     expect(text).not.toMatch(/Anterior|043|Sub-8/); // the previous season has data for this athlete: it is not the current one
     expect(text).not.toMatch(/motivo|causa|porque/i);
-    await context.close();
+    await closeContext(context);
   });
 
   test('null sports fields are «No informado» (four times) and the status still shows', async () => {
@@ -239,26 +262,41 @@ test.describe('the cases of the sheet (real data)', () => {
     const season = section(page, `Temporada ${YEAR}`);
     for (const term of ['Categoría', 'Rama', 'Divisional', 'Número de corredor']) await expect(row(season, term)).toHaveText('No informado');
     await expect(row(season, 'Estado deportivo')).toHaveText('Activo');
-    await context.close();
+    await closeContext(context);
   });
 
   test('with NO active season the sheet shows the neutral text for everyone (the only SQL of this file, on the disposable database)', async () => {
     test.skip(!hasDisposableDb(), 'needs E2E_DB_CONTAINER (frontend-e2e.sh sets it)');
     const { context, page } = await newContext();
     await loginFamilyUi(page, familyA);
+    let failure: Error | null = null;
     try {
-      dbQuery('UPDATE gestion_patin.temporada SET activa = false');
+      // Only the season this file seeded and activated, by id: exactly one row, nothing else of the database.
+      const updated = dbQuery("UPDATE gestion_patin.temporada SET activa = false WHERE id = :'season'::uuid AND activa = true", { season: currentSeasonId });
+      expect(updated).toContain('UPDATE 1');
       await page.goto(sheetUrl('complete'));
       await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
       await expect(section(page, 'Temporada vigente')).toContainText('No hay datos de la temporada vigente para mostrar.');
       const body = (await (await context.request.get(fichaApi(ids.complete))).json()) as { temporadaVigente: unknown };
       expect(body.temporadaVigente).toBeNull();
-    } finally {
-      await seed.activateSeason(currentSeasonId); // back to the seeded state for the tests that follow
+    } catch (error) {
+      failure = error instanceof Error ? error : new Error(String(error));
     }
+    let cleanupFailure: Error | null = null;
+    try {
+      await seed.activateSeason(currentSeasonId); // back to the seeded state for the tests that follow
+    } catch (error) {
+      cleanupFailure = error instanceof Error ? error : new Error(String(error));
+    }
+    if (failure !== null) {
+      // The failure of the test is the one reported; a failed cleanup is only mentioned.
+      if (cleanupFailure !== null) console.error('cleanup also failed:', String(cleanupFailure).split('\n')[0]);
+      throw failure;
+    }
+    if (cleanupFailure !== null) throw cleanupFailure;
     await page.reload();
     await expect(section(page, `Temporada ${YEAR}`)).toBeVisible();
-    await context.close();
+    await closeContext(context);
   });
 });
 
@@ -286,31 +324,28 @@ test.describe('the real contract and what never travels', () => {
     expect(((await (await api.get(fichaApi(ids.noAge))).json()) as { edad: unknown }).edad).toBeNull();
     expect(((await (await api.get(fichaApi(ids.inactive))).json()) as { activo: boolean }).activo).toBe(false);
     expect(((await (await api.get(fichaApi(ids.noSeason))).json()) as { temporadaVigente: unknown }).temporadaVigente).toBeNull();
-    await context.close();
+    await closeContext(context);
   });
 
   test('the family list carries the age and not the birth date, and the sheet screen shows no sensitive data', async () => {
     const { context, page } = await newContext();
     await loginFamilyUi(page, familyA);
-    const listBodies: string[] = [];
-    page.on('response', (response) => {
-      if (new URL(response.url()).pathname === '/api/familia/deportistas') void response.text().then((text) => listBodies.push(text));
-    });
+    const isList = (response: { url(): string; request(): { method(): string } }) => new URL(response.url()).pathname === '/api/familia/deportistas' && response.request().method() === 'GET';
+    const listResponse = page.waitForResponse(isList); // registered BEFORE the navigation that triggers it, and awaited
     await page.goto('/familia/deportistas');
+    const raw = await (await listResponse).text();
     await expect(page.getByText(/en total/)).toBeVisible();
     await page.getByRole('link', { name: new RegExp(CASES.complete.name) }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
 
-    expect(listBodies.length).toBeGreaterThan(0);
-    for (const raw of listBodies) {
-      expect(raw).not.toMatch(SENSITIVE(dnis));
-      const page0 = JSON.parse(raw) as { contenido: Record<string, unknown>[] };
-      for (const athlete of page0.contenido) expect(Object.keys(athlete).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']);
-    }
+    expect(raw).not.toMatch(SENSITIVE(dnis));
+    const list = JSON.parse(raw) as { contenido: Record<string, unknown>[]; totalElementos: number };
+    expect(list.totalElementos).toBe(6); // the six visible athletes of family A (the revoked one is not listed)
+    for (const athlete of list.contenido) expect(Object.keys(athlete).sort()).toEqual(['activo', 'apellido', 'edad', 'id', 'nombre']);
     const screen = await page.locator('body').innerText();
     expect(screen).not.toMatch(SENSITIVE(dnis));
     expect(await page.content()).not.toMatch(SENSITIVE(dnis)); // nor in the markup (attributes, hidden text)
-    await context.close();
+    await closeContext(context);
   });
 });
 
@@ -334,7 +369,7 @@ test.describe('authorization against the real database', () => {
       expect(text).not.toContain('E2E-Ficha');
       expect(text).not.toContain(CASES.foreign.name);
     }
-    await context.close();
+    await closeContext(context);
   });
 
   test('a malformed id never reaches the server and shows the same notice', async () => {
@@ -347,7 +382,7 @@ test.describe('authorization against the real database', () => {
     await page.goto('/familia/deportistas/no-es-un-uuid');
     await expect(notFoundNotice(page)).toBeVisible();
     expect(sheetRequests).toEqual([]);
-    await context.close();
+    await closeContext(context);
   });
 
   test('without a session: the API answers 401 and the address sends to the login with no data; the administrator is not a family', async () => {
@@ -360,10 +395,12 @@ test.describe('authorization against the real database', () => {
     expect((await adminContext.request.get(fichaApi(ids.complete))).status()).toBe(403); // ROLE_ADMIN is not ROLE_FAMILIA
     const admin = await adminContext.newPage();
     await admin.goto(sheetUrl('complete'));
+    // Positive condition first: the guard has decided and the «no permission» screen is on show. Only then the negatives mean something.
+    await expect(admin.getByRole('heading', { name: 'No tenés permiso para ver esta sección' })).toBeVisible();
     await expect(admin.getByRole('heading', { name: 'Datos del deportista' })).toHaveCount(0);
     expect(await admin.locator('body').innerText()).not.toContain('E2E-Ficha');
     await admin.close();
-    await context.close();
+    await closeContext(context);
   });
 });
 
@@ -382,7 +419,7 @@ test.describe('sessions and identity changes', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page).toHaveURL(new RegExp(`/familia/deportistas/${ids.complete}$`)); // back where the user was
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
-    await context.close();
+    await closeContext(context);
   });
 
   test('a session lost while the sheet is on screen: the next request shows no data and asks to sign in', async () => {
@@ -393,10 +430,10 @@ test.describe('sessions and identity changes', () => {
 
     await expect(page.getByRole('heading', { name: 'Ingresá a tu portal' })).toBeVisible();
     expect(await page.locator('body').innerText()).not.toContain('E2E-Ficha');
-    await context.close();
+    await closeContext(context);
   });
 
-  test('family A -> family B in the same browser: B cannot reach A\'s sheet, not even with history or the address', async () => {
+  test('family A -> family B in the same browser: B cannot reach A\'s sheet, not by the history and not by the address', async () => {
     const { context, page } = await newContext();
     await openSheet(page, familyA, 'complete');
     await expect(row(section(page, `Temporada ${YEAR}`), 'Número de corredor')).toHaveText('007');
@@ -411,50 +448,93 @@ test.describe('sessions and identity changes', () => {
     page.on('response', (response) => {
       if (new URL(response.url()).pathname.startsWith('/api/') && response.url().includes('/ficha')) requests.push({ url: new URL(response.url()).pathname, status: response.status() });
     });
-    await page.goBack(); // history still holds A's sheet and the login before it
+
+    // The BROWSER HISTORY: walk back through every entry the browser keeps. At each stop, once the screen has settled, nothing of A
+    // may be on show; and if A's sheet address is among the entries it must render as «not found» for B.
+    const visited: string[] = [];
+    for (let steps = 0; steps < 8; steps += 1) {
+      await page.goBack({ waitUntil: 'domcontentloaded' });
+      if (page.url() === 'about:blank') break; // the start of the history: the page the browser opened before any navigation
+      visited.push(page.url());
+      await expect(page.getByRole('heading').first()).toBeVisible(); // settled: some screen is on show
+      if (page.url().endsWith(sheetUrl('complete'))) await expect(notFoundNotice(page)).toBeVisible();
+      expect(await page.locator('body').innerText(), `history stop ${page.url()}`).not.toMatch(new RegExp(`${CASES.complete.name}|007|Sub-10`));
+    }
+    // Observed: signing out and in replaces the entries, so the history keeps only the dashboard and A's sheet address is not in it.
+    // The walk proves that no stop shows A's data; the address test below proves what B gets when it asks for that sheet.
+    expect(visited.length, `history stops: ${visited.join(' , ')}`).toBeGreaterThanOrEqual(1);
+    expect(requests.filter((r) => r.url === fichaApi(ids.complete) && r.status !== 404)).toEqual([]); // the server never gave B the data of A
+
+    // The ADDRESS: a fresh navigation to A's sheet gives the 404 as B (the request is made, and the server answers 404).
     await page.goto(sheetUrl('complete'));
     await expect(notFoundNotice(page)).toBeVisible();
+    expect(requests.filter((r) => r.url === fichaApi(ids.complete)).map((r) => r.status)).toContain(404);
     const text = await page.locator('body').innerText();
     expect(text).not.toContain(CASES.complete.name);
     expect(text).not.toContain('007');
-    // The answer came from the server for B (a 404), not from anything left in memory by A.
-    expect(requests.some((r) => r.url === fichaApi(ids.complete) && r.status === 404)).toBe(true);
 
     await page.goto(sheetUrl('foreign')); // B's own athlete does open
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.foreign.name);
     await expect(row(section(page, `Temporada ${YEAR}`), 'Número de corredor')).toHaveText('099');
-    await context.close();
+    await closeContext(context);
   });
 
-  test('SIMULATED slow answer (the real server answers late): leaving the sheet and changing the user never shows the late data', async () => {
+  /** Delays the real answer of one sheet and records what the browser did with it: delivered, or cancelled by the application. */
+  async function slowSheet(page: Page, key: CaseKey, ms: number): Promise<{ outcomes: ('delivered' | 'cancelled')[]; stop: () => Promise<void> }> {
+    const outcomes: ('delivered' | 'cancelled')[] = [];
+    const pattern = `**${fichaApi(ids[key])}`;
+    await page.route(pattern, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      try {
+        await route.fallback(); // on to the capturing route of the context, which fetches the real answer
+        outcomes.push('delivered');
+      } catch {
+        outcomes.push('cancelled'); // the application aborted the request: the browser never processes that answer
+      }
+    });
+    return { outcomes, stop: () => page.unroute(pattern) };
+  }
+
+  test('SIMULATED slow answer (the real server answers late): the late answer is processed, shown on its own sheet only, and never on another route or for another user', async () => {
     const { context, page } = await newContext();
     await loginFamilyUi(page, familyA);
-    await page.route(`**${fichaApi(ids.complete)}`, async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      await route.continue().catch(() => undefined); // the app may have cancelled the request already: then there is nothing to continue
-    });
+
+    // 1) A late answer that is processed: the sheet stays on loading, with nothing private, and then shows its data.
+    const own = await slowSheet(page, 'complete', 1500);
     await page.goto(sheetUrl('complete'));
     await expect(page.getByText('Cargando la ficha…')).toBeVisible();
-    expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name); // nothing private while it loads
+    expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
+    expect(own.outcomes).toEqual(['delivered']); // the late answer really arrived and was processed
+    await own.stop();
 
-    // 1) Quick route change: the slow sheet is abandoned for another one, which must show only its own data.
+    // 2) Leaving a slow sheet for another one: the late answer still ARRIVES and is processed (the outcome is asserted), and the
+    //    screen that is on show by then keeps only its own data.
+    const abandoned = await slowSheet(page, 'complete', 1500);
+    await page.goto('/familia/deportistas');
+    await page.getByRole('link', { name: new RegExp(CASES.complete.name) }).click();
+    await expect(page.getByText('Cargando la ficha…')).toBeVisible();
     await page.getByRole('link', { name: 'Volver a deportistas' }).click();
     await page.getByRole('link', { name: new RegExp(CASES.suspended.name) }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.suspended.name);
-    await page.waitForTimeout(3000); // the late answer of the first sheet has arrived by now
+    await expect.poll(() => abandoned.outcomes.length, { timeout: 5000 }).toBe(1); // the delayed handler has finished
+    expect(abandoned.outcomes).toEqual(['delivered']); // it was not cancelled: the isolation checks below face a real late answer
     expect(await page.locator('main').innerText()).not.toContain(CASES.complete.name);
     await expect(row(section(page, `Temporada ${YEAR}`), 'Estado deportivo')).toHaveText('Suspendido');
+    await abandoned.stop();
 
-    // 2) Change of user while a sheet of A is still loading.
+    // 3) Change of user while a sheet of A is loading: what the browser did with that late answer is asserted too, and B never sees A.
+    const switching = await slowSheet(page, 'complete', 1500);
     await page.goto(sheetUrl('complete'));
     await expect(page.getByText('Cargando la ficha…')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar sesión' }).click();
     await expect(page).toHaveURL(/\/login$/);
-    await page.unroute(`**${fichaApi(ids.complete)}`);
     await loginFamilyUi(page, familyB);
-    await page.waitForTimeout(3000);
+    await expect.poll(() => switching.outcomes.length, { timeout: 5000 }).toBe(1);
+    expect(switching.outcomes).toEqual(['delivered']);
     expect(await page.locator('body').innerText()).not.toContain(CASES.complete.name);
-    await context.close();
+    await switching.stop();
+    await closeContext(context);
   });
 
   test('SIMULATED outage (page.route, not the real server): retryable error, session kept, then the sheet', async () => {
@@ -470,7 +550,7 @@ test.describe('sessions and identity changes', () => {
     await page.unroute(`**${fichaApi(ids.complete)}`);
     await page.getByRole('button', { name: 'Reintentar' }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(CASES.complete.name);
-    await context.close();
+    await closeContext(context);
   });
 });
 
@@ -498,14 +578,22 @@ test.describe('mobile', () => {
         await expect(page.getByText('Cargando la ficha…')).toHaveCount(0);
         expect(await noHorizontalOverflow(page)).toBe(true);
       }
-      await context.close();
+      await closeContext(context);
     });
   }
 });
 
-test('privacy sweep: no portal answer of this whole file carried the birth date, a DNI, a CUIL or an address', () => {
-  expect(portalResponses.length).toBeGreaterThan(20);
-  expect(portalResponses.filter((r) => r.url.endsWith('/ficha')).length).toBeGreaterThan(10);
+test('privacy sweep: none of the portal answers this file OBSERVED carried a birth date, a DNI, a CUIL or an address', async () => {
+  await settleCaptures(); // every body still being read is finished (and counted) before anything is asserted
+  const isSheet = (r: { url: string }) => r.url.endsWith('/ficha');
+  const isList = (r: { url: string }) => r.url === '/api/familia/deportistas';
+
+  // The scope is what this file really observed: the sheet and the list answers (plus the family summary), by the family
+  // contexts of these tests. It says nothing about endpoints it never called, such as the 15-field detail endpoint.
+  expect(portalResponses.filter(isSheet).length).toBeGreaterThan(20);
+  expect(portalResponses.filter(isList).length).toBeGreaterThan(5);
+  // A body that could not be read is a failure of the capture, never a silent pass.
+  expect(portalResponses.filter((r) => r.captureError !== null).map((r) => `${r.status} ${r.url}: ${r.captureError}`)).toEqual([]);
   for (const response of portalResponses) expect(response.body, `${response.status} ${response.url}`).not.toMatch(SENSITIVE(dnis));
   // Every not-found answer of the portal is the same one.
   const notFound = portalResponses.filter((r) => r.status === 404).map((r) => r.body);

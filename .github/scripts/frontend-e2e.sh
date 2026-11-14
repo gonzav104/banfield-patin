@@ -57,7 +57,8 @@ if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
 fi
 
 echo "Iniciando PostgreSQL descartable (${PG_IMAGE}) en 127.0.0.1:${PG_PORT}..."
-docker run -d --name "$PG_NAME" \
+# La etiqueta es la que exige frontend/e2e/support/db.ts antes de ejecutar SQL destructivo: solo este contenedor la lleva.
+docker run -d --name "$PG_NAME" --label "com.banfieldpatin.e2e.disposable=true" \
   -e POSTGRES_USER="$PG_USER" -e POSTGRES_DB="$PG_DB" -e POSTGRES_PASSWORD="$DB_PASSWORD" \
   -p "127.0.0.1:${PG_PORT}:5432" "$PG_IMAGE" >/dev/null
 ready=0
