@@ -96,11 +96,30 @@ export class AdminSeed {
     await this.post(`/api/admin/familias/${familyId}/desactivar`, { versionEsperada: version }, 'deactivate family');
   }
 
-  /** A tutor of an existing family, through the admin API. Returns the plain DNI (synthetic) so tests can prove it never leaks. */
+  /**
+   * The revision of a family as the backend stores it right now (FE-05/U1): a decimal string. It is read, never invented:
+   * the tutor contract (FE-05/U4) requires the revision the caller observed.
+   */
+  private async familyVersion(familyId: string): Promise<string> {
+    const family = await expectOk<{ version?: unknown }>(await this.admin.get(`/api/admin/familias/${familyId}`), `read family ${familyId}`);
+    expect(typeof family.version === 'string' && /^[0-9]{1,19}$/.test(family.version), `family ${familyId}: version must be a decimal string`).toBe(true);
+    return family.version as string;
+  }
+
+  /**
+   * A tutor of an existing family, through the admin API. Since FE-05/U4 the creation must carry the family revision the caller
+   * observed (`versionFamiliaEsperada`): it is read just before, with the same session, and sent unchanged (no retry, no bypass).
+   * Returns the plain DNI (synthetic) so tests can prove it never leaks.
+   */
   async createTutor(familyId: string, data: { nombre: string; apellido: string; telefono?: string; email?: string; parentesco?: string; withDni?: boolean }): Promise<{ id: string; dni: string | null }> {
     const { withDni = true, ...rest } = data;
     const dni = withDni ? syntheticDni() : null;
-    const created = await this.post<{ id: string }>(`/api/admin/familias/${familyId}/tutores`, { ...rest, ...(dni ? { dni } : {}) }, `create tutor ${data.nombre}`);
+    const versionFamiliaEsperada = await this.familyVersion(familyId);
+    const created = await this.post<{ id: string }>(
+      `/api/admin/familias/${familyId}/tutores`,
+      { ...rest, ...(dni ? { dni } : {}), versionFamiliaEsperada },
+      `create tutor ${data.nombre}`,
+    );
     return { id: created.id, dni };
   }
 
