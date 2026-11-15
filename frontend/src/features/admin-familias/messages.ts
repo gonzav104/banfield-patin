@@ -42,10 +42,14 @@ export function createErrorMessage(error: ApiError): { text: string; uncertain: 
 }
 
 /** How a failed write (edit, activate, deactivate) must be told to the administrator. */
-export type WriteFailure = 'stale' | 'busy' | 'uncertain' | 'validation' | 'forbidden' | 'missing' | 'other';
+export type WriteFailure = 'stale' | 'inactive' | 'busy' | 'uncertain' | 'validation' | 'forbidden' | 'missing' | 'other';
 
 export function classifyWriteFailure(error: ApiError): WriteFailure {
-  if (error.status === 409) return error.code === 'EDICION_DESACTUALIZADA' ? 'stale' : 'busy';
+  if (error.status === 409) {
+    if (error.code === 'EDICION_DESACTUALIZADA') return 'stale';
+    if (error.code === 'FAMILIA_INACTIVA') return 'inactive';
+    return 'busy'; // CONFLICTO_CONCURRENCIA: a database contention, nothing was applied
+  }
   // A network failure, a timeout and any 5xx (or an unreadable 2xx) may have been applied: never assume it was not.
   if (error.kind === 'network' || error.kind === 'unavailable' || error.kind === 'server') return 'uncertain';
   if (error.kind === 'validation') return 'validation';

@@ -10,6 +10,8 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminFamiliaDetallePage } from '@/features/admin-familias/AdminFamiliaDetallePage';
 import { AdminFamiliaNuevaPage } from '@/features/admin-familias/AdminFamiliaNuevaPage';
 import { AdminFamiliasPage } from '@/features/admin-familias/AdminFamiliasPage';
+import { AdminTutorDetallePage } from '@/features/admin-familias/AdminTutorDetallePage';
+import { AdminTutorNuevoPage } from '@/features/admin-familias/AdminTutorNuevoPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { RegistrationPage } from '@/features/registration/RegistrationPage';
 import { LoadingScreen, NotFoundScreen } from '@/features/auth/screens';
@@ -65,6 +67,8 @@ export function AppRoutes() {
           <Route path="/admin/familias" element={<AdminFamiliasPage />} />
           <Route path="/admin/familias/nueva" element={<AdminFamiliaNuevaPage />} />
           <Route path="/admin/familias/:id" element={<AdminFamiliaDetallePage />} />
+          <Route path="/admin/familias/:id/tutores/nuevo" element={<AdminTutorNuevoPage />} />
+          <Route path="/admin/familias/:id/tutores/:tutorId" element={<AdminTutorDetallePage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/lib/api-error';
-import { changeFamilyStatus, createFamily, getFamily, listFamilies, updateFamily, type FamilyListParams, type FamilyStatusAction } from './api';
-import type { FamilyDetail } from './schemas';
+import { changeFamilyStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, type FamilyListParams, type FamilyStatusAction } from './api';
+import type { FamilyDetail, TutorDetail, TutorInput } from './schemas';
 
 /** Prefix of every family-related query (list, detail and the invitation picker): one invalidation refreshes them all. */
 const familiesKey = ['admin', 'families'] as const;
@@ -50,4 +50,28 @@ export function useUpdateFamily() {
 
 export function useChangeFamilyStatus() {
   return useFamilyWrite((input: { id: string; action: FamilyStatusAction; version: string }) => changeFamilyStatus(input));
+}
+
+export const tutorDetailKey = (id: string) => ['admin', 'tutor-detail', id] as const;
+
+/**
+ * The individual tutor view carries the FULL DNI: `gcTime: 0` drops it from memory as soon as the screen no longer uses it
+ * (and, being a private query, the session code drops it on any change of identity).
+ */
+export function useTutorDetail(id: string, enabled: boolean) {
+  return useQuery({ queryKey: tutorDetailKey(id), queryFn: () => getTutor(id), enabled, gcTime: 0 });
+}
+
+/** After a confirmed creation the family (its tutor list and counters) is refreshed from the server. */
+export function useCreateTutor() {
+  const queryClient = useQueryClient();
+  return useMutation<TutorDetail, ApiError, { familyId: string; datos: TutorInput; version: string }>({
+    mutationFn: createTutor,
+    onSuccess: async (_created, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: familyDetailKey(variables.familyId) }),
+        queryClient.invalidateQueries({ queryKey: familiesKey }),
+      ]);
+    },
+  });
 }

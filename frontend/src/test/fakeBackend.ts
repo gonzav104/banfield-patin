@@ -51,6 +51,9 @@ export interface FakeAdminTutor {
   email: string | null;
   parentesco: string | null;
   activo: boolean;
+  /** Only the individual tutor detail (GET /admin/tutores/{id}) carries the FULL DNI and the revision; the family summary never does. */
+  dni?: string | null;
+  version?: number;
 }
 
 interface FakeInvitation {
@@ -257,8 +260,84 @@ export class FakeBackend {
     return { status: 200, body: this.familyDetail(family) };
   }
 
+  /** The backend's TutorResumen: masked DNI, no revision. */
+  private tutorSummary(t: FakeAdminTutor, familiaId: string) {
+    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dniEnmascarado: t.dniEnmascarado, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo };
+  }
+
+  /** The backend's TutorRespuesta: FULL DNI and the revision (decimal string). */
+  private tutorFull(t: FakeAdminTutor, familiaId: string) {
+    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dni: t.dni ?? null, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo, version: String(t.version ?? 0) };
+  }
+
+  private findTutor(id: string): { tutor: FakeAdminTutor; family: FakeFamily } | undefined {
+    for (const family of this.families) {
+      const tutor = family.tutores.find((t) => t.id === id);
+      if (tutor) return { tutor, family };
+    }
+    return undefined;
+  }
+
+  /** What really happened on the server although the client never saw the answer (a lost response): the tutor exists, nothing else moved. */
+  addTutorBehindTheScenes(familyId: string, data: { nombre: string; apellido: string; dni?: string }): FakeAdminTutor {
+    const family = this.families.find((f) => f.id === familyId);
+    if (!family) throw new Error(`Unknown fake family ${familyId}`);
+    const dni = data.dni ?? null;
+    const tutor: FakeAdminTutor = {
+      id: `t-${++this.counter}`,
+      nombre: data.nombre,
+      apellido: data.apellido,
+      dni,
+      dniEnmascarado: dni ? `${'•'.repeat(Math.max(0, dni.length - 3))}${dni.slice(-3)}` : null,
+      telefono: null,
+      email: null,
+      parentesco: null,
+      activo: true,
+      version: 0,
+    };
+    family.tutores.push(tutor);
+    return tutor;
+  }
+
+  /**
+   * Mirrors POST /admin/familias/{id}/tutores (TutorSolicitud): bean validation first (400), then 404, then FAMILIA_INACTIVA
+   * (before the revision), then the family revision (409 EDICION_DESACTUALIZADA), then the write. Creating a tutor does NOT
+   * move the family revision, exactly like the backend: a blind retry after a lost answer would create a SECOND tutor.
+   */
+  private createTutor(familyId: string, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = ['nombre', 'apellido', 'dni', 'telefono', 'email', 'parentesco', 'versionFamiliaEsperada'];
+    if (Object.keys(input).some((k) => !allowed.includes(k))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const bad = { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    const revision = input.versionFamiliaEsperada;
+    if (revision === undefined || revision === null) return bad;
+    if (typeof revision !== 'string' || !/^[0-9]{1,19}$/.test(revision)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const optional = (v: unknown) => (text(v) === '' ? null : text(v));
+    const nombre = text(input.nombre);
+    const apellido = text(input.apellido);
+    const dniRaw = optional(input.dni);
+    const dni = dniRaw === null ? null : dniRaw.replace(/[.\s]/g, '');
+    if (nombre === '' || apellido === '' || nombre.length > 100 || apellido.length > 100) return bad;
+    if (dniRaw !== null && (dniRaw.length > 20 || !/^[0-9]{7,9}$/.test(dni as string))) return bad;
+    const email = optional(input.email);
+    if (email !== null && (email.length > 180 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) return bad;
+    if ((optional(input.telefono)?.length ?? 0) > 40 || (optional(input.parentesco)?.length ?? 0) > 40) return bad;
+    const family = this.families.find((f) => f.id === familyId);
+    if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+    if (!family.activa) return this.error(409, 'FAMILIA_INACTIVA', 'La familia esta inactiva. Reactivala para realizar esta operacion.');
+    if (String(family.version) !== revision) {
+      return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    }
+    const tutor = this.addTutorBehindTheScenes(familyId, { nombre, apellido, ...(dni ? { dni } : {}) });
+    tutor.telefono = optional(input.telefono);
+    tutor.email = email === null ? null : email.toLowerCase();
+    tutor.parentesco = optional(input.parentesco);
+    return { status: 201, body: this.tutorFull(tutor, familyId) };
+  }
+
   private familyDetail(f: FakeFamily) {
-    return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => ({ ...t, familiaId: f.id })), version: String(f.version) };
+    return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => this.tutorSummary(t, f.id)), version: String(f.version) };
   }
 
   private page<T>(items: T[], params: URLSearchParams) {
@@ -325,6 +404,14 @@ export class FakeBackend {
       if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
       return { status: 200, body: this.familyDetail(family) };
     }
+    const tutorDetail = /^\/admin\/tutores\/([^/]+)$/.exec(path);
+    if (method === 'get' && tutorDetail) {
+      const found = this.findTutor(tutorDetail[1]!);
+      if (!found) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.');
+      return { status: 200, body: this.tutorFull(found.tutor, found.family.id) };
+    }
+    const tutorCreate = /^\/admin\/familias\/([^/]+)\/tutores$/.exec(path);
+    if (method === 'post' && tutorCreate) return this.createTutor(tutorCreate[1]!, body);
     const familyWrite = /^\/admin\/familias\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
     if ((method === 'put' && familyWrite && !familyWrite[2]) || (method === 'post' && familyWrite?.[2])) {
       return this.writeFamily(familyWrite[1]!, familyWrite[2] as 'activar' | 'desactivar' | undefined, body);

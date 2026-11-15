@@ -7,38 +7,24 @@ import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
 import { isSafeFamilyId } from './api';
 import { useFamilyDetail } from './hooks';
-import { detailErrorMessage, isNotFound, NOT_FOUND_TEXT, NOT_FOUND_TITLE } from './messages';
+import { detailErrorMessage, isNotFound } from './messages';
 import { FamilyNameEditor } from './FamilyNameEditor';
+import { BackToListLink, FamilyNotFound } from './FamilyNotFound';
 import { FamilyStatusBadge } from './FamilyStatusBadge';
 import { FamilyStatusControl } from './FamilyStatusControl';
 import type { FamilyDetail, FamilyTutor } from './schemas';
 
-function BackLink() {
-  return (
-    <Link to="/admin/familias" className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 underline-offset-4 hover:underline">
-      Volver al listado
-    </Link>
-  );
-}
-
-function NotFound() {
-  return (
-    <div className="max-w-2xl space-y-4">
-      <BackLink />
-      <section className="rounded-2xl border border-dashed border-line bg-white p-6">
-        <h1 className="text-xl font-bold">{NOT_FOUND_TITLE}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted">{NOT_FOUND_TEXT}</p>
-      </section>
-    </div>
-  );
-}
-
-function TutorItem({ tutor }: { tutor: FamilyTutor }) {
+function TutorItem({ tutor, familyId }: { tutor: FamilyTutor; familyId: string }) {
   return (
     <li className="space-y-1 px-4 py-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 break-words font-semibold">
-          {tutor.nombre} {tutor.apellido}
+          <Link
+            to={`/admin/familias/${encodeURIComponent(familyId)}/tutores/${encodeURIComponent(tutor.id)}`}
+            className="text-ink underline-offset-4 hover:underline focus-visible:underline"
+          >
+            {tutor.nombre} {tutor.apellido}
+          </Link>
         </p>
         {tutor.activo ? null : (
           <span className="rounded-full border border-neutral-400 bg-neutral-100 px-2.5 py-0.5 text-xs font-bold text-neutral-800">Inactivo</span>
@@ -66,13 +52,15 @@ function TutorItem({ tutor }: { tutor: FamilyTutor }) {
   );
 }
 
-function Detail({ family, created, reload }: { family: FamilyDetail; created: boolean; reload: () => Promise<ApiError | null> }) {
+function Detail({ family, created, tutorCreated, reload }: { family: FamilyDetail; created: boolean; tutorCreated: boolean; reload: () => Promise<ApiError | null> }) {
   const [editing, setEditing] = useState(false);
-  const [notice, setNotice] = useState<string | null>(created ? 'La familia se creó correctamente. Todavía no tiene tutores ni cuenta de acceso.' : null);
+  const [notice, setNotice] = useState<string | null>(
+    created ? 'La familia se creó correctamente. Todavía no tiene tutores ni cuenta de acceso.' : tutorCreated ? 'Tutor agregado correctamente.' : null,
+  );
 
   return (
     <div className="max-w-3xl space-y-6">
-      <BackLink />
+      <BackToListLink />
       <header className="space-y-2">
         <p className="text-sm font-semibold text-brand-700">Familia</p>
         <div className="flex flex-wrap items-center gap-3">
@@ -117,9 +105,21 @@ function Detail({ family, created, reload }: { family: FamilyDetail; created: bo
       />
 
       <section aria-labelledby="tutors-title" className="space-y-3">
-        <h2 id="tutors-title" className="text-lg font-bold">
-          Tutores
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="tutors-title" className="text-lg font-bold">
+            Tutores
+          </h2>
+          {family.activa ? (
+            <Button asChild variant="outline">
+              <Link to={`/admin/familias/${encodeURIComponent(family.id)}/tutores/nuevo`}>Agregar tutor</Link>
+            </Button>
+          ) : (
+            <Button variant="outline" disabled>
+              Agregar tutor
+            </Button>
+          )}
+        </div>
+        {family.activa ? null : <p className="text-sm text-muted">La familia está inactiva: reactivala para agregar tutores.</p>}
         {family.tutores.length === 0 ? (
           <div className="space-y-3 rounded-2xl border border-dashed border-line bg-white p-6 text-sm text-muted">
             <p>Esta familia todavía no tiene tutores registrados.</p>
@@ -130,7 +130,7 @@ function Detail({ family, created, reload }: { family: FamilyDetail; created: bo
         ) : (
           <ul aria-label="Tutores" className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
             {family.tutores.map((tutor) => (
-              <TutorItem key={tutor.id} tutor={tutor} />
+              <TutorItem key={tutor.id} tutor={tutor} familyId={family.id} />
             ))}
           </ul>
         )}
@@ -145,19 +145,21 @@ export function AdminFamiliaDetallePage() {
   const session = useSession();
   const valid = isSafeFamilyId(id);
   const family = useFamilyDetail(valid ? id : '', valid);
-  const created = (location.state as { created?: unknown } | null)?.created === true;
+  const state = location.state as { created?: unknown; tutorCreated?: unknown } | null;
+  const created = state?.created === true;
+  const tutorCreated = state?.tutorCreated === true;
   // Whatever the screen keeps in memory (an edit draft, an open confirmation) belongs to ONE identity: another one starts clean.
   const identity = session.status === 'authenticated' ? session.user.id : '';
 
-  if (!valid) return <NotFound />;
+  if (!valid) return <FamilyNotFound />;
   if (family.isError) {
     const error = ApiError.from(family.error);
-    if (isNotFound(error)) return <NotFound />;
+    if (isNotFound(error)) return <FamilyNotFound />;
     // A failed RELOAD must not take the screen (and an unsaved draft) away: whoever asked for it shows the error.
     if (!family.data) {
       return (
         <div className="max-w-3xl space-y-4">
-          <BackLink />
+          <BackToListLink />
           <Alert tone="error">{detailErrorMessage(error)}</Alert>
           <Button variant="outline" onClick={() => void family.refetch()}>
             Reintentar
@@ -169,7 +171,7 @@ export function AdminFamiliaDetallePage() {
   if (!family.data) {
     return (
       <div className="max-w-3xl space-y-4">
-        <BackLink />
+        <BackToListLink />
         <LoadingBlock label="Cargando la familia…" />
       </div>
     );
@@ -178,5 +180,5 @@ export function AdminFamiliaDetallePage() {
     const result = await family.refetch();
     return result.isError ? ApiError.from(result.error) : null;
   };
-  return <Detail key={identity} family={family.data} created={created} reload={reload} />;
+  return <Detail key={identity} family={family.data} created={created} tutorCreated={tutorCreated} reload={reload} />;
 }
