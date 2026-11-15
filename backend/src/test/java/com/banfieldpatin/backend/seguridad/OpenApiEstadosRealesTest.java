@@ -65,9 +65,9 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	@Test
 	void postTutoresResponde201ConLocation() throws Exception {
 		when(tutorAdminService.crear(any(), any(), any(), any())).thenReturn(
-				new TutorRespuesta(ID, ID, "Ana", "Prueba", null, null, null, null, true));
+				new TutorRespuesta(ID, ID, "Ana", "Prueba", null, null, null, null, true, "0"));
 
-		mvc.perform(conCsrf(json(post("/api/admin/familias/" + ID + "/tutores"), "{\"nombre\":\"Ana\",\"apellido\":\"Prueba\"}"),
+		mvc.perform(conCsrf(json(post("/api/admin/familias/" + ID + "/tutores"), "{\"nombre\":\"Ana\",\"apellido\":\"Prueba\",\"versionFamiliaEsperada\":\"0\"}"),
 				sesion(Rol.ADMIN))).andExpect(status().isCreated())
 				.andExpect(header().string("Location", "/api/admin/tutores/" + ID));
 	}

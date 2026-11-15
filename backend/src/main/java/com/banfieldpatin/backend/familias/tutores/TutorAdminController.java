@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -51,7 +52,7 @@ public class TutorAdminController {
 
 	@PutMapping("/tutores/{id}")
 	public TutorRespuesta actualizar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			@Valid @RequestBody TutorSolicitud solicitud, HttpServletRequest request) {
+			@Valid @RequestBody TutorActualizacion solicitud, HttpServletRequest request) {
 		return servicio.actualizar(UsuarioAutenticado.desde(jwt), id, solicitud, DatosSolicitud.de(request));
 	}
 }

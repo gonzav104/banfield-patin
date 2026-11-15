@@ -42,9 +42,9 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `PUT /api/admin/familias/{id}` | ADMIN | `{nombreReferencia, versionEsperada}` (reemplazo completo; permitido en una familia inactiva) | `200` `FamiliaDetalle` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{id}/activar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `FamiliaDetalle` (idempotente; sin cascada) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
-| `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA` |
-| `GET /api/admin/tutores/{id}` | ADMIN | — | `200` `TutorRespuesta` (también de una familia inactiva) | `404 TUTOR_NO_ENCONTRADO` |
-| `PUT /api/admin/tutores/{id}` | ADMIN | igual que el alta (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA` |
+| `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?, versionFamiliaEsperada}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `GET /api/admin/tutores/{id}` | ADMIN | — | `200` `TutorRespuesta` con `version` (también de una familia inactiva) | `404 TUTOR_NO_ENCONTRADO` |
+| `PUT /api/admin/tutores/{id}` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?, versionEsperada, versionFamiliaEsperada}` (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/deportistas` | ADMIN | `estado` (por defecto `ACTIVOS`), `busqueda` (apellido, nombre, ambos órdenes o prefijo de DNI), `page`, `size` | `200` `Pagina<{id, nombre, apellido, dniEnmascarado, fechaNacimiento, activo}>` (el DNI completo **no** viaja en el listado; ver sección 11) | `400 SOLICITUD_INVALIDA` |
 | `POST /api/admin/deportistas` | ADMIN | `{dni, nombre, apellido, cuil?, fechaNacimiento?, nacionalidad?, domicilio?, otrosDatosDomicilio?, localidad?, partido?, codigoPostal?, telefonoContacto?, emailFederativo?}` | `201` `DeportistaDetalle` + `Location` | `400 VALIDACION`, `409 DNI_DUPLICADO`, `409 DNI_RESERVADO_POR_INACTIVO`, `409 CUIL_DUPLICADO` |
 | `GET /api/admin/deportistas/{id}` | ADMIN | — | `200` `DeportistaDetalle` (datos permanentes y `activo`) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` |
@@ -312,6 +312,22 @@ La migracion V7 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativ
 sin cambiar sus datos ni relaciones. Invitaciones sigue creando mediante `Familia.crear`, tambien con revision cero;
 no crea automaticamente un usuario. V1–V6 permanecen intactas.
 
+### Revisión optimista de Tutor (FE-05 / U4)
+
+`TutorRespuesta` (GET, alta y edición individuales de un tutor) devuelve `version`, la revisión de escritura de los
+datos del tutor, como cadena decimal. No se agrega al resumen del tutor dentro del detalle de familia (que conserva el DNI
+enmascarado) ni a ningún DTO del portal FAMILIA. Los tutores no se desactivan: no hay cambio de estado.
+
+- Alta: `POST /api/admin/familias/{familiaId}/tutores` exige además `versionFamiliaEsperada`, la revisión de la familia que se observó. La revisión inicial del tutor es `"0"`.
+- Edición: `PUT /api/admin/tutores/{id}` exige `versionEsperada` (del tutor) y `versionFamiliaEsperada` (de su familia).
+- Ambas son cadenas de 1 a 19 dígitos ASCII, como en Familia. Ausencia o nulo: `400 VALIDACION`; formato, tipo o rango inválido: `400 SOLICITUD_INVALIDA`. No se aceptan propiedades adicionales.
+- Dos revisiones **independientes**: la del tutor avanza solo cuando cambian sus datos; la de la familia sigue siendo la de nombre y estado. Crear o editar un tutor **no** incrementa la de la familia.
+- Orden de comprobaciones: `404` (familia o tutor, mismo `404` para otra escuela) → `409 FAMILIA_INACTIVA` (se conserva; va antes que la revisión, así una familia inactiva rechaza todo, incluso con revisiones viejas) → revisión de la familia → revisión del tutor → escritura. Revisión vieja: `409 EDICION_DESACTUALIZADA`, incluso si los datos coinciden; mensaje fijo, sin ids ni datos personales.
+- Revisiones vigentes y sin cambios: `200`, misma revisión, sin `UPDATE` ni auditoría.
+- Atomicidad: la comprobación de la revisión de la familia se acompaña de un bloqueo `PESSIMISTIC_READ` (`FOR SHARE`) sobre su fila, con el predicado de versión de Hibernate. Una desactivación o un renombre concurrentes no pueden confirmarse mientras se escribe el tutor y, si ya se confirmaron, la escritura se rechaza con `409`; sin ese bloqueo quedaría una ventana en la que la familia se desactiva entre la lectura y el `INSERT`. Varias altas o ediciones en la misma familia no se serializan entre sí. El tutor se protege con `@Version` (un único ganador) y `LockModeType.OPTIMISTIC` (un «sin cambios» también falla si el tutor cambió antes del commit). Un conflicto de JPA revierte datos, versiones y auditoría de la transacción. La contención de base conserva `409 CONFLICTO_CONCURRENCIA`. No se agrega `lock_timeout`: una espera no acotada solo ocurriría si otra transacción retuviera la fila de la familia sin terminar (riesgo residual, igual que en Familia).
+
+La migración V8 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo a `tutor`, sin cambiar datos ni relaciones. V1–V7 permanecen intactas. `Tutor` solo se escribe a través de este servicio (no hay otros escritores ni SQL nativo).
+
 ### Compatibilidad y despliegue
 
 El campo del detalle es aditivo; los cuerpos de PUT y cambios de estado cambian intencionalmente. Los consumidores
@@ -327,6 +343,8 @@ habilitar el contrato obligatorio. Orden para el frontend con edición (FE-05/U3
 de revisión y recién después ese frontend; contra un backend anterior, el cuerpo con `versionEsperada` se rechaza como
 propiedad no admitida. No existe un modo permanente de compatibilidad sin version. Las escrituras SQL
 manuales no quedan protegidas por JPA: no son un canal administrativo soportado.
+
+Tutores (FE-05/U4): el contrato de escritura de tutores también cambia de forma intencional (revisiones obligatorias; ver arriba). Orden: aplicar V8 antes de iniciar la versión nueva (V7 ya es previa), luego el backend nuevo y recién después cualquier cliente que edite tutores (FE-05/U5). Contra un backend anterior, un cuerpo con `versionEsperada` o `versionFamiliaEsperada` se rechaza como propiedad no admitida; contra el nuevo, un cliente anterior sin revisiones recibe `400 VALIDACION`. No existe un modo de compatibilidad sin revisión; no mezclar instancias antiguas y nuevas escribiendo tutores. Los consumidores de lectura no cambian: `version` es un campo adicional de `TutorRespuesta`.
 
 Ante timeout de escritura el resultado es incierto: consultar antes de decidir un nuevo intento. Ante conflicto,
 recargar explicitamente y revisar los cambios; no sustituir automaticamente la revision de un formulario viejo.

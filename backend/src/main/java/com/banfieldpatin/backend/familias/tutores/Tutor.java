@@ -10,6 +10,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Version;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -53,6 +54,11 @@ public class Tutor {
 
 	@Column(nullable = false, updatable = false)
 	private boolean activo;
+
+	/** Revision de escritura (FE-05/U4): avanza solo cuando cambian datos del tutor; el predicado del UPDATE lo hace atomico. */
+	@Version
+	@Column(nullable = false)
+	private long version;
 
 	/** Alta de un tutor activo de la familia, sin usuario asociado. */
 	public static Tutor crear(UUID escuelaId, UUID familiaId, String nombre, String apellido, String dni,
