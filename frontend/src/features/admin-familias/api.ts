@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiWrite } from '@/lib/http';
-import { familyAdminPageSchema, familyDetailSchema, type FamilyAdminPage, type FamilyDetail, type FamilyStatusFilter } from './schemas';
+import { familyAdminPageSchema, familyDetailSchema, tutorDetailSchema, type FamilyAdminPage, type FamilyDetail, type FamilyStatusFilter, type TutorDetail, type TutorInput } from './schemas';
 
 export const FAMILY_PAGE_SIZE = 20;
 /** The backend cuts the search term at this length (Busqueda.LONGITUD_MAXIMA). */
@@ -61,5 +61,25 @@ export async function changeFamilyStatus(input: { id: string; action: FamilyStat
   return parse(
     familyDetailSchema,
     await apiWrite('post', `/admin/familias/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }),
+  );
+}
+
+/** Tutor ids have the same shape as family ids (UUIDs): the same guard keeps anything that could alter the path from being requested. */
+export const isSafeTutorId = isSafeFamilyId;
+
+/** GET /api/admin/tutores/{id}: the individual ADMIN view, with the FULL DNI. */
+export async function getTutor(id: string): Promise<TutorDetail> {
+  return parse(tutorDetailSchema, await apiGet(`/admin/tutores/${encodeURIComponent(id)}`));
+}
+
+/**
+ * POST /api/admin/familias/{familiaId}/tutores. `version` is the family revision the administrator observed when the form was
+ * opened (versionFamiliaEsperada): it is sent as it is, never refreshed on the way. Never retried (apiWrite): a failed write is
+ * ambiguous, and creating a tutor does not move the family revision, so a blind resend could create a second one.
+ */
+export async function createTutor(input: { familyId: string; datos: TutorInput; version: string }): Promise<TutorDetail> {
+  return parse(
+    tutorDetailSchema,
+    await apiWrite('post', `/admin/familias/${encodeURIComponent(input.familyId)}/tutores`, { ...input.datos, versionFamiliaEsperada: input.version }),
   );
 }

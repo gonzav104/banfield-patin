@@ -78,12 +78,12 @@ describe('family detail (mock backend)', () => {
     expect(screen.queryByText('Cargando la familia…')).not.toBeInTheDocument();
   });
 
-  it('marks an inactive family and offers no tutor management (that comes in later units)', async () => {
+  it('marks an inactive family and offers no way to edit or delete tutors (editing comes in a later unit)', async () => {
     const family = backend.addFamily('Pérez', { activa: false });
     openDetail(family.id);
     expect(await screen.findByRole('heading', { level: 1, name: 'Pérez' })).toBeInTheDocument();
     expect(screen.getByText('Inactiva')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /tutor|agregar|eliminar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /editar tutor|eliminar tutor|desactivar tutor/i })).not.toBeInTheDocument();
   });
 
   it('does not show the technical revision', async () => {

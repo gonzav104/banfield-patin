@@ -46,3 +46,32 @@ export type FamilyDetail = z.infer<typeof familyDetailSchema>;
 
 /** The same rule as the backend's FamiliaSolicitud/FamiliaActualizacion: not blank once trimmed, at most 150 characters. */
 export const familyNameSchema = z.string().trim().min(1, 'Ingresá un nombre de referencia.').max(150, 'Máximo 150 caracteres.');
+
+/**
+ * GET/POST /api/admin/tutores/{id}, /api/admin/familias/{id}/tutores: the individual ADMIN view of a tutor. It carries the FULL DNI
+ * (never put it in a summary, a URL, a log or a storage) and the revision (`version`, a decimal string) that the edit unit will
+ * send back: it is validated here and not shown.
+ */
+export const tutorDetailSchema = z.object({
+  id: z.string(),
+  familiaId: z.string(),
+  nombre: z.string(),
+  apellido: z.string(),
+  dni: z.string().nullable().optional(),
+  telefono: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  parentesco: z.string().nullable().optional(),
+  activo: z.boolean(),
+  version: z.string().regex(/^[0-9]{1,19}$/),
+});
+export type TutorDetail = z.infer<typeof tutorDetailSchema>;
+
+/** The data of a new tutor, exactly the fields of the backend contract (TutorSolicitud) except the revision. */
+export interface TutorInput {
+  nombre: string;
+  apellido: string;
+  dni?: string;
+  telefono?: string;
+  email?: string;
+  parentesco?: string;
+}
