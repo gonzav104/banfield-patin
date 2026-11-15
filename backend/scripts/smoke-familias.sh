@@ -10,6 +10,10 @@
 # No existe endpoint para borrar: los datos se limpian despues con backend/scripts/limpiar-smoke-familias.sql (el comando exacto, con el run id,
 # se imprime al final, tambien si el smoke falla).
 #
+# Revisiones optimistas (FE-05/U1 y U4): crear un tutor exige la revision observada de su familia (versionFamiliaEsperada) y activar/desactivar una
+# familia exige la suya (versionEsperada). El script NUNCA las inventa: las LEE de GET /api/admin/familias/{id} justo antes de cada escritura, valida que
+# sean una cadena decimal y las envia sin cambios; no reintenta escrituras.
+#
 # Variables opcionales:
 #   BASE_URL                    URL base (por defecto http://localhost:8080).
 #   SMOKE_SEGUIR_TRAS_FALLA=1   no corta en la primera falla (por defecto si corta: "SMOKE FALLO EN EL PASO N" y exit 1).
@@ -129,6 +133,18 @@ crear_deportista() {
   DEP_ID="$(echo "$CUERPO" | campo id)"
 }
 
+# revision_de_familia <id-familia> -> deja REVISION con la revision vigente (cadena decimal de 1 a 19 digitos), LEIDA con la sesion ADMIN.
+# Si no es valida, falla (no se inventa ningun valor: la escritura que sigue recibiria un 400 visible).
+revision_de_familia() {
+  como admin; get "/api/admin/familias/$1"
+  esperar 200 "leer la revision vigente de la familia $(corto "$1")"
+  REVISION="$(echo "$CUERPO" | campo version)"
+  if ! [[ "$REVISION" =~ ^[0-9]{1,19}$ ]]; then
+    fail "la revision de la familia $(corto "$1") no es una cadena decimal valida"
+    REVISION=""
+  fi
+}
+
 # ---------------------------------------------------------------------------------------------------------------------------
 RUN="SMOKE_$(date +%Y%m%d%H%M%S)_$(aleatorio 4)"
 EMAIL_FAM="smoke_${RUN#SMOKE_}@example.test"
@@ -177,9 +193,10 @@ FAM_A="$(echo "$CUERPO" | campo id)"
 igual "familia A activa" "$(echo "$CUERPO" | campo activa)" true
 echo "         familia A: $(corto "$FAM_A")"
 
-paso 3 "Crear un tutor en la familia A"
+paso 3 "Crear un tutor en la familia A (con la revision observada de la familia)"
+revision_de_familia "$FAM_A"
 csrf
-post "/api/admin/familias/$FAM_A/tutores" "$(jobj nombre "${RUN}_T" apellido "$RUN" dni "$(gen_dni)" telefono "11 5555 0000" email "smoke_tutor_${RUN#SMOKE_}@example.test" parentesco Madre)"
+post "/api/admin/familias/$FAM_A/tutores" "$(jobj nombre "${RUN}_T" apellido "$RUN" dni "$(gen_dni)" telefono "11 5555 0000" email "smoke_tutor_${RUN#SMOKE_}@example.test" parentesco Madre versionFamiliaEsperada "$REVISION")"
 esperar 201 "POST /api/admin/familias/{A}/tutores"
 TUTOR_ID="$(echo "$CUERPO" | campo id)"
 igual "el tutor pertenece a la familia A" "$(echo "$CUERPO" | campo familiaId)" "$FAM_A"
@@ -330,12 +347,12 @@ igual "D2 ya no esta en el listado (queda solo D1)" "$(jx 'd["totalElementos"]==
 
 paso "14b" "Revalidacion central: familia inactiva => 401, reactivada => la misma sesion vuelve a funcionar"
 cp "$JAR_FAM" "$JAR_COPIA"
-como admin; csrf; post "/api/admin/familias/$FAM_A/desactivar"
+como admin; revision_de_familia "$FAM_A"; csrf; post "/api/admin/familias/$FAM_A/desactivar" "$(jobj versionEsperada "$REVISION")"
 esperar 200 "desactivar la familia A"
 # La respuesta 401 borra la cookie del jar usado: se prueba con una copia para poder verificar despues que la sesion (el JWT) sigue valida.
 JAR="$JAR_COPIA"; get /api/familia/mi-familia
 esperar_error 401 NO_AUTENTICADO "con la familia inactiva, la siguiente solicitud de la FAMILIA"
-como admin; csrf; post "/api/admin/familias/$FAM_A/activar"
+como admin; revision_de_familia "$FAM_A"; csrf; post "/api/admin/familias/$FAM_A/activar" "$(jobj versionEsperada "$REVISION")"
 esperar 200 "reactivar la familia A"
 como familia; get /api/familia/mi-familia
 esperar 200 "la sesion original funciona de nuevo sin login"
