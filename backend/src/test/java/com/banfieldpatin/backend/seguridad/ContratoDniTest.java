@@ -21,7 +21,7 @@ class ContratoDniTest {
 
 	/** Records de los paquetes dto que PUEDEN llevar el DNI completo. */
 	private static final Set<String> CON_DNI_COMPLETO = Set.of("DeportistaDetalle", "DeportistaSolicitud", "TutorRespuesta",
-			"TutorSolicitud", "DeportistaDeFamiliaDetalle");
+			"TutorActualizacion", "TutorSolicitud", "DeportistaDeFamiliaDetalle");
 	/** Records que llevan el DNI enmascarado (listados y tutores anidados). */
 	private static final Set<String> CON_DNI_ENMASCARADO = Set.of("DeportistaResumen", "TutorResumen");
 

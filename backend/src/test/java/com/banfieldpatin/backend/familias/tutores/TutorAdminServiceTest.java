@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -28,7 +31,9 @@ import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.compartido.auditoria.EventoAuditoria;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
+import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -48,6 +53,7 @@ class TutorAdminServiceTest {
 	private TutorRepository tutores;
 	private FamiliaRepository familias;
 	private AuditoriaService auditoria;
+	private EntityManager em;
 	private TutorAdminService servicio;
 
 	@BeforeEach
@@ -55,7 +61,8 @@ class TutorAdminServiceTest {
 		tutores = mock(TutorRepository.class);
 		familias = mock(FamiliaRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new TutorAdminService(tutores, familias, auditoria);
+		em = mock(EntityManager.class);
+		servicio = new TutorAdminService(tutores, familias, auditoria, em);
 		when(tutores.saveAndFlush(any(Tutor.class))).thenAnswer(inv -> {
 			Tutor t = inv.getArgument(0);
 			if (t.getId() == null) {
@@ -66,18 +73,39 @@ class TutorAdminServiceTest {
 	}
 
 	private TutorSolicitud solicitud(String dni, String telefono) {
-		return new TutorSolicitud("Ana", "Perez", dni, telefono, "ana@example.com", "Madre");
+		return new TutorSolicitud("Ana", "Perez", dni, telefono, "ana@example.com", "Madre", 0L);
 	}
 
+	/** Reemplazo con las revisiones vigentes de los fixtures (familia 0, tutor 0). */
+	private TutorActualizacion actualizacion(String dni, String telefono) {
+		return actualizacion(dni, telefono, 0L, 0L);
+	}
+
+	private TutorActualizacion actualizacion(String dni, String telefono, Long versionTutor, Long versionFamilia) {
+		return new TutorActualizacion("Ana", "Perez", dni, telefono, "ana@example.com", "Madre", versionTutor, versionFamilia);
+	}
+
+	private Familia familiaActual;
+
 	private void familia(boolean activa) {
-		when(familias.findByIdAndEscuelaId(familiaId, escuelaId))
-				.thenReturn(Optional.of(FixturesDominio.familia(familiaId, escuelaId, activa)));
+		familia(activa, 0L);
+	}
+
+	private void familia(boolean activa, long version) {
+		familiaActual = FixturesDominio.familia(familiaId, escuelaId, activa);
+		ReflectionTestUtils.setField(familiaActual, "version", version);
+		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.of(familiaActual));
 	}
 
 	private Tutor tutorExistente() {
+		return tutorExistente(0L);
+	}
+
+	private Tutor tutorExistente(long version) {
 		Tutor t = Tutor.crear(escuelaId, familiaId, "Ana", "Perez", DNI_DE_PRUEBA, "11-5555-0000", "ana@example.com",
 				"Madre");
 		ReflectionTestUtils.setField(t, "id", tutorId);
+		ReflectionTestUtils.setField(t, "version", version);
 		when(tutores.findByIdAndEscuelaId(tutorId, escuelaId)).thenReturn(Optional.of(t));
 		return t;
 	}
@@ -129,7 +157,8 @@ class TutorAdminServiceTest {
 
 		servicio.crear(admin, familiaId, solicitud(DNI_DE_PRUEBA, "11-5555-0000"), DATOS);
 
-		InOrder orden = inOrder(tutores, auditoria);
+		InOrder orden = inOrder(em, tutores, auditoria);
+		orden.verify(em).lock(familiaActual, LockModeType.PESSIMISTIC_READ);
 		orden.verify(tutores).saveAndFlush(any(Tutor.class));
 		orden.verify(auditoria).registrar(any());
 		assertThat(unicoEvento().detalle().toString()).doesNotContain(DNI_DE_PRUEBA).doesNotContain("11-5555-0000")
@@ -214,7 +243,7 @@ class TutorAdminServiceTest {
 		Tutor t = tutorExistente();
 		familia(true);
 
-		TutorRespuesta r = servicio.actualizar(admin, tutorId, solicitud(DNI_DE_PRUEBA, "11-6666-1111"), DATOS);
+		TutorRespuesta r = servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-6666-1111"), DATOS);
 
 		assertThat(r.telefono()).isEqualTo("11-6666-1111");
 		assertThat(t.getFamiliaId()).isEqualTo(familiaId);
@@ -232,7 +261,7 @@ class TutorAdminServiceTest {
 		tutorExistente();
 		familia(true);
 
-		servicio.actualizar(admin, tutorId, solicitud(DNI_DE_PRUEBA, "11-5555-0000"), DATOS);
+		servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-5555-0000"), DATOS);
 
 		verify(tutores, never()).saveAndFlush(any());
 		verifyNoInteractions(auditoria);
@@ -243,7 +272,7 @@ class TutorAdminServiceTest {
 		tutorExistente();
 		familia(true);
 
-		servicio.actualizar(admin, tutorId, solicitud("30.111.222", "11-5555-0000"), DATOS);
+		servicio.actualizar(admin, tutorId, actualizacion("30.111.222", "11-5555-0000"), DATOS);
 
 		verifyNoInteractions(auditoria);
 	}
@@ -253,7 +282,7 @@ class TutorAdminServiceTest {
 		Tutor t = tutorExistente();
 		familia(true);
 
-		servicio.actualizar(admin, tutorId, solicitud(null, "11-5555-0000"), DATOS);
+		servicio.actualizar(admin, tutorId, actualizacion(null, "11-5555-0000"), DATOS);
 
 		assertThat(t.getDni()).isNull();
 		assertThat(unicoEvento().detalle()).containsEntry("camposModificados", List.of("dni"));
@@ -263,7 +292,7 @@ class TutorAdminServiceTest {
 	void actualizarUnTutorAjenoDa404SinConsultarLaFamiliaNiEscribir() {
 		when(tutores.findByIdAndEscuelaId(tutorId, escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, solicitud(null, null), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(null, null), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TUTOR_NO_ENCONTRADO"));
 
 		verifyNoInteractions(familias, auditoria);
@@ -276,10 +305,10 @@ class TutorAdminServiceTest {
 		familia(false);
 
 		// Identica a lo guardado: igual se rechaza (la familia se comprueba ANTES de detectar "sin cambios").
-		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, solicitud(DNI_DE_PRUEBA, "11-5555-0000"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-5555-0000"), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 		// Y con un cambio real tampoco escribe.
-		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, solicitud(DNI_DE_PRUEBA, "11-6666-1111"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-6666-1111"), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 
 		assertThat(t.getTelefono()).isEqualTo("11-5555-0000");
@@ -292,7 +321,7 @@ class TutorAdminServiceTest {
 		tutorExistente();
 		familia(false);
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, solicitud(null, null), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(null, null), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 
 		InOrder orden = inOrder(tutores, familias);
@@ -307,5 +336,161 @@ class TutorAdminServiceTest {
 		assertThatThrownBy(() -> servicio.crear(admin, familiaId, solicitud(null, null), DATOS))
 				.isInstanceOfSatisfying(ExcepcionNegocio.class, e -> assertThat(e.getMessage())
 						.doesNotContain(familiaId.toString()).doesNotContain(escuelaId.toString()));
+	}
+
+	// ---------- revisiones (FE-05/U4) ----------
+
+	@Test
+	void crearConLaRevisionDeFamiliaViejaDa409EdicionDesactualizadaSinBloquearEscribirNiAuditar() {
+		familia(true, 3L);
+
+		assertThatThrownBy(() -> servicio.crear(admin, familiaId, solicitud(DNI_DE_PRUEBA, null), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void crearBloqueaLaFamiliaConLecturaCompartidaAntesDeEscribirYNoIncrementaSuRevision() {
+		familia(true, 3L);
+
+		TutorRespuesta creado = servicio.crear(admin, familiaId,
+				new TutorSolicitud("Ana", "Perez", null, null, null, null, 3L), DATOS);
+
+		verify(em).lock(familiaActual, LockModeType.PESSIMISTIC_READ);
+		assertThat(familiaActual.getVersion()).isEqualTo(3L); // crear un tutor no cambia la revision de nombre/estado de la familia
+		assertThat(creado.version()).isEqualTo("0");
+	}
+
+	@Test
+	void crearEnUnaFamiliaInactivaDaFamiliaInactivaAunConUnaRevisionVieja() {
+		familia(false, 5L);
+
+		assertThatThrownBy(() -> servicio.crear(admin, familiaId, solicitud(null, null), DATOS)) // revision 0, la familia esta en 5
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
+
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void crearSinRevisionDeFamiliaDa400SinEscribir() {
+		familia(true);
+
+		assertThatThrownBy(() -> servicio.crear(admin, familiaId,
+				new TutorSolicitud("Ana", "Perez", null, null, null, null, null), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION"));
+
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void actualizarConLaRevisionDelTutorViejaDa409SinCambiarNadaAunqueLosDatosCoincidan() {
+		Tutor t = tutorExistente(4L);
+		familia(true, 2L);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-5555-0000", 3L, 2L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", 3L, 2L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		assertThat(t.getTelefono()).isEqualTo("11-5555-0000");
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void actualizarConLaRevisionDeLaFamiliaViejaDa409AunConLaDelTutorVigente() {
+		tutorExistente(4L);
+		familia(true, 2L);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", 4L, 1L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void actualizarConAmbasRevisionesVigentesBloqueaLaFamiliaYCompruebaElTutorAntesDeEscribir() {
+		Tutor t = tutorExistente(4L);
+		familia(true, 2L);
+
+		TutorRespuesta r = servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-6666-1111", 4L, 2L), DATOS);
+
+		InOrder orden = inOrder(em, tutores, auditoria);
+		orden.verify(em).lock(familiaActual, LockModeType.PESSIMISTIC_READ);
+		orden.verify(em).lock(t, LockModeType.OPTIMISTIC);
+		orden.verify(tutores).saveAndFlush(t);
+		orden.verify(auditoria).registrar(any());
+		assertThat(familiaActual.getVersion()).isEqualTo(2L); // la revision de la familia no se toca
+		assertThat(r.telefono()).isEqualTo("11-6666-1111");
+	}
+
+	@Test
+	void unSinCambiosConRevisionesVigentesNoEscribeNiAuditaNiIncrementaPeroSiComprueba() {
+		Tutor t = tutorExistente(4L);
+		familia(true, 2L);
+
+		TutorRespuesta r = servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-5555-0000", 4L, 2L), DATOS);
+
+		assertThat(r.version()).isEqualTo("4");
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+		// La comprobacion se repite al terminar la transaccion: un cambio concurrente tambien invalida un "sin cambios".
+		verify(em).lock(familiaActual, LockModeType.PESSIMISTIC_READ);
+		verify(em).lock(t, LockModeType.OPTIMISTIC);
+	}
+
+	@Test
+	void actualizarEnUnaFamiliaInactivaDaFamiliaInactivaAunConRevisionesViejas() {
+		tutorExistente(4L);
+		familia(false, 2L);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", 0L, 0L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
+
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void actualizarSinAlgunaDeLasRevisionesDa400SinEscribir() {
+		tutorExistente();
+		familia(true);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", null, 0L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION"));
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", 0L, null), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION"));
+
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void elOrdenEsTutor404FamiliaInactivaRevisionDeFamiliaRevisionDelTutorYRecienAhoraElBloqueo() {
+		Tutor t = tutorExistente(4L);
+		familia(true, 2L);
+
+		servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-6666-1111", 4L, 2L), DATOS);
+
+		InOrder orden = inOrder(tutores, familias, em);
+		orden.verify(tutores).findByIdAndEscuelaId(tutorId, escuelaId);
+		orden.verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
+		orden.verify(em).lock(familiaActual, LockModeType.PESSIMISTIC_READ);
+		orden.verify(em).lock(t, LockModeType.OPTIMISTIC);
+	}
+
+	@Test
+	void elMensajeDeEdicionDesactualizadaNoIncluyeIdsNiDatosPersonales() {
+		tutorExistente(4L);
+		familia(true, 2L);
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, tutorId, actualizacion(DNI_DE_PRUEBA, "11-9999-9999", 3L, 2L), DATOS))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class, e -> assertThat(e.getMessage())
+						.doesNotContain(tutorId.toString()).doesNotContain(familiaId.toString())
+						.doesNotContain(escuelaId.toString()).doesNotContain(DNI_DE_PRUEBA).doesNotContain("Ana")
+						.doesNotContain("4").doesNotContain("3"));
 	}
 }

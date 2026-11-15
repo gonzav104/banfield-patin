@@ -99,9 +99,9 @@ class DniEnmascaradoDbTest extends BaseVinculosDb {
 	void elDetalleDeFamiliaEnmascaraElDniDeSusTutoresYEsOpcionalYElIndividualLoConserva() {
 		UUID familia = datos.familia(escuelaA, "Familia Gomez", true);
 		TutorRespuesta conDni = tutoresAdmin.crear(admin, familia,
-				new TutorSolicitud("Ana", "Gomez", "27.123.456", "11 5555 0000", "ana@example.test", "Madre"), DATOS);
-		tutoresAdmin.crear(admin, familia, new TutorSolicitud("Luis", "Gomez", null, null, null, "Padre"), DATOS);
-		tutoresAdmin.crear(admin, familia, new TutorSolicitud("Eva", "Gomez", "4412345", null, null, null), DATOS);
+				new TutorSolicitud("Ana", "Gomez", "27.123.456", "11 5555 0000", "ana@example.test", "Madre", 0L), DATOS);
+		tutoresAdmin.crear(admin, familia, new TutorSolicitud("Luis", "Gomez", null, null, null, "Padre", 0L), DATOS);
+		tutoresAdmin.crear(admin, familia, new TutorSolicitud("Eva", "Gomez", "4412345", null, null, null, 0L), DATOS);
 
 		FamiliaDetalle detalle = familiasAdmin.obtener(admin, familia);
 

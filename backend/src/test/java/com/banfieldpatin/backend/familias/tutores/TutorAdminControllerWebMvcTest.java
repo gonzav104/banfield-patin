@@ -23,7 +23,9 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockServletContext;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -35,6 +37,7 @@ import com.banfieldpatin.backend.compartido.error.ManejadorGlobalErrores;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
 import com.banfieldpatin.backend.seguridad.CookieBearerTokenResolver;
 import com.banfieldpatin.backend.seguridad.CookieSesion;
@@ -84,14 +87,29 @@ class TutorAdminControllerWebMvcTest {
 		return req.cookie(x).header("X-XSRF-TOKEN", x.getValue());
 	}
 
+	/**
+	 * Los cuerpos de estas pruebas describen los DATOS del tutor: aqui se les agregan las revisiones que el contrato exige
+	 * (alta: la de la familia; edicion: la del tutor y la de la familia). Las pruebas de las revisiones usan {@link #crudo}.
+	 */
 	private MockHttpServletRequestBuilder cuerpo(MockHttpServletRequestBuilder req, Cookie sesion, String json)
+			throws Exception {
+		String metodo = req.buildRequest(new MockServletContext()).getMethod();
+		String completo = switch (metodo) {
+			case "POST" -> json.substring(0, json.length() - 1) + ",\"versionFamiliaEsperada\":\"0\"}";
+			case "PUT" -> json.substring(0, json.length() - 1) + ",\"versionEsperada\":\"0\",\"versionFamiliaEsperada\":\"0\"}";
+			default -> json;
+		};
+		return crudo(req, sesion, completo);
+	}
+
+	private MockHttpServletRequestBuilder crudo(MockHttpServletRequestBuilder req, Cookie sesion, String json)
 			throws Exception {
 		return conCsrf(req.contentType(MediaType.APPLICATION_JSON).content(json)).cookie(sesion);
 	}
 
 	private TutorRespuesta respuesta() {
 		return new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", "30111222", "11-5555-0000", "ana@example.com",
-				"Madre", true);
+				"Madre", true, "0");
 	}
 
 	// ---------- crear ----------
@@ -340,5 +358,106 @@ class TutorAdminControllerWebMvcTest {
 				.content(VALIDO)).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
 		verifyNoInteractions(servicio);
+	}
+
+	// ---------- revisiones (FE-05/U4) ----------
+
+	private static final String DATOS_ALTA = "\"nombre\":\"Ana\",\"apellido\":\"Perez\"";
+
+	@Test
+	void laRespuestaDelTutorIncluyeSuRevisionComoCadena() throws Exception {
+		when(servicio.obtener(any(), eq(tutorId))).thenReturn(respuesta());
+
+		mvc.perform(get("/api/admin/tutores/" + tutorId).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value("0"));
+	}
+
+	@Test
+	void elAltaExigeLaRevisionDeLaFamiliaYLaPasaAlServicio() throws Exception {
+		when(servicio.crear(any(), eq(familiaId), any(), any())).thenReturn(respuesta());
+
+		mvc.perform(crudo(post("/api/admin/familias/" + familiaId + "/tutores"), admin(),
+				"{" + DATOS_ALTA + ",\"versionFamiliaEsperada\":\"7\"}")).andExpect(status().isCreated());
+
+		ArgumentCaptor<TutorSolicitud> solicitud = ArgumentCaptor.forClass(TutorSolicitud.class);
+		verify(servicio).crear(any(), eq(familiaId), solicitud.capture(), any(DatosSolicitud.class));
+		assertThat(solicitud.getValue().versionFamiliaEsperada()).isEqualTo(7L);
+	}
+
+	@Test
+	void laEdicionExigeLasDosRevisionesYLasPasaAlServicio() throws Exception {
+		when(servicio.actualizar(any(), eq(tutorId), any(), any())).thenReturn(respuesta());
+
+		mvc.perform(crudo(put("/api/admin/tutores/" + tutorId), admin(),
+				"{" + DATOS_ALTA + ",\"versionEsperada\":\"4\",\"versionFamiliaEsperada\":\"2\"}")).andExpect(status().isOk());
+
+		ArgumentCaptor<TutorActualizacion> solicitud = ArgumentCaptor.forClass(TutorActualizacion.class);
+		verify(servicio).actualizar(any(), eq(tutorId), solicitud.capture(), any(DatosSolicitud.class));
+		assertThat(solicitud.getValue().versionEsperada()).isEqualTo(4L);
+		assertThat(solicitud.getValue().versionFamiliaEsperada()).isEqualTo(2L);
+	}
+
+	@Test
+	void unaRevisionAusenteONulaDa400ValidacionNombrandoElCampoYNoLlegaAlServicio() throws Exception {
+		String[][] casos = {
+				{ "post", "{" + DATOS_ALTA + "}", "versionFamiliaEsperada" },
+				{ "post", "{" + DATOS_ALTA + ",\"versionFamiliaEsperada\":null}", "versionFamiliaEsperada" },
+				{ "put", "{" + DATOS_ALTA + ",\"versionFamiliaEsperada\":\"0\"}", "versionEsperada" },
+				{ "put", "{" + DATOS_ALTA + ",\"versionEsperada\":null,\"versionFamiliaEsperada\":\"0\"}", "versionEsperada" },
+				{ "put", "{" + DATOS_ALTA + ",\"versionEsperada\":\"0\"}", "versionFamiliaEsperada" } };
+		for (String[] caso : casos) {
+			var req = caso[0].equals("post") ? post("/api/admin/familias/" + familiaId + "/tutores")
+					: put("/api/admin/tutores/" + tutorId);
+			mvc.perform(crudo(req, admin(), caso[1])).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("VALIDACION"))
+					.andExpect(jsonPath("$.detalles[0].campo").value(caso[2]));
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void unaRevisionConFormatoInvalidoDa400SolicitudInvalidaSinEcoDelValor() throws Exception {
+		for (String valor : new String[] { "0", "-1", "\"-1\"", "\"abc\"", "\"1.5\"", "\" 1\"", "\"\"", "true",
+				"\"" + "9".repeat(20) + "\"", "\"9223372036854775808\"" }) {
+			for (String campo : new String[] { "versionEsperada", "versionFamiliaEsperada" }) {
+				String otra = campo.equals("versionEsperada") ? "versionFamiliaEsperada" : "versionEsperada";
+				String cuerpo = "{" + DATOS_ALTA + ",\"" + campo + "\":" + valor + ",\"" + otra + "\":\"0\"}";
+				String respuesta = mvc.perform(crudo(put("/api/admin/tutores/" + tutorId), admin(), cuerpo))
+						.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+						.andReturn().getResponse().getContentAsString();
+				assertThat(respuesta).doesNotContain("abc").doesNotContain("9223372036854775808");
+			}
+			mvc.perform(crudo(post("/api/admin/familias/" + familiaId + "/tutores"), admin(),
+					"{" + DATOS_ALTA + ",\"versionFamiliaEsperada\":" + valor + "}")).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void laRevisionObsoletaDa409EdicionDesactualizadaConMensajeFijoSinIdsNiDatos() throws Exception {
+		when(servicio.crear(any(), any(), any(), any())).thenThrow(FamiliaAdminService.edicionDesactualizada());
+		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(FamiliaAdminService.edicionDesactualizada());
+
+		String alta = mvc.perform(cuerpo(post("/api/admin/familias/" + familiaId + "/tutores"), admin(), VALIDO))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
+				.andReturn().getResponse().getContentAsString();
+		String edicion = mvc.perform(cuerpo(put("/api/admin/tutores/" + tutorId), admin(), VALIDO))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
+				.andReturn().getResponse().getContentAsString();
+		for (String cuerpo : new String[] { alta, edicion }) {
+			assertThat(cuerpo).doesNotContain(tutorId.toString(), familiaId.toString(), "Ana", "Perez");
+		}
+	}
+
+	@Test
+	void unConflictoDeJpaDa409EdicionDesactualizadaSinFiltrarSuMensaje() throws Exception {
+		when(servicio.actualizar(any(), any(), any(), any()))
+				.thenThrow(new ObjectOptimisticLockingFailureException(Tutor.class, tutorId));
+
+		String cuerpo = mvc.perform(cuerpo(put("/api/admin/tutores/" + tutorId), admin(), VALIDO))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
+				.andReturn().getResponse().getContentAsString();
+		assertThat(cuerpo).doesNotContain(tutorId.toString(), "Tutor");
 	}
 }

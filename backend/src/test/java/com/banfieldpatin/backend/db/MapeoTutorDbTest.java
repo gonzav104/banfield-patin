@@ -24,6 +24,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.tutores.Tutor;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
@@ -82,7 +83,17 @@ class MapeoTutorDbTest extends BaseDbTest {
 	}
 
 	private TutorSolicitud solicitud(String dni, String telefono) {
-		return new TutorSolicitud("Ana", "Perez", dni, telefono, EMAIL, "Madre");
+		return new TutorSolicitud("Ana", "Perez", dni, telefono, EMAIL, "Madre", 0L); // familias nuevas: revision 0
+	}
+
+	/** Reemplazo con las revisiones VIGENTES del tutor y de su familia (lo que enviaria un cliente que acaba de leerlas). */
+	private TutorActualizacion actualizacion(UUID tutorId, String dni, String telefono) {
+		long versionTutor = jdbc.sql("SELECT version FROM gestion_patin.tutor WHERE id = :id").param("id", tutorId)
+				.query(Long.class).single();
+		long versionFamilia = jdbc.sql("""
+				SELECT f.version FROM gestion_patin.familia f JOIN gestion_patin.tutor t ON t.familia_id = f.id WHERE t.id = :id
+				""").param("id", tutorId).query(Long.class).single();
+		return new TutorActualizacion("Ana", "Perez", dni, telefono, EMAIL, "Madre", versionTutor, versionFamilia);
 	}
 
 	private Map<String, Object> fila(UUID id) {
@@ -143,7 +154,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 
 		TutorRespuesta creado = servicio.crear(admin, familia,
-				new TutorSolicitud("Ana", "Perez", null, null, null, null), DATOS);
+				new TutorSolicitud("Ana", "Perez", null, null, null, null, 0L), DATOS);
 
 		Map<String, Object> fila = fila(creado.id());
 		assertThat(fila.get("dni")).isNull();
@@ -172,7 +183,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 
 		// El DTO lo rechaza antes (400); aqui se comprueba el limite real de la columna (varchar(40)).
 		assertThatThrownBy(() -> servicio.crear(admin, familia,
-				new TutorSolicitud("Ana", "Perez", null, "1".repeat(41), null, null), DATOS))
+				new TutorSolicitud("Ana", "Perez", null, "1".repeat(41), null, null, 0L), DATOS))
 				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThat(contarTutores(escuelaA)).isZero();
@@ -217,7 +228,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 		datos.familia(escuelaA, "Otra", true);
 		UUID id = servicio.crear(admin, original, solicitud(null, null), DATOS).id();
 
-		TutorRespuesta editado = servicio.actualizar(admin, id, solicitud(null, TELEFONO), DATOS);
+		TutorRespuesta editado = servicio.actualizar(admin, id, actualizacion(id, null, TELEFONO), DATOS);
 
 		assertThat(editado.familiaId()).isEqualTo(original);
 		assertThat(fila(id).get("familia_id")).isEqualTo(original);
@@ -286,7 +297,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 		long auditoriasAntes = auditoriasTotales(escuelaA);
 
 		assertThatThrownBy(() -> servicio.obtener(adminDeB, tutorA)).satisfies(e -> assertError(e, "TUTOR_NO_ENCONTRADO"));
-		assertThatThrownBy(() -> servicio.actualizar(adminDeB, tutorA, solicitud(null, "11-9999-9999"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(adminDeB, tutorA, actualizacion(tutorA, null, "11-9999-9999"), DATOS))
 				.satisfies(e -> assertError(e, "TUTOR_NO_ENCONTRADO"));
 		assertThatThrownBy(() -> servicio.crear(adminDeB, familiaA, solicitud(null, null), DATOS))
 				.satisfies(e -> assertError(e, "FAMILIA_NO_ENCONTRADA"));
@@ -308,8 +319,8 @@ class MapeoTutorDbTest extends BaseDbTest {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 
 		UUID id = servicio.crear(admin, familia, solicitud(DNI_CRUDO, TELEFONO), DATOS).id();
-		servicio.actualizar(admin, id, solicitud(null, "11-7777-8888"), DATOS);
-		servicio.actualizar(admin, id, solicitud(null, "11-7777-8888"), DATOS); // identica: sin auditoria
+		servicio.actualizar(admin, id, actualizacion(id, null, "11-7777-8888"), DATOS);
+		servicio.actualizar(admin, id, actualizacion(id, null, "11-7777-8888"), DATOS); // identica: sin auditoria
 
 		List<Map<String, Object>> eventos = jdbc.sql("""
 				SELECT accion, usuario_id, recurso_tipo, recurso_id, detalle::text AS detalle
@@ -337,7 +348,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 		UUID id = servicio.crear(admin, familia, solicitud(DNI_CRUDO, TELEFONO), DATOS).id();
 		long antes = auditoriasTotales(escuelaA);
 
-		servicio.actualizar(admin, id, solicitud(DNI_NORMALIZADO, TELEFONO), DATOS);
+		servicio.actualizar(admin, id, actualizacion(id, DNI_NORMALIZADO, TELEFONO), DATOS);
 
 		assertThat(auditoriasTotales(escuelaA)).isEqualTo(antes);
 	}
@@ -356,10 +367,10 @@ class MapeoTutorDbTest extends BaseDbTest {
 
 		assertThatThrownBy(() -> servicio.crear(admin, familia, solicitud(null, null), DATOS))
 				.satisfies(e -> assertError(e, "FAMILIA_INACTIVA"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud(DNI_CRUDO, "11-1111-2222"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, actualizacion(id, DNI_CRUDO, "11-1111-2222"), DATOS))
 				.satisfies(e -> assertError(e, "FAMILIA_INACTIVA"));
 		// Una edicion IDENTICA tambien se rechaza: la familia se comprueba antes de detectar "sin cambios".
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud(DNI_CRUDO, TELEFONO), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, actualizacion(id, DNI_CRUDO, TELEFONO), DATOS))
 				.satisfies(e -> assertError(e, "FAMILIA_INACTIVA"));
 
 		assertThat(contarTutores(escuelaA)).isEqualTo(tutoresAntes);
@@ -370,7 +381,7 @@ class MapeoTutorDbTest extends BaseDbTest {
 
 		datos.reactivarFamilia(familia);
 
-		assertThat(servicio.actualizar(admin, id, solicitud(DNI_CRUDO, "11-1111-2222"), DATOS).telefono())
+		assertThat(servicio.actualizar(admin, id, actualizacion(id, DNI_CRUDO, "11-1111-2222"), DATOS).telefono())
 				.isEqualTo("11-1111-2222");
 		servicio.crear(admin, familia, solicitud(null, null), DATOS);
 		assertThat(contarTutores(escuelaA)).isEqualTo(tutoresAntes + 1);
@@ -380,16 +391,19 @@ class MapeoTutorDbTest extends BaseDbTest {
 	// ---------- sentencias de Hibernate ----------
 
 	@Test
-	void crearUsaComoMaximoDosSentenciasDeHibernateYEditarTres() {
+	void crearUsaComoMaximoTresSentenciasDeHibernateYEditarCinco() {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 
 		long crear = sentencias(() -> servicio.crear(admin, familia, solicitud(null, null), DATOS));
 		UUID id = jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE escuela_id = :e").param("e", escuelaA)
 				.query(UUID.class).single();
-		long editar = sentencias(() -> servicio.actualizar(admin, id, solicitud(null, TELEFONO), DATOS));
+		TutorActualizacion edicion = actualizacion(id, null, TELEFONO); // se arma antes: sus lecturas no cuentan
+		long editar = sentencias(() -> servicio.actualizar(admin, id, edicion, DATOS));
 
-		// familia + insert (+ la auditoria por JDBC = 3 en total); tutor + familia + update (+ auditoria = 4).
-		assertThat(crear).isLessThanOrEqualTo(2);
-		assertThat(editar).isLessThanOrEqualTo(3);
+		// FE-05/U4 (costo constante, no N+1): el alta suma el bloqueo FOR SHARE de la familia (atomicidad frente a su desactivacion):
+		// familia + bloqueo + insert. La edicion suma ese bloqueo y la verificacion OPTIMISTIC del tutor al commit (el mismo patron
+		// que Familia en U1): tutor + familia + bloqueo + update + verificacion. La auditoria va por JDBC y no se cuenta aqui.
+		assertThat(crear).isLessThanOrEqualTo(3);
+		assertThat(editar).isLessThanOrEqualTo(5);
 	}
 }
