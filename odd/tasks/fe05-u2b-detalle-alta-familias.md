@@ -64,3 +64,10 @@ Autorizados por el usuario: «Autorizo crear los dos commits locales de FE-05/U2
 - Commit 1 `859b1c3` — `feat(admin): incorporar detalle y alta administrativa de familias`: páginas, capa de datos, mensajes, ruta, enlaces del listado, `FamilyStatusBadge`, `FakeBackend` y pruebas unitarias (11 archivos). Las 385 pruebas, typecheck, lint y build se ejecutaron sobre estas mismas fuentes.
 - Commit 2 (este documento, E2E real, `seed.ts` y `frontend/README.md`): su hash no puede constar aquí. El README va con los E2E porque describe también las pruebas reales y las referencia.
 RDD: sin cambios (`assess` medio, `review_due: false`, `under_budget`); no se pidió consentimiento. Engram sigue fallando por múltiples sesiones: este documento es la evidencia principal.
+
+### L5 — Cierre de U2 (2026-11-14, registrado en el incremento de U3)
+
+U2 completa. U2-A (listado): PR #21, merge commit `c8abaab` (commits `7164540`, `02ac6ea`). U2-B (detalle y alta): PR #22, merge commit `891426a` (commits `859b1c3`, `6a0a520`). Ambos con merge commit, sin squash; commits originales preservados y verificados como ancestros de `origin/main`.
+CI de cada PR: 10/10 controles verdes (push y pull_request), incluido el E2E real (11m48 y 11m43 en #22). CI posterior al merge en `main` (`891426a`): backend y frontend en verde.
+Worktrees y ramas locales de U2-A y U2-B retirados sin forzar; ramas remotas conservadas. Sin despliegues. Pendiente que pasó a U3: `400, 400` en `docs/FAMILIAS-DEPORTISTAS.md:42` (fila del `PUT`).
+Engram: `mem_save` falló durante U2 («multiple active runtime sessions…») y funcionó pasando `project: banfield-patin`; el cierre quedó en la observación `delivery/fe05-u2/cierre`.

@@ -40,3 +40,39 @@ export function createErrorMessage(error: ApiError): { text: string; uncertain: 
   if (error.kind === 'conflict') return { text: 'No pudimos crear la familia por un conflicto. Revisá el listado e intentá de nuevo.', uncertain: false };
   return { text: commonErrorMessage(error) ?? 'No pudimos crear la familia. Intentá de nuevo.', uncertain: false };
 }
+
+/** How a failed write (edit, activate, deactivate) must be told to the administrator. */
+export type WriteFailure = 'stale' | 'busy' | 'uncertain' | 'validation' | 'forbidden' | 'missing' | 'other';
+
+export function classifyWriteFailure(error: ApiError): WriteFailure {
+  if (error.status === 409) return error.code === 'EDICION_DESACTUALIZADA' ? 'stale' : 'busy';
+  // A network failure, a timeout and any 5xx (or an unreadable 2xx) may have been applied: never assume it was not.
+  if (error.kind === 'network' || error.kind === 'unavailable' || error.kind === 'server') return 'uncertain';
+  if (error.kind === 'validation') return 'validation';
+  if (error.kind === 'forbidden') return 'forbidden';
+  if (error.status === 404) return 'missing';
+  return 'other';
+}
+
+export const STALE_EDIT_TEXT = 'Otro administrador modificó esta familia mientras la editabas. Tu borrador sigue acá, pero todavía no se guardó.';
+export const STALE_STATUS_TEXT = 'Otro administrador modificó esta familia. Revisá los datos vigentes antes de decidir de nuevo.';
+export const UNCERTAIN_EDIT_TEXT = 'No pudimos confirmar si el cambio se guardó. Verificá los datos vigentes antes de volver a intentar.';
+export const UNCERTAIN_STATUS_TEXT = 'No pudimos confirmar si el cambio se aplicó. Verificá los datos vigentes antes de volver a intentar.';
+
+/** Fixed texts: the backend message is never echoed. `stale` and `uncertain` have their own panels. */
+export function writeErrorMessage(failure: WriteFailure, error: ApiError, target: 'name' | 'status'): string {
+  switch (failure) {
+    case 'busy':
+      return 'Otra operación está en curso sobre esta familia. Esperá unos segundos y volvé a intentarlo.';
+    case 'validation':
+      return target === 'name'
+        ? 'Revisá el nombre de referencia: es obligatorio y admite hasta 150 caracteres.'
+        : 'No pudimos procesar la solicitud. Recargá los datos vigentes y volvé a intentar.';
+    case 'forbidden':
+      return 'No tenés permiso para modificar familias.';
+    case 'missing':
+      return 'La familia ya no existe.';
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos guardar el cambio. Intentá de nuevo.';
+  }
+}

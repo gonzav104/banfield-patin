@@ -213,6 +213,50 @@ export class FakeBackend {
     };
   }
 
+  /** Another administrator changes the family: the revision moves on, exactly as the real backend would. */
+  changeFamilyBehindTheScenes(id: string, change: { nombreReferencia?: string; activa?: boolean }): void {
+    const family = this.families.find((f) => f.id === id);
+    if (!family) throw new Error(`Unknown fake family ${id}`);
+    Object.assign(family, change);
+    family.version += 1;
+  }
+
+  familyVersion(id: string): string {
+    return String(this.families.find((f) => f.id === id)?.version);
+  }
+
+  /**
+   * Mirrors PUT /admin/familias/{id} (FamiliaActualizacion) and POST .../activar|desactivar (FamiliaVersionEsperada):
+   * bean validation first (400), then 404, then the revision (409 EDICION_DESACTUALIZADA, even when the value already
+   * matches), then a no-op (same revision) or a change (revision + 1).
+   */
+  private writeFamily(id: string, status: 'activar' | 'desactivar' | undefined, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = status ? ['versionEsperada'] : ['nombreReferencia', 'versionEsperada'];
+    if (Object.keys(input).some((k) => !allowed.includes(k))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const bad = { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    if (input.versionEsperada === undefined || input.versionEsperada === null) return bad;
+    if (typeof input.versionEsperada !== 'string' || !/^[0-9]{1,19}$/.test(input.versionEsperada)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const name = typeof input.nombreReferencia === 'string' ? input.nombreReferencia.trim() : '';
+    if (!status && (name === '' || name.length > 150)) return bad;
+    const family = this.families.find((f) => f.id === id);
+    if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+    if (String(family.version) !== input.versionEsperada) {
+      return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    }
+    if (status) {
+      const target = status === 'activar';
+      if (family.activa !== target) {
+        family.activa = target;
+        family.version += 1;
+      }
+    } else if (family.nombreReferencia !== name) {
+      family.nombreReferencia = name;
+      family.version += 1;
+    }
+    return { status: 200, body: this.familyDetail(family) };
+  }
+
   private familyDetail(f: FakeFamily) {
     return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => ({ ...t, familiaId: f.id })), version: String(f.version) };
   }
@@ -280,6 +324,10 @@ export class FakeBackend {
       const family = this.families.find((f) => f.id === detail[1]);
       if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
       return { status: 200, body: this.familyDetail(family) };
+    }
+    const familyWrite = /^\/admin\/familias\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
+    if ((method === 'put' && familyWrite && !familyWrite[2]) || (method === 'post' && familyWrite?.[2])) {
+      return this.writeFamily(familyWrite[1]!, familyWrite[2] as 'activar' | 'desactivar' | undefined, body);
     }
     if (method === 'post' && path === '/admin/familias') {
       // Mirrors FamiliaSolicitud: only nombreReferencia, @NotBlank, at most 150 characters, the backend strips it.
@@ -426,7 +474,7 @@ export class FakeBackend {
   }
 
   /** Forces the next (or every) matching request to fail with a status or a network error. */
-  override(method: 'get' | 'post', url: string, value: Override, options: { once?: boolean } = {}): this {
+  override(method: 'get' | 'post' | 'put', url: string, value: Override, options: { once?: boolean } = {}): this {
     this.overrides.push({ method, url, value, once: options.once ?? true });
     return this;
   }
@@ -440,7 +488,7 @@ export class FakeBackend {
    * Holds the NEXT matching request: the server answers as of now, but the client only receives the response when
    * `release()` is called. Used to reproduce late responses that arrive after the identity changed.
    */
-  hold(method: 'get' | 'post', url: string): { release: () => void } {
+  hold(method: 'get' | 'post' | 'put', url: string): { release: () => void } {
     const entry: { method: string; url: string; deliver?: () => void } = { method, url };
     this.holds.push(entry);
     return { release: () => entry.deliver?.() };
@@ -521,7 +569,7 @@ export class FakeBackend {
       return { status: 200, body: { headerName: 'X-XSRF-TOKEN', token: `masked-${this.csrfToken}` } };
     }
 
-    if (method === 'post' && (!csrfHeader || csrfHeader !== this.csrfToken)) {
+    if (method !== 'get' && (!csrfHeader || csrfHeader !== this.csrfToken)) {
       return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
     }
 

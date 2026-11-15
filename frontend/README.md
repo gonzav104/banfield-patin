@@ -4,8 +4,8 @@ React + TypeScript estricto + Vite + React Router + TanStack Query + Tailwind v4
 Stack y reglas: ver [`AGENTS.md`](./AGENTS.md). Estado actual: **FE-01 — autenticación y sesiones**
 (login de familias, login ADMIN con MFA/TOTP, rutas protegidas, logout) y **FE-02 — invitaciones y registro de familias**
 (panel ADMIN de invitaciones + registro por enlace) y **FE-03 (primera unidad) — portal de familias, solo lectura**
-(dashboard y listado de deportistas vinculados) y **FE-04 — ficha del deportista y temporada vigente** (solo lectura) y **FE-05 / U2 — familias en el panel ADMIN**
-(listado, detalle de solo lectura y alta). No incluye edición de familias, licencias, empadronamiento, aptos físicos, competencias, rifas ni carga documental.
+(dashboard y listado de deportistas vinculados) y **FE-04 — ficha del deportista y temporada vigente** (solo lectura) y **FE-05 / U2 y U3 — familias en el panel ADMIN**
+(listado, detalle, alta, edición del nombre y activar/desactivar). No incluye tutores, licencias, empadronamiento, aptos físicos, competencias, rifas ni carga documental.
 
 ## Ejecutar localmente
 
@@ -126,7 +126,7 @@ Menú **Familias** (`/admin/familias`), siempre con ADMIN + MFA completada y lim
 | Ruta | Qué hace | Contrato backend |
 | --- | --- | --- |
 | `/admin/familias` | Listado paginado (20), búsqueda por nombre y filtro Todas/Activas/Inactivas | `GET /api/admin/familias/listado` |
-| `/admin/familias/:id` | Detalle de solo lectura: estado y tutores con el DNI **enmascarado** | `GET /api/admin/familias/{id}` |
+| `/admin/familias/:id` | Detalle: estado y tutores (solo lectura) con el DNI **enmascarado**; desde acá se edita el nombre y se activa/desactiva (U3) | `GET /api/admin/familias/{id}`, `PUT /api/admin/familias/{id}`, `POST …/activar` y `…/desactivar` |
 | `/admin/familias/nueva` | Alta con el nombre de referencia (máx. 150); al crear lleva al detalle | `POST /api/admin/familias` |
 
 - **Privacidad:** el término de búsqueda y el nombre de la familia **no** van en la URL de navegación, ni en storage ni en consola (el término sí viaja
@@ -134,8 +134,16 @@ Menú **Familias** (`/admin/familias`), siempre con ADMIN + MFA completada y lim
 - **Crear una familia no crea una cuenta de usuario:** el acceso sigue gestionándose con **Invitaciones**. La pantalla de alta y el detalle sin tutores lo aclaran.
 - **Resultado incierto:** el alta nunca se reintenta sola. Ante un corte de red, un timeout o un 5xx se explica que no se sabe si se creó y se pide revisar el
   listado antes de reintentar; el botón se deshabilita mientras la petición está en curso (evita duplicados por doble clic).
-- **Sin pantallas todavía:** edición, activar/desactivar y tutores (unidades posteriores). La revisión optimista (`version`, FE-05/U1) se valida en el esquema pero
-  no se muestra: la usará la edición.
+- **Edición y estados (FE-05 / U3):** las escrituras envían `versionEsperada`, la revisión (`version`, FE-05/U1) que el administrador vio **al abrir** la edición o la
+  confirmación; no se muestra. Un `409 EDICION_DESACTUALIZADA` (otro administrador modificó el registro) **no** se reintenta ni se resuelve solo: el borrador queda en memoria
+  (nunca en URL, storage ni consola), «Ver datos vigentes» recarga y muestra el nombre vigente junto al borrador, y recién ante «Seguir editando mi borrador» la revisión
+  base pasa a la vigente (hay que volver a guardar). No existe guardado forzado ni fusión automática. Un `409 CONFLICTO_CONCURRENCIA` (contención) se informa aparte.
+- **Resultado incierto** (corte de red, timeout, 5xx): no se reintenta ni se afirma que falló; «Verificar datos vigentes» recarga y avisa si el cambio ya figura guardado.
+- **Cambios sin guardar:** `beforeunload` (cerrar o recargar), clics en enlaces internos y «Cancelar» muestran un aviso. **Límite conocido:** el botón «Atrás» del navegador
+  no se intercepta (`BrowserRouter` no admite `useBlocker`).
+- **Desactivar una familia** pide confirmación y explica las consecuencias, verificadas en el backend: sus personas no pueden ingresar al portal y sus sesiones abiertas dejan de
+  ser válidas; no se pueden crear ni editar tutores ni vínculos; **no** se elimina el historial ni se desactivan deportistas, vínculos o tutores. Reactivar la deja como estaba.
+- **Sin pantallas todavía:** gestión de tutores (unidades posteriores).
 
 ## Pruebas
 
@@ -178,6 +186,10 @@ esa spec provoca 3, así que **reiniciá el backend (o esperá 15 minutos) entre
 listado en dos páginas reales, búsqueda y filtro sin el término en URL/consola/storage, detalle con DNI enmascarado (la propia API ya no lo trae completo), «no encontrado»
 uniforme (id inexistente y mal formado), alta con doble clic que crea **una** familia, validación sin petición, 360 px, y 401/403 sobre la API y las pantallas. La caída de red
 del alta es una prueba **simulada** (`page.route`). El aislamiento entre dos escuelas lo cubren las pruebas de base de datos del backend.
+`familias-edicion-estados.real.spec.ts` (FE-05/U3) prueba contra el backend real la edición con la revisión que avanza, el rechazo de una edición obsoleta (el cambio del «otro administrador» no se
+pisa; el borrador sobrevive; no hay reintento), el descarte, la caída **simulada** (`page.route`), el aviso de cambios sin guardar (incluido el diálogo `beforeunload`), la desactivación con
+confirmación (la familia **deja de poder ingresar** de verdad y vuelve a poder al activarla), el cambio de estado con revisión obsoleta, el doble clic, los permisos (anónimo, FAMILIA, sin CSRF y
+ADMIN con segundo factor pendiente) y 360 px. El «otro administrador» es el mismo administrador escribiendo por la API con una revisión más nueva; para el backend es equivalente.
 `portal-ficha.real.spec.ts` (FE-04, 22 pruebas) siembra, también por la API real de ADMIN, una temporada anterior (con datos distintos, que nunca deben verse) y la
 vigente, y ocho deportistas con un caso cada uno: completo (`007`), suspendido, inactivo, sin edad, sin fila en la temporada vigente, con campos nulos, con vínculo
 revocado y de otra familia. La edad de las pruebas es exacta (fechas de nacimiento relativas a hoy en la zona de la escuela). La ficha no genera capturas, trazas ni videos.
