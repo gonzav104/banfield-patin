@@ -51,3 +51,38 @@ export const VERIFY_RESEND_BLOCKED = 'El reenvío sigue bloqueado para no duplic
 export const VERIFY_NO_MATCH = 'No encontramos el tutor al verificar. La solicitud original podría seguir procesándose y aparecer más tarde.';
 export const VERIFY_DUPLICATE_WARNING =
   'Si volvés a intentar y la primera solicitud sí se estaba procesando, el tutor podría quedar duplicado. Revisá la familia antes de reenviar.';
+
+/* ---- Edit (U5-B). Fixed texts: the backend message is never echoed. ---- */
+
+export const TUTOR_SAVED_NOTICE = 'Cambios guardados.';
+export const FAMILY_INACTIVE_EDIT_NOTICE = 'La familia está inactiva: no se pueden editar sus tutores. Reactivala desde su detalle.';
+export const STALE_TUTOR_EDIT_TEXT =
+  'El tutor o su familia fueron modificados mientras editabas (otro administrador los cambió). Tu borrador sigue acá, pero todavía no se guardó.';
+export const INACTIVE_TUTOR_EDIT_TEXT =
+  'La familia está inactiva: no se pueden editar sus tutores. Reactivala desde su detalle y volvé a intentarlo. Tu borrador sigue acá, pero no se guardó.';
+export const UNCERTAIN_TUTOR_EDIT_TEXT = 'No pudimos confirmar si el cambio se guardó. Verificá los datos vigentes antes de volver a intentar.';
+export const EDIT_REVIEW_INTRO = 'Estos son los datos vigentes. Tu borrador no se guardó ni se mezcló con ellos.';
+export const EDIT_CONTINUE_NOTE =
+  'Si seguís editando, los campos que no modificaste pasan a los datos vigentes y los que modificaste conservan tu borrador. Nada se guarda hasta que toques «Guardar cambios».';
+export const EDIT_MATCHES_DRAFT =
+  'Los datos vigentes ya coinciden con tu borrador: no queda nada por guardar. No podemos saber si fue tu envío u otro cambio.';
+export const EDIT_UNCHANGED =
+  'No vemos cambios guardados al verificar. Si la solicitud original todavía se estuviera procesando, un nuevo intento se rechazaría por revisión obsoleta en lugar de aplicarse dos veces.';
+/** Names of the saved data that the submission would remove (never their values). */
+export const clearedFieldsText = (names: string[]) => `Al guardar se van a quitar estos datos: ${names.join(', ')}.`;
+
+/** Texts of the failures of the edit that have no panel of their own (stale, inactive and uncertain do). */
+export function updateTutorErrorMessage(failure: WriteFailure, error: ApiError): string {
+  switch (failure) {
+    case 'busy':
+      return 'Otra operación está en curso sobre esta familia. Esperá unos segundos y volvé a intentarlo.';
+    case 'validation':
+      return 'Revisá los datos del tutor: el nombre y el apellido son obligatorios y el resto debe respetar los límites.';
+    case 'forbidden':
+      return 'No tenés permiso para editar tutores.';
+    case 'missing':
+      return 'El tutor ya no existe.';
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos guardar el cambio. Intentá de nuevo.';
+  }
+}

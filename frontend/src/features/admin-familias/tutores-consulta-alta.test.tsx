@@ -107,7 +107,7 @@ describe('tutor detail (mock backend)', () => {
     expect(screen.getByText('rosa@example.test')).toBeInTheDocument();
   });
 
-  it('shows only what the contract carries: no revision, no editing, no deactivation, «Inactivo» only when it applies', async () => {
+  it('shows only what the contract carries: no revision, no deactivation, «Inactivo» only when it applies', async () => {
     const family = backend.addFamily('Gómez', { tutores: [tutor({ activo: false, dni: null, dniEnmascarado: null, telefono: null, email: null, parentesco: null })] });
     openTutor(`/admin/familias/${family.id}/tutores/t-rosa`);
     await screen.findByRole('heading', { level: 1, name: 'Rosa Sintética' });
@@ -116,7 +116,8 @@ describe('tutor detail (mock backend)', () => {
     expect(document.body.textContent).not.toMatch(/versi[oó]n|revisi[oó]n/i);
     expect(screen.queryByText('3')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /editar|desactivar|activar|eliminar/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /editar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /desactivar|activar|eliminar/i })).not.toBeInTheDocument(); // tutors cannot be deactivated or deleted
+    expect(screen.getByRole('link', { name: 'Editar tutor' })).toBeInTheDocument(); // editing arrived with U5-B
   });
 
   it('goes back to the family', async () => {

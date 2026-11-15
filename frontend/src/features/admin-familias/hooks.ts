@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/lib/api-error';
-import { changeFamilyStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, type FamilyListParams, type FamilyStatusAction } from './api';
-import type { FamilyDetail, TutorDetail, TutorInput } from './schemas';
+import { changeFamilyStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, updateTutor, type FamilyListParams, type FamilyStatusAction } from './api';
+import type { FamilyDetail, TutorDetail, TutorInput, TutorUpdateInput } from './schemas';
 
 /** Prefix of every family-related query (list, detail and the invitation picker): one invalidation refreshes them all. */
 const familiesKey = ['admin', 'families'] as const;
@@ -68,6 +68,24 @@ export function useCreateTutor() {
   return useMutation<TutorDetail, ApiError, { familyId: string; datos: TutorInput; version: string }>({
     mutationFn: createTutor,
     onSuccess: async (_created, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: familyDetailKey(variables.familyId) }),
+        queryClient.invalidateQueries({ queryKey: familiesKey }),
+      ]);
+    },
+  });
+}
+
+/**
+ * After a confirmed edit the response (the current state of the tutor, with its new revision) replaces the cached detail and the
+ * family (its summary of tutors) is refreshed from the server. Editing a tutor does not move the family revision.
+ */
+export function useUpdateTutor() {
+  const queryClient = useQueryClient();
+  return useMutation<TutorDetail, ApiError, { tutorId: string; familyId: string; datos: TutorUpdateInput; version: string; familyVersion: string }>({
+    mutationFn: ({ tutorId, datos, version, familyVersion }) => updateTutor({ tutorId, datos, version, familyVersion }),
+    onSuccess: async (saved, variables) => {
+      queryClient.setQueryData(tutorDetailKey(saved.id), saved);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: familyDetailKey(variables.familyId) }),
         queryClient.invalidateQueries({ queryKey: familiesKey }),
