@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -52,10 +52,14 @@ function AthleteForm() {
   /** The search returned more results than the ones inspected: the check cannot conclude anything about the rest. */
   const [incomplete, setIncomplete] = useState<{ inspected: number; total: number } | null>(null);
 
+  /** Set synchronously on submit: `isPending` only turns true after React Query notifies, so several submits of ONE task would all pass it. */
+  const sending = useRef(false);
+
   const dirty = FIELDS.some((field) => values[field].trim() !== '');
   const guard = useUnsavedChangesGuard(dirty && !create.isPending);
   const saving = create.isPending;
-  const locked = phase !== 'editing';
+  /** Locked while the request is in flight too: what is typed after the click would not travel and would be lost behind a «created». */
+  const locked = phase !== 'editing' || saving;
 
   function set(field: FieldName, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -64,7 +68,7 @@ function AthleteForm() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (create.isPending || phase !== 'editing') return; // a second submit while one is in flight must never create two
+    if (sending.current || create.isPending || phase !== 'editing') return; // a second submit while one is in flight must never create two
     const found = validate(values);
     if (Object.keys(found).length > 0) {
       setErrors(found);
@@ -73,7 +77,11 @@ function AthleteForm() {
     setErrors({});
     setFailure(null);
     setFailureError(null);
+    sending.current = true;
     create.mutate(toInput(values), {
+      onSettled: () => {
+        sending.current = false;
+      },
       onSuccess: (created) => void navigate(`/admin/deportistas/${encodeURIComponent(created.id)}`, { replace: true, state: { athleteCreated: true } }),
       onError: (error) => {
         const apiError = ApiError.from(error);
