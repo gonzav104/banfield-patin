@@ -1,0 +1,18 @@
+{
+  "comentario": "Reparto de los specs E2E reales entre runners de CI. Cada shard usa su propia base PostgreSQL descartable, backend, frontend y credenciales. El shard que contiene auth.real.spec.ts enrola al administrador con ese spec; los demas lo enrolan con e2e/support/enrol-admin.ts antes de empezar. Reparto balanceado por el tiempo medido de cada archivo (dominado por los inicios de sesion de administrador, uno por ventana TOTP). Un spec nuevo debe agregarse aqui: `npm test` y el arranque de cada shard fallan si falta, sobra o se repite alguno.",
+  "shards": {
+    "1": [
+      "auth.real.spec.ts",
+      "familias-edicion-estados.real.spec.ts",
+      "invitations.real.spec.ts",
+      "portal-ficha.real.spec.ts",
+      "portal.real.spec.ts",
+      "tutores-edicion.real.spec.ts"
+    ],
+    "2": [
+      "familias-detalle-alta.real.spec.ts",
+      "familias-listado.real.spec.ts",
+      "familias-tutores.real.spec.ts"
+    ]
+  }
+}

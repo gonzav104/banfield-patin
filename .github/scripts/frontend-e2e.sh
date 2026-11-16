@@ -6,7 +6,11 @@
 # Nada sensible se guarda: las credenciales se generan en cada ejecución, viven solo en el entorno de este proceso
 # y la base (un contenedor propio, con nombre único) se elimina al terminar. No toca otros contenedores.
 #
-# Variables opcionales: E2E_PG_PORT (puerto local de la base, 55432 por defecto).
+# Variables opcionales:
+#   E2E_PG_PORT (puerto local de la base, 55432 por defecto).
+#   E2E_SHARD   (numero de shard, segun frontend/e2e/shards.json). Sin ella corre la suite COMPLETA, como siempre. Con ella corre solo
+#               los archivos de ese shard, en una base, un backend y unas credenciales propios: los shards de CI son runners distintos
+#               y cada uno tiene su administrador. Dos shards no pueden correr a la vez en la misma maquina (mismos puertos 8080/5173).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,6 +42,24 @@ trap cleanup EXIT
 
 # Estado de una corrida anterior: la base es nueva, así que el enrolamiento TOTP se repite.
 rm -f "$STATE_FILE"
+
+# Reparto por shards: se valida ANTES de levantar nada. Ni falta, ni sobra, ni se repite ningún escenario de los 102 y el spec que
+# enrola al administrador va primero en su shard (si algo no cierra, esto falla y no se ejecuta ningún shard a medias).
+SHARD="${E2E_SHARD:-}"
+E2E_ARGS=()
+NEEDS_ENROLMENT="no"
+if [ -n "$SHARD" ]; then
+  (cd "$ROOT/frontend" && node e2e/support/shards.ts check)
+  # Asignaciones simples (no `done < <(...)`): si el shard no existe, el comando falla y `set -e` corta acá. Un shard inválido NUNCA
+  # debe terminar ejecutando la suite completa.
+  SHARD_PATTERNS="$(cd "$ROOT/frontend" && node e2e/support/shards.ts patterns "$SHARD")"
+  NEEDS_ENROLMENT="$(cd "$ROOT/frontend" && node e2e/support/shards.ts needs-enrolment "$SHARD")"
+  while IFS= read -r pattern; do
+    if [ -n "$pattern" ]; then E2E_ARGS+=("$pattern"); fi
+  done <<<"$SHARD_PATTERNS"
+  if [ "${#E2E_ARGS[@]}" -eq 0 ]; then echo "El shard ${SHARD} no tiene archivos de E2E." >&2; exit 1; fi
+  echo "Shard ${SHARD}: ${#E2E_ARGS[@]} archivo(s) de E2E."
+fi
 
 if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/auth/csrf" || true)" != "000" ]; then
   echo "El puerto ${BACKEND_PORT} ya está en uso: detené ese backend antes de correr los E2E." >&2
@@ -91,6 +113,12 @@ done
 echo "Backend listo. Ejecutando Playwright..."
 
 cd "$ROOT/frontend"
+# Un shard que no contiene auth.real.spec.ts (el spec que enrola al administrador por la interfaz) lo enrola antes por la API real:
+# su base es propia y todos los demás specs dependen de un administrador enrolado. No es un escenario ni cambia ninguno.
+if [ "$NEEDS_ENROLMENT" = "yes" ]; then
+  E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" E2E_BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}" \
+    node e2e/support/enrol-admin.ts
+fi
 E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
   E2E_DB_CONTAINER="$PG_NAME" E2E_DB_NAME="$PG_DB" \
-  npm run test:e2e
+  npm run test:e2e -- ${E2E_ARGS[@]+"${E2E_ARGS[@]}"}

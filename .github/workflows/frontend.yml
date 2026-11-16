@@ -68,12 +68,19 @@ jobs:
       - name: npm audit
         run: npm audit --audit-level=moderate
 
-  # Flujos reales: navegador -> Vite -> backend Spring -> PostgreSQL. La base es un contenedor descartable del
-  # runner y todas las credenciales se generan en cada ejecución (nada sensible en el repositorio).
-  e2e:
-    name: E2E reales (backend + PostgreSQL descartable)
+  # Flujos reales: navegador -> Vite -> backend Spring -> PostgreSQL. La suite se reparte en shards (frontend/e2e/shards.json): cada
+  # shard es un runner independiente con su propia base PostgreSQL descartable, backend, frontend y credenciales efimeras (nada
+  # sensible en el repositorio). Dentro de cada shard sigue habiendo un unico worker, para no abrir concurrencia sobre una misma base.
+  # Los nombres de estos jobs NO pueden ser el del control protegido: ese nombre es el del job `e2e` de abajo.
+  e2e-shard:
+    name: E2E reales shard ${{ matrix.shard }} (backend + PostgreSQL descartable)
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      # Sin fail-fast: un shard fallido no cancela al otro, asi se ve el resultado completo de la suite.
+      fail-fast: false
+      matrix:
+        shard: ["1", "2"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -101,11 +108,33 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      # El script valida el reparto ANTES de levantar nada (ni falta, ni sobra, ni se repite ningun escenario) y ejecuta solo este shard.
       - name: Ejecutar E2E reales
+        env:
+          E2E_SHARD: ${{ matrix.shard }}
         run: bash .github/scripts/frontend-e2e.sh
 
-      # Red de seguridad: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.
+      # Red de seguridad, en CADA shard: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.
       - name: Verificar artefactos sensibles
         if: always()
         working-directory: frontend
         run: npm run test:e2e:check-artifacts
+
+  # CONTROL PROTEGIDO. Conserva el nombre exacto que exige la protección de la rama (no se modifica) y solo termina en success cuando
+  # TODOS los shards terminaron en success. `always()` es lo que lo hace seguro: sin él, si un shard falla este job quedaría «omitido»
+  # y GitHub trata un control omitido como aprobado; con él corre siempre y falla de forma explícita ante un shard fallido,
+  # cancelado u omitido.
+  e2e:
+    name: E2E reales (backend + PostgreSQL descartable)
+    needs: e2e-shard
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Todos los shards de E2E reales en success
+        env:
+          SHARDS_RESULT: ${{ needs.e2e-shard.result }}
+        run: bash .github/scripts/e2e-gate.sh "$SHARDS_RESULT"
