@@ -1,4 +1,6 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AuthUser } from '@/features/auth/api';
+import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
 import { changeFamilyStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, updateTutor, type FamilyListParams, type FamilyStatusAction } from './api';
 import type { FamilyDetail, TutorDetail, TutorInput, TutorUpdateInput } from './schemas';
@@ -76,15 +78,22 @@ export function useCreateTutor() {
   });
 }
 
+/** Who the session belongs to right now (null: nobody). */
+const currentUserId = (queryClient: QueryClient): string | null => queryClient.getQueryData<AuthUser | null>(sessionKey)?.id ?? null;
+
 /**
  * After a confirmed edit the response (the current state of the tutor, with its new revision) replaces the cached detail and the
- * family (its summary of tutors) is refreshed from the server. Editing a tutor does not move the family revision.
+ * family (its summary of tutors) is refreshed from the server. Editing a tutor does not move the family revision. A write is not
+ * cancelled when the session changes while it is in flight: if its answer arrives for ANOTHER identity than the one that issued it,
+ * it is dropped (it must never put the previous identity's full detail, DNI included, back in a cache that was just cleared).
  */
 export function useUpdateTutor() {
   const queryClient = useQueryClient();
-  return useMutation<TutorDetail, ApiError, { tutorId: string; familyId: string; datos: TutorUpdateInput; version: string; familyVersion: string }>({
+  return useMutation<TutorDetail, ApiError, { tutorId: string; familyId: string; datos: TutorUpdateInput; version: string; familyVersion: string }, { identity: string | null }>({
     mutationFn: ({ tutorId, datos, version, familyVersion }) => updateTutor({ tutorId, datos, version, familyVersion }),
-    onSuccess: async (saved, variables) => {
+    onMutate: () => ({ identity: currentUserId(queryClient) }),
+    onSuccess: async (saved, variables, context) => {
+      if (context?.identity !== currentUserId(queryClient)) return;
       queryClient.setQueryData(tutorDetailKey(saved.id), saved);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: familyDetailKey(variables.familyId) }),

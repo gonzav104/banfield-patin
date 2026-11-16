@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -86,6 +86,8 @@ function TutorEditForm({ tutor, family, reload }: TutorEditFormProps) {
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Fresh | null>(null);
+  /** Set synchronously on submit: `isPending` only turns true after React Query notifies, so several submits of ONE task would all pass it. */
+  const sending = useRef(false);
 
   const dirty = !sameValues(values, base.original);
   const guard = useUnsavedChangesGuard(dirty && !update.isPending);
@@ -100,7 +102,7 @@ function TutorEditForm({ tutor, family, reload }: TutorEditFormProps) {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (update.isPending || phase !== 'editing' || !base.activa || !dirty) return; // a second submit while one is in flight must never write twice
+    if (sending.current || update.isPending || phase !== 'editing' || !base.activa || !dirty) return; // a second submit while one is in flight must never write twice
     const found = validate(values);
     if (Object.keys(found).length > 0) {
       setErrors(found);
@@ -108,9 +110,13 @@ function TutorEditForm({ tutor, family, reload }: TutorEditFormProps) {
     }
     setErrors({});
     setFailure(null);
+    sending.current = true;
     update.mutate(
       { tutorId: tutor.id, familyId: family.id, datos: toUpdateInput(values), version: base.tutorVersion, familyVersion: base.familyVersion },
       {
+        onSettled: () => {
+          sending.current = false;
+        },
         onSuccess: () => void navigate(tutorPath, { replace: true, state: { tutorUpdated: true } }),
         onError: (error) => {
           const apiError = ApiError.from(error);
@@ -218,7 +224,11 @@ function TutorEditForm({ tutor, family, reload }: TutorEditFormProps) {
           ) : null}
           {checkError ? <Alert tone="error">{checkError}</Alert> : null}
 
-          <TutorFields values={values} errors={errors} onChange={set} />
+          {/* Locked while the request is in flight: what is typed after the click would not travel and would be lost behind a «saved». */}
+          <fieldset disabled={saving} className="m-0 min-w-0 space-y-5 border-0 p-0">
+            <legend className="sr-only">Datos del tutor</legend>
+            <TutorFields values={values} errors={errors} onChange={set} />
+          </fieldset>
 
           {removed.length > 0 ? (
             <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
