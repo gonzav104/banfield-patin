@@ -1,4 +1,5 @@
-import { Link, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/session';
@@ -9,9 +10,9 @@ import { BackToListLink } from './FamilyNotFound';
 import { useTutorDetail } from './hooks';
 import { isNotFound } from './messages';
 import type { TutorDetail } from './schemas';
-import { TUTOR_NOT_FOUND_TEXT, TUTOR_NOT_FOUND_TITLE, tutorDetailErrorMessage } from './tutor-messages';
+import { TUTOR_NOT_FOUND_TEXT, TUTOR_NOT_FOUND_TITLE, TUTOR_SAVED_NOTICE, tutorDetailErrorMessage } from './tutor-messages';
 
-function BackToFamily({ familyId }: { familyId: string | undefined }) {
+export function BackToFamily({ familyId }: { familyId: string | undefined }) {
   if (!familyId) return <BackToListLink />;
   return (
     <Link
@@ -23,7 +24,7 @@ function BackToFamily({ familyId }: { familyId: string | undefined }) {
   );
 }
 
-function TutorNotFound({ familyId }: { familyId: string | undefined }) {
+export function TutorNotFound({ familyId }: { familyId: string | undefined }) {
   return (
     <div className="max-w-2xl space-y-4">
       <BackToFamily familyId={familyId} />
@@ -44,11 +45,20 @@ function Row({ label, children, breakAll = false }: { label: string; children: s
   );
 }
 
-/** Read-only individual view. The only screen that shows the FULL DNI; the revision is validated but not shown (the edit unit uses it). */
-function Detail({ tutor, familyId }: { tutor: TutorDetail; familyId: string }) {
+/**
+ * Individual view. The only screen that shows the FULL DNI; the revision is validated but not shown (the edit screen captures its
+ * own). The notice after a saved edit travels in the navigation state: a flag, never data.
+ */
+function Detail({ tutor, familyId, saved }: { tutor: TutorDetail; familyId: string; saved: boolean }) {
+  const [notice] = useState<string | null>(saved ? TUTOR_SAVED_NOTICE : null);
   return (
     <div className="max-w-3xl space-y-6">
       <BackToFamily familyId={familyId} />
+      {notice ? (
+        <Alert tone="success" role="status">
+          {notice}
+        </Alert>
+      ) : null}
       <header className="space-y-2">
         <p className="text-sm font-semibold text-brand-700">Tutor</p>
         <div className="flex flex-wrap items-center gap-3">
@@ -60,6 +70,9 @@ function Detail({ tutor, familyId }: { tutor: TutorDetail; familyId: string }) {
           )}
         </div>
         <p className="text-sm text-muted">Son datos personales: solo los ven los administradores.</p>
+        <Button asChild variant="outline">
+          <Link to={`/admin/familias/${encodeURIComponent(familyId)}/tutores/${encodeURIComponent(tutor.id)}/editar`}>Editar tutor</Link>
+        </Button>
       </header>
       <section aria-label="Datos del tutor" className="rounded-2xl border border-line bg-white p-5">
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -77,6 +90,7 @@ function Detail({ tutor, familyId }: { tutor: TutorDetail; familyId: string }) {
 
 function TutorScreen() {
   const { id, tutorId } = useParams();
+  const location = useLocation();
   const validFamily = isSafeFamilyId(id);
   const validTutor = isSafeTutorId(tutorId);
   const tutor = useTutorDetail(validTutor ? tutorId : '', validFamily && validTutor);
@@ -105,7 +119,7 @@ function TutorScreen() {
   }
   // A tutor that exists but belongs to ANOTHER family is the same «not found» as one that does not exist: the URL never reveals it.
   if (tutor.data.familiaId !== id) return <TutorNotFound familyId={id} />;
-  return <Detail tutor={tutor.data} familyId={id} />;
+  return <Detail tutor={tutor.data} familyId={id} saved={(location.state as { tutorUpdated?: unknown } | null)?.tutorUpdated === true} />;
 }
 
 /**

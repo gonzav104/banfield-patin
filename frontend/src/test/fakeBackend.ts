@@ -336,6 +336,70 @@ export class FakeBackend {
     return { status: 201, body: this.tutorFull(tutor, familyId) };
   }
 
+  /** Another administrator edits the tutor while this one is editing: the tutor revision moves, the family revision does not. */
+  changeTutorBehindTheScenes(id: string, change: { nombre?: string; apellido?: string; dni?: string | null; telefono?: string | null; email?: string | null; parentesco?: string | null }): void {
+    const found = this.findTutor(id);
+    if (!found) throw new Error(`Unknown fake tutor ${id}`);
+    const { dni, ...rest } = change;
+    Object.assign(found.tutor, rest);
+    if (dni !== undefined) {
+      found.tutor.dni = dni;
+      found.tutor.dniEnmascarado = dni ? `${'•'.repeat(Math.max(0, dni.length - 3))}${dni.slice(-3)}` : null;
+    }
+    found.tutor.version = (found.tutor.version ?? 0) + 1;
+  }
+
+  tutorVersion(id: string): string {
+    return String(this.findTutor(id)?.tutor.version ?? 0);
+  }
+
+  /**
+   * Mirrors PUT /admin/tutores/{id} (TutorActualizacion, a COMPLETE replacement): bean validation first (400, both revisions are
+   * required), then 404, then FAMILIA_INACTIVA (before the revisions), then the family revision and the tutor revision (one 409
+   * EDICION_DESACTUALIZADA for both, even when the data is equal), then the write. Without changes it answers 200 without writing
+   * and without moving the revision. Editing a tutor does NOT move the family revision.
+   */
+  private updateTutor(id: string, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = ['nombre', 'apellido', 'dni', 'telefono', 'email', 'parentesco', 'versionEsperada', 'versionFamiliaEsperada'];
+    if (Object.keys(input).some((k) => !allowed.includes(k))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const bad = { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    for (const key of ['versionEsperada', 'versionFamiliaEsperada']) {
+      const revision = input[key];
+      if (revision === undefined || revision === null) return bad;
+      if (typeof revision !== 'string' || !/^[0-9]{1,19}$/.test(revision)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    }
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const optional = (v: unknown) => (text(v) === '' ? null : text(v));
+    const nombre = text(input.nombre);
+    const apellido = text(input.apellido);
+    const dniRaw = optional(input.dni);
+    const dni = dniRaw === null ? null : dniRaw.replace(/[.\s]/g, '');
+    if (nombre === '' || apellido === '' || nombre.length > 100 || apellido.length > 100) return bad;
+    if (dniRaw !== null && (dniRaw.length > 20 || !/^[0-9]{7,9}$/.test(dni as string))) return bad;
+    const emailRaw = optional(input.email);
+    if (emailRaw !== null && (emailRaw.length > 180 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailRaw))) return bad;
+    const telefono = optional(input.telefono);
+    const parentesco = optional(input.parentesco);
+    if ((telefono?.length ?? 0) > 40 || (parentesco?.length ?? 0) > 40) return bad;
+    const found = this.findTutor(id);
+    if (!found) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.');
+    const { tutor, family } = found;
+    if (!family.activa) return this.error(409, 'FAMILIA_INACTIVA', 'La familia esta inactiva. Reactivala para realizar esta operacion.');
+    const stale = () => this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    if (String(family.version) !== input.versionFamiliaEsperada) return stale();
+    if (String(tutor.version ?? 0) !== input.versionEsperada) return stale();
+    const email = emailRaw === null ? null : emailRaw.toLowerCase();
+    const changed = tutor.nombre !== nombre || tutor.apellido !== apellido || (tutor.dni ?? null) !== dni || tutor.telefono !== telefono || tutor.email !== email || tutor.parentesco !== parentesco;
+    if (changed) {
+      Object.assign(tutor, { nombre, apellido, telefono, email, parentesco });
+      tutor.dni = dni;
+      tutor.dniEnmascarado = dni ? `${'•'.repeat(Math.max(0, dni.length - 3))}${dni.slice(-3)}` : null;
+      tutor.version = (tutor.version ?? 0) + 1;
+    }
+    return { status: 200, body: this.tutorFull(tutor, family.id) };
+  }
+
   private familyDetail(f: FakeFamily) {
     return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => this.tutorSummary(t, f.id)), version: String(f.version) };
   }
@@ -410,6 +474,7 @@ export class FakeBackend {
       if (!found) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.');
       return { status: 200, body: this.tutorFull(found.tutor, found.family.id) };
     }
+    if (method === 'put' && tutorDetail) return this.updateTutor(tutorDetail[1]!, body);
     const tutorCreate = /^\/admin\/familias\/([^/]+)\/tutores$/.exec(path);
     if (method === 'post' && tutorCreate) return this.createTutor(tutorCreate[1]!, body);
     const familyWrite = /^\/admin\/familias\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);

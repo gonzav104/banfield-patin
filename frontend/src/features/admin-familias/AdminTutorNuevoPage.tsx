@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
 import { useSession } from '@/features/auth/session';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
@@ -11,16 +10,13 @@ import { FamilyNotFound } from './FamilyNotFound';
 import { FamilyStatusBadge } from './FamilyStatusBadge';
 import { useCreateTutor, useFamilyDetail } from './hooks';
 import { classifyWriteFailure, detailErrorMessage, isNotFound, type WriteFailure } from './messages';
-import type { FamilyDetail, TutorInput } from './schemas';
+import type { FamilyDetail } from './schemas';
+import { TutorFields } from './TutorFields';
+import { EMPTY, FIELDS, toInput, validate, type Errors, type FieldName, type Values } from './tutor-form';
 import {
   createTutorErrorMessage,
   FAMILY_INACTIVE_NOTICE,
   INACTIVE_TUTOR_TEXT,
-  INVALID_DNI,
-  INVALID_EMAIL,
-  maxLengthText,
-  REQUIRED_LASTNAME,
-  REQUIRED_NAME,
   STALE_TUTOR_TEXT,
   UNCERTAIN_TUTOR_TEXT,
   VERIFY_DUPLICATE_WARNING,
@@ -32,46 +28,6 @@ import {
 import { useUnsavedChangesGuard } from './useUnsavedChangesGuard';
 
 type Result = { family: FamilyDetail; error?: undefined } | { error: ApiError; family?: undefined };
-
-const FIELDS = ['nombre', 'apellido', 'dni', 'telefono', 'correo', 'parentesco'] as const;
-type FieldName = (typeof FIELDS)[number];
-type Values = Record<FieldName, string>;
-type Errors = Partial<Record<FieldName, string>>;
-const EMPTY: Values = { nombre: '', apellido: '', dni: '', telefono: '', correo: '', parentesco: '' };
-
-/** Same limits and DNI rule as the backend (TutorSolicitud, @Dni: 7 to 9 digits once dots and spaces are removed). */
-function validate(values: Values): Errors {
-  const errors: Errors = {};
-  const nombre = values.nombre.trim();
-  const apellido = values.apellido.trim();
-  if (nombre === '') errors.nombre = REQUIRED_NAME;
-  else if (nombre.length > 100) errors.nombre = maxLengthText(100);
-  if (apellido === '') errors.apellido = REQUIRED_LASTNAME;
-  else if (apellido.length > 100) errors.apellido = maxLengthText(100);
-  const dni = values.dni.trim();
-  if (dni !== '') {
-    if (dni.length > 20) errors.dni = maxLengthText(20);
-    else if (!/^[0-9]{7,9}$/.test(dni.replace(/[.\s]/g, ''))) errors.dni = INVALID_DNI;
-  }
-  if (values.telefono.trim().length > 40) errors.telefono = maxLengthText(40);
-  if (values.parentesco.trim().length > 40) errors.parentesco = maxLengthText(40);
-  const correo = values.correo.trim();
-  if (correo !== '') {
-    if (correo.length > 180) errors.correo = maxLengthText(180);
-    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) errors.correo = INVALID_EMAIL;
-  }
-  return errors;
-}
-
-/** Only the filled fields travel, trimmed; the backend turns a blank optional into null anyway. */
-function toInput(values: Values): TutorInput {
-  const input: TutorInput = { nombre: values.nombre.trim(), apellido: values.apellido.trim() };
-  if (values.dni.trim() !== '') input.dni = values.dni.trim();
-  if (values.telefono.trim() !== '') input.telefono = values.telefono.trim();
-  if (values.correo.trim() !== '') input.email = values.correo.trim();
-  if (values.parentesco.trim() !== '') input.parentesco = values.parentesco.trim();
-  return input;
-}
 
 const same = (a: string, b: string) => a.trim().toLocaleLowerCase('es') === b.trim().toLocaleLowerCase('es');
 
@@ -229,32 +185,7 @@ function TutorForm({ family, reload }: TutorFormProps) {
           ) : null}
           {checkError ? <Alert tone="error">{checkError}</Alert> : null}
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Nombre" required maxLength={100} autoComplete="off" value={values.nombre} error={errors.nombre} onChange={(e) => set('nombre', e.target.value)} />
-            <Field label="Apellido" required maxLength={100} autoComplete="off" value={values.apellido} error={errors.apellido} onChange={(e) => set('apellido', e.target.value)} />
-          </div>
-          <Field
-            label="DNI (opcional)"
-            maxLength={20}
-            autoComplete="off"
-            hint="Entre 7 y 9 dígitos; podés escribirlo con puntos."
-            value={values.dni}
-            error={errors.dni}
-            onChange={(e) => set('dni', e.target.value)}
-          />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Teléfono (opcional)" type="tel" maxLength={40} autoComplete="off" value={values.telefono} error={errors.telefono} onChange={(e) => set('telefono', e.target.value)} />
-            <Field label="Correo electrónico (opcional)" type="email" inputMode="email" maxLength={180} autoComplete="off" value={values.correo} error={errors.correo} onChange={(e) => set('correo', e.target.value)} />
-          </div>
-          <Field
-            label="Parentesco (opcional)"
-            maxLength={40}
-            autoComplete="off"
-            hint="Por ejemplo: madre, padre, tutor legal."
-            value={values.parentesco}
-            error={errors.parentesco}
-            onChange={(e) => set('parentesco', e.target.value)}
-          />
+          <TutorFields values={values} errors={errors} onChange={set} />
 
           {needsCheck ? (
             <Button variant="outline" disabled={checking} onClick={() => void check('review')}>

@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiWrite } from '@/lib/http';
-import { familyAdminPageSchema, familyDetailSchema, tutorDetailSchema, type FamilyAdminPage, type FamilyDetail, type FamilyStatusFilter, type TutorDetail, type TutorInput } from './schemas';
+import { familyAdminPageSchema, familyDetailSchema, tutorDetailSchema, type FamilyAdminPage, type FamilyDetail, type FamilyStatusFilter, type TutorDetail, type TutorInput, type TutorUpdateInput } from './schemas';
 
 export const FAMILY_PAGE_SIZE = 20;
 /** The backend cuts the search term at this length (Busqueda.LONGITUD_MAXIMA). */
@@ -81,5 +81,21 @@ export async function createTutor(input: { familyId: string; datos: TutorInput; 
   return parse(
     tutorDetailSchema,
     await apiWrite('post', `/admin/familias/${encodeURIComponent(input.familyId)}/tutores`, { ...input.datos, versionFamiliaEsperada: input.version }),
+  );
+}
+
+/**
+ * PUT /api/admin/tutores/{id}, a COMPLETE replacement. `version` is the tutor revision and `familyVersion` the family revision the
+ * administrator observed when the edit started (versionEsperada / versionFamiliaEsperada): both are sent as they are, never
+ * refreshed on the way. Never retried (apiWrite): a failed write is ambiguous.
+ */
+export async function updateTutor(input: { tutorId: string; datos: TutorUpdateInput; version: string; familyVersion: string }): Promise<TutorDetail> {
+  return parse(
+    tutorDetailSchema,
+    await apiWrite('put', `/admin/tutores/${encodeURIComponent(input.tutorId)}`, {
+      ...input.datos,
+      versionEsperada: input.version,
+      versionFamiliaEsperada: input.familyVersion,
+    }),
   );
 }

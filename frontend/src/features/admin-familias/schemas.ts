@@ -75,3 +75,16 @@ export interface TutorInput {
   email?: string;
   parentesco?: string;
 }
+
+/**
+ * The data of an edited tutor, exactly the personal fields of the backend contract (TutorActualizacion) except the two revisions.
+ * The PUT is a complete replacement: an empty optional field travels as an explicit `null`.
+ */
+export interface TutorUpdateInput {
+  nombre: string;
+  apellido: string;
+  dni: string | null;
+  telefono: string | null;
+  email: string | null;
+  parentesco: string | null;
+}
