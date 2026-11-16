@@ -269,7 +269,35 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
   fallar sin que el código haya cambiado, y así se distingue de una regresión.
 - **E2E reales:** `.github/scripts/frontend-e2e.sh` levanta una PostgreSQL descartable con Docker, el backend y Vite, y
   corre Playwright. Las credenciales se generan en cada ejecución y el contenedor se elimina al terminar. El mismo
-  script sirve en local (Docker, Java 21, `npm ci` y `npx playwright install chromium`): `bash .github/scripts/frontend-e2e.sh`.
+  script sirve en local (Docker, Java 21, `npm ci` y `npx playwright install chromium`): `bash .github/scripts/frontend-e2e.sh`
+  **sin ninguna variable corre la suite completa**, como siempre.
+
+### E2E reales repartidos en shards
+
+En CI la suite se reparte en **shards** (`frontend/e2e/shards.json`): cada shard es un runner independiente, con su **propia** base
+PostgreSQL descartable, backend, frontend y credenciales efímeras, y dentro de cada uno se conserva `workers: 1` (no hay concurrencia
+sobre una misma base). Se ejecutan los mismos escenarios, sin omitir ni duplicar ninguno: solo cambia en qué runner corre cada archivo.
+
+- **Control protegido.** El control exigido por la protección de la rama, `E2E reales (backend + PostgreSQL descartable)`, conserva su
+  nombre y ahora es un job agregador (`e2e`) que depende de los shards (`e2e-shard`, con nombres distintos) y **solo termina en success
+  cuando todos terminaron en success**. Corre con `always()` y ejecuta `.github/scripts/e2e-gate.sh`: sin eso, si un shard falla el
+  agregador quedaría «omitido» y GitHub trata un control omitido como aprobado. Un shard fallido, cancelado u omitido deja el control en rojo.
+  Cada shard verifica por su cuenta los artefactos sensibles (`npm run test:e2e:check-artifacts`).
+- **Por qué un reparto explícito y no `playwright --shard`.** El primer escenario de `auth.real.spec.ts` enrola al administrador por la
+  interfaz (TOTP) y todos los demás specs dependen de ese enrolamiento; además el backend rechaza reutilizar un paso TOTP, y los tiempos
+  los domina el inicio de sesión de administrador (uno por ventana de 30 s). El reparto va por archivo y está balanceado por el tiempo
+  medido, no por la cantidad de escenarios. Los specs son independientes entre sí (cada uno siembra datos con un sufijo aleatorio propio).
+- **Enrolamiento por shard.** El shard que contiene `auth.real.spec.ts` lo enrola con ese spec, que va primero. Los demás shards enrolan
+  al administrador antes de empezar con `e2e/support/enrol-admin.ts`, por la API real (login, enrolar y confirmar con un código vigente);
+  no es un escenario y no cuenta como prueba. El secreto queda solo en `e2e/.state.json`, que el script elimina al terminar.
+- **Cobertura verificada.** `npm test` valida el reparto contra los archivos del repositorio (falta, sobra o se repite un spec; `auth` no
+  va primero) y el script ejecuta antes de levantar nada `node e2e/support/shards.ts check`, que compara con la lista que da Playwright:
+  la unión de los shards son exactamente todos los escenarios, sin omitir ni duplicar.
+- **Local.** Sin `E2E_SHARD` corre todo. `E2E_SHARD=1 bash .github/scripts/frontend-e2e.sh` (o `2`) corre un shard; no pueden correr dos a la
+  vez en la misma máquina (usan los mismos puertos 8080 y 5173). Un spec nuevo hay que agregarlo a `e2e/shards.json`; si no, `npm test`
+  y el arranque de cada shard fallan. Para rebalancear, usar los tiempos por archivo que imprime el reporter `list` de Playwright.
+- **Sin medición de mejora todavía.** Este reparto no afirma una reducción del tiempo total: hay que medirlo en CI. El `timeout-minutes` de
+  cada shard se mantuvo en 40 (no se aumentó); conviene bajarlo cuando haya mediciones reales.
 
 ## Limitaciones conocidas
 
