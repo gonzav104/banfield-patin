@@ -54,6 +54,24 @@ describe('edit athlete: what a slow save and a changed identity must not do', ()
     expect(screen.queryByLabelText(/^DNI/)).not.toBeInTheDocument(); // OBSERVED: the edit form opens with the previous identity's data
   });
 
+  it('same for a status change answered after the identity changed', async () => {
+    const a = seed();
+    backend.signIn('marcos@example.com');
+    const { queryClient } = renderApp(`/admin/deportistas/${a.id}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Desactivar deportista' }));
+    const held = backend.hold('post', `/admin/deportistas/${a.id}/desactivar`);
+    await user.click(screen.getByRole('button', { name: 'Sí, desactivar' }));
+    await waitFor(() => expect(backend.requests.some((r) => r.url.endsWith('/desactivar'))).toBe(true));
+    backend.signIn('otra.admin@example.com');
+    backend.override('get', `/admin/deportistas/${a.id}`, { status: 404, body: { codigo: 'DEPORTISTA_NO_ENCONTRADO', mensaje: 'x' } }, { once: false });
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: sessionKey }); });
+    await screen.findByRole('heading', { name: 'No encontramos este deportista' });
+    held.release();
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(document.body.textContent).not.toContain('30111322'); // OBSERVED: the detail with the full DNI/CUIL replaces the «not found»
+    expect(queryClient.getQueryData(detailKey(a.id))).toBeUndefined();
+  });
 });
 
 describe('edit athlete: conflicts with an empty side (pass today, keep as regression)', () => {
@@ -99,4 +117,20 @@ describe('same-task repeated clicks (the in-flight guard must not depend on Reac
     expect(backend.adminAthleteVersion(a.id)).toBe('1');
   });
 
+  it('sends ONE state change when the confirmation is clicked three times in the same task', async () => {
+    const a = seed();
+    backend.signIn('marcos@example.com');
+    renderApp(`/admin/deportistas/${a.id}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Desactivar deportista' }));
+    const button = screen.getByRole('button', { name: 'Sí, desactivar' });
+    act(() => {
+      button.click();
+      button.click();
+      button.click();
+    });
+    await screen.findByText('El deportista quedó inactivo.');
+    expect(backend.requests.filter((r) => r.url.endsWith('/desactivar'))).toHaveLength(1);
+    expect(backend.adminAthleteVersion(a.id)).toBe('1');
+  });
 });

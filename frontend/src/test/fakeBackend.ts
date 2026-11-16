@@ -595,6 +595,25 @@ export class FakeBackend {
     return { status: 200, body: this.athleteDetail(athlete) };
   }
 
+  /** Mirrors POST /admin/deportistas/{id}/activar|desactivar: 404, the revision (even when the state already matches), then an idempotent change that moves the revision only when the state really changes. */
+  private writeAthleteStatus(id: string, action: 'activar' | 'desactivar', body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (Object.keys(input).some((k) => k !== 'versionEsperada')) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (input.versionEsperada === undefined || input.versionEsperada === null) {
+      return { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    }
+    if (typeof input.versionEsperada !== 'string' || !/^[0-9]{1,19}$/.test(input.versionEsperada)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const athlete = this.adminAthletes.find((a) => a.id === id);
+    if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    if (String(athlete.version) !== input.versionEsperada) return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    const target = action === 'activar';
+    if (athlete.activo !== target) {
+      athlete.activo = target;
+      athlete.version += 1;
+    }
+    return { status: 200, body: this.athleteDetail(athlete) };
+  }
+
   /** Mirrors GET /admin/deportistas: `estado` defaults to ACTIVOS (unknown -> 400), «contains» search over names and DNI prefix, order apellido, nombre, id. */
   private listAthletes(params: URLSearchParams): { status: number; body?: unknown } {
     const estado = (params.get('estado') ?? '').trim() || 'ACTIVOS';
@@ -717,6 +736,7 @@ export class FakeBackend {
     }
     const athleteWrite = /^\/admin\/deportistas\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
     if (method === 'put' && athleteWrite && !athleteWrite[2]) return this.updateAthlete(athleteWrite[1]!, body);
+    if (method === 'post' && athleteWrite?.[2]) return this.writeAthleteStatus(athleteWrite[1]!, athleteWrite[2] as 'activar' | 'desactivar', body);
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');
       const rows = this.invitations.filter((i) => !wanted || this.statusOf(i) === wanted).map((i) => this.view(i));

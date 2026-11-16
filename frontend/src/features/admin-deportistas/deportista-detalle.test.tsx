@@ -74,7 +74,7 @@ describe('athlete detail: data (mock backend)', () => {
     for (const expected of [DNI, CUIL, '04/05/2012', 'Argentina', '11 5555-0000', 'lucia@example.test', 'Calle Falsa 123', 'Piso 2, depto B', 'Banfield', 'Lomas de Zamora', '1828']) {
       expect(text, expected).toContain(expected);
     }
-    expect(screen.getByText('Activo')).toBeInTheDocument();
+    expect(screen.getAllByText('Activo')).toHaveLength(2); // the header badge and the «Estado» section
     expect(screen.getByText('Son datos personales: solo los ven los administradores.')).toBeInTheDocument();
   });
 
@@ -90,7 +90,7 @@ describe('athlete detail: data (mock backend)', () => {
     const athlete = seedFull({ activo: false });
     open(`/admin/deportistas/${athlete.id}`);
     await screen.findByRole('heading', { level: 1, name: 'Lucía Sintética' });
-    expect(screen.getByText('Inactivo')).toBeInTheDocument();
+    expect(screen.getAllByText('Inactivo')).toHaveLength(2); // the header badge and the «Estado» section
     expect(screen.queryByText('Activo')).not.toBeInTheDocument();
   });
 

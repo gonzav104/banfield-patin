@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api-error';
 import { isSafeAthleteId } from './api';
 import { AthleteNotFound, BackToListLink } from './AthleteNotFound';
 import { AthleteStatusBadge } from './AthleteStatusBadge';
+import { AthleteStatusControl } from './AthleteStatusControl';
 import { useAthleteDetail } from './hooks';
 import { CREATED_NOTICE, detailErrorMessage, EDIT_SAVED_NOTICE, isNotFound, PRIVATE_DATA_NOTE } from './messages';
 import type { AthleteDetail } from './schemas';
@@ -37,13 +38,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+type Reloaded = { fresh: AthleteDetail; error?: undefined } | { error: ApiError; fresh?: undefined };
+
 /**
  * Individual view. The only screen (with the edit form) that shows the FULL DNI and CUIL; the revision is validated and used by the
  * edit form and the status control, never shown. The notices after a creation or a saved edit travel in the navigation state: a
  * flag, never data. A change of state shows its notice only after the backend confirmed it.
  */
-function Detail({ athlete, notice: initialNotice }: { athlete: AthleteDetail; notice: string | null }) {
-  const [notice] = useState<string | null>(initialNotice);
+function Detail({ athlete, notice: initialNotice, reload }: { athlete: AthleteDetail; notice: string | null; reload: () => Promise<Reloaded> }) {
+  const [notice, setNotice] = useState<string | null>(initialNotice);
   return (
     <div className="max-w-3xl space-y-6">
       <BackToListLink />
@@ -65,6 +68,7 @@ function Detail({ athlete, notice: initialNotice }: { athlete: AthleteDetail; no
           <Link to={`/admin/deportistas/${encodeURIComponent(athlete.id)}/editar`}>Editar deportista</Link>
         </Button>
       </header>
+      <AthleteStatusControl athlete={athlete} onNotice={setNotice} reload={reload} />
       <Section title="Identificación">
         <Row label="DNI">{athlete.dni}</Row>
         <Row label="CUIL">{athlete.cuil}</Row>
@@ -119,7 +123,12 @@ function AthleteScreen() {
   }
   const state = location.state as { athleteCreated?: unknown; athleteUpdated?: unknown } | null;
   const notice = state?.athleteCreated === true ? CREATED_NOTICE : state?.athleteUpdated === true ? EDIT_SAVED_NOTICE : null;
-  return <Detail key={athlete.data.id} athlete={athlete.data} notice={notice} />;
+  const reload = async (): Promise<Reloaded> => {
+    const result = await athlete.refetch();
+    if (result.isError || !result.data) return { error: ApiError.from(result.error) };
+    return { fresh: result.data };
+  };
+  return <Detail key={athlete.data.id} athlete={athlete.data} notice={notice} reload={reload} />;
 }
 
 /**

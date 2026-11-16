@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { createAthlete, getAthlete, listAthletes, updateAthlete, type AthleteListParams } from './api';
+import { changeAthleteStatus, createAthlete, getAthlete, listAthletes, updateAthlete, type AthleteListParams, type AthleteStatusAction } from './api';
 import type { AthleteDetail, AthleteInput, AthleteUpdateInput } from './schemas';
 
 /** Prefix of every athlete-related query (list and detail): one invalidation refreshes the lists. */
@@ -60,4 +60,8 @@ function useAthleteWrite<TInput extends { id: string }>(write: (input: TInput) =
 
 export function useUpdateAthlete() {
   return useAthleteWrite((input: { id: string; datos: AthleteUpdateInput; version: string }) => updateAthlete(input));
+}
+
+export function useChangeAthleteStatus() {
+  return useAthleteWrite((input: { id: string; action: AthleteStatusAction; version: string }) => changeAthleteStatus(input));
 }

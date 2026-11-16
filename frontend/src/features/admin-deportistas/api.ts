@@ -57,3 +57,13 @@ export async function createAthlete(datos: AthleteInput): Promise<AthleteDetail>
 export async function updateAthlete(input: { id: string; datos: AthleteUpdateInput; version: string }): Promise<AthleteDetail> {
   return parse(athleteDetailSchema, await apiWrite('put', `/admin/deportistas/${encodeURIComponent(input.id)}`, { ...input.datos, versionEsperada: input.version }));
 }
+
+export type AthleteStatusAction = 'activar' | 'desactivar';
+
+/** POST /api/admin/deportistas/{id}/activar|desactivar with the revision seen when the confirmation was opened. Never retried. */
+export async function changeAthleteStatus(input: { id: string; action: AthleteStatusAction; version: string }): Promise<AthleteDetail> {
+  return parse(
+    athleteDetailSchema,
+    await apiWrite('post', `/admin/deportistas/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }),
+  );
+}

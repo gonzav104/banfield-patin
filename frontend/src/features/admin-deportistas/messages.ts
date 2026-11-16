@@ -140,3 +140,25 @@ export const EDIT_UNCHANGED =
   'No vemos cambios guardados al verificar. Si la solicitud original todavía se estuviera procesando, un nuevo intento se rechazaría por revisión obsoleta en lugar de aplicarse dos veces.';
 /** Names of the saved data that the submission would remove (never their values). */
 export const clearedFieldsText = (names: string[]) => `Al guardar se van a quitar estos datos: ${names.join(', ')}.`;
+
+export const STALE_STATUS_TEXT = 'Otro administrador pudo haber modificado este deportista. Revisá los datos vigentes antes de decidir de nuevo.';
+export const UNCERTAIN_STATUS_TEXT = 'No pudimos confirmar si el cambio de estado se aplicó. Verificá el estado vigente antes de volver a intentar.';
+export const STATUS_VERIFY_UNCHANGED =
+  'No vemos el cambio aplicado. La solicitud original podría seguir procesándose: si volvés a intentar y ya se había aplicado, se rechazará por revisión obsoleta en lugar de aplicarse dos veces.';
+export const STATUS_VERIFY_MOVED =
+  'El deportista cambió desde tu solicitud. Otra operación pudo haberlo modificado: no podemos saber si el cambio actual fue tu solicitud. Decidí de nuevo con el estado vigente.';
+
+export function statusErrorMessage(failure: EditFailure, error: ApiError): string {
+  switch (failure) {
+    case 'busy':
+      return 'Otra operación está en curso sobre este deportista. Esperá unos segundos y volvé a intentarlo.';
+    case 'validation':
+      return 'No pudimos procesar la solicitud. Recargá los datos vigentes y volvé a intentar.';
+    case 'forbidden':
+      return 'No tenés permiso para cambiar el estado de deportistas.';
+    case 'missing':
+      return 'El deportista ya no existe.';
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos cambiar el estado. Intentá de nuevo.';
+  }
+}
