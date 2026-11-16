@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiWrite } from '@/lib/http';
-import { athleteDetailSchema, athletePageSchema, type AthleteDetail, type AthleteInput, type AthletePage, type AthleteStatusFilter } from './schemas';
+import { athleteDetailSchema, athletePageSchema, type AthleteDetail, type AthleteInput, type AthletePage, type AthleteStatusFilter, type AthleteUpdateInput } from './schemas';
 
 export const ATHLETE_PAGE_SIZE = 20;
 /** The most the backend returns in one page (Pagina.TAMANIO_MAXIMO): the verification of an uncertain creation asks for all of it. */
@@ -47,4 +47,23 @@ export async function getAthlete(id: string): Promise<AthleteDetail> {
  */
 export async function createAthlete(datos: AthleteInput): Promise<AthleteDetail> {
   return parse(athleteDetailSchema, await apiWrite('post', '/admin/deportistas', datos));
+}
+
+/**
+ * PUT /api/admin/deportistas/{id}, a COMPLETE replacement. `version` is the revision the administrator observed when the edit
+ * started (versionEsperada, a decimal string): it is sent as it is, never refreshed on the way. Never retried (apiWrite): a failed
+ * write is ambiguous.
+ */
+export async function updateAthlete(input: { id: string; datos: AthleteUpdateInput; version: string }): Promise<AthleteDetail> {
+  return parse(athleteDetailSchema, await apiWrite('put', `/admin/deportistas/${encodeURIComponent(input.id)}`, { ...input.datos, versionEsperada: input.version }));
+}
+
+export type AthleteStatusAction = 'activar' | 'desactivar';
+
+/** POST /api/admin/deportistas/{id}/activar|desactivar with the revision seen when the confirmation was opened. Never retried. */
+export async function changeAthleteStatus(input: { id: string; action: AthleteStatusAction; version: string }): Promise<AthleteDetail> {
+  return parse(
+    athleteDetailSchema,
+    await apiWrite('post', `/admin/deportistas/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }),
+  );
 }

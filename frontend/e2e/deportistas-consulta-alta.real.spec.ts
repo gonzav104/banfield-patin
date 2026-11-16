@@ -224,16 +224,18 @@ test.describe('athlete list (real backend)', () => {
 });
 
 test.describe('athlete detail (real backend)', () => {
-  test('shows every datum of the contract with the FULL DNI and CUIL, and nothing that edits or links', async () => {
+  test('shows every datum of the contract with the FULL DNI and CUIL as plain text, with no form field and no family link', async () => {
     await page.goto(`/admin/deportistas/${fullId}`);
     await expect(page.getByRole('heading', { level: 1, name: `${FULL.nombre} ${FULL.apellido}` })).toBeVisible();
     const text = await mainText();
     for (const expected of [FULL.dni, FULL_CUIL, '04/05/2012', FULL.nacionalidad, FULL.telefonoContacto, FULL.emailFederativo, FULL.domicilio, FULL.otrosDatosDomicilio, FULL.localidad, FULL.partido, FULL.codigoPostal]) {
       expect(text, expected).toContain(expected);
     }
-    await expect(page.getByRole('main').getByText('Activo')).toBeVisible();
-    await expect(page.getByRole('button', { name: /editar|guardar|desactivar|activar/i })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: /editar/i })).toHaveCount(0);
+    await expect(page.getByRole('main').getByText('Activo', { exact: true })).toHaveCount(2); // the header badge and the «Estado» section (U8)
+    await expect(page.getByRole('main').getByRole('textbox')).toHaveCount(0); // the data are plain text: editing is a separate screen (U8)
+    await expect(page.getByRole('button', { name: /guardar/i })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Editar deportista' })).toHaveAttribute('href', `/admin/deportistas/${fullId}/editar`);
+    await expect(page.getByRole('main').getByRole('link', { name: /familia/i })).toHaveCount(0);
     expect(page.url()).not.toContain(FULL.dni);
     expect((await stored(fullId)).version).toMatch(/^[0-9]+$/); // the revision exists and is decimal (not shown)
   });
@@ -244,7 +246,7 @@ test.describe('athlete detail (real backend)', () => {
     await page.goto(`/admin/deportistas/${minimal.id}`);
     await expect(page.getByRole('heading', { level: 1, name: `Minimo Basico ${suffix}` })).toBeVisible();
     await expect(page.getByRole('main').getByText('No informado')).toHaveCount(10);
-    await expect(page.getByRole('main').getByText('Inactivo')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Inactivo', { exact: true })).toHaveCount(2);
   });
 
   test('an unknown or malformed id gets one generic «not found» that reveals nothing', async () => {

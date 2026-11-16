@@ -62,3 +62,23 @@ export interface AthleteInput {
   telefonoContacto?: string;
   emailFederativo?: string;
 }
+
+/**
+ * The data of an edited athlete, exactly the personal fields of DeportistaActualizacion except the revision. The PUT is a COMPLETE
+ * replacement: an empty optional field travels as an explicit `null` (the backend would also read an omission as «clear it»).
+ */
+export interface AthleteUpdateInput {
+  dni: string;
+  nombre: string;
+  apellido: string;
+  cuil: string | null;
+  fechaNacimiento: string | null;
+  nacionalidad: string | null;
+  domicilio: string | null;
+  otrosDatosDomicilio: string | null;
+  localidad: string | null;
+  partido: string | null;
+  codigoPostal: string | null;
+  telefonoContacto: string | null;
+  emailFederativo: string | null;
+}

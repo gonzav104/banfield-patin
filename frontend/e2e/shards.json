@@ -3,6 +3,7 @@
   "shards": {
     "1": [
       "auth.real.spec.ts",
+      "deportistas-edicion-estados.real.spec.ts",
       "familias-edicion-estados.real.spec.ts",
       "invitations.real.spec.ts",
       "portal-ficha.real.spec.ts",

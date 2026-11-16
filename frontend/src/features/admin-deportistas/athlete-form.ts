@@ -1,4 +1,4 @@
-import type { AthleteInput } from './schemas';
+import type { AthleteDetail, AthleteInput, AthleteUpdateInput } from './schemas';
 import {
   INVALID_BIRTH_DATE,
   INVALID_CUIL,
@@ -140,4 +140,83 @@ export function maskedDni(dni: string): string {
   const digits = normalizeDni(dni);
   const visible = Math.min(3, digits.length);
   return '•'.repeat(digits.length - visible) + digits.slice(digits.length - visible);
+}
+
+/* ---- Edit (U8) ---- */
+
+export const FIELD_LABELS: Record<FieldName, string> = {
+  dni: 'DNI',
+  nombre: 'Nombre',
+  apellido: 'Apellido',
+  cuil: 'CUIL',
+  fechaNacimiento: 'Fecha de nacimiento',
+  nacionalidad: 'Nacionalidad',
+  domicilio: 'Domicilio',
+  otrosDatosDomicilio: 'Otros datos del domicilio',
+  localidad: 'Localidad',
+  partido: 'Partido',
+  codigoPostal: 'Código postal',
+  telefonoContacto: 'Teléfono',
+  emailFederativo: 'Correo federativo',
+};
+
+/** The form values of an athlete as the full detail (never the list summary) carries them. */
+export function valuesOfAthlete(athlete: AthleteDetail): Values {
+  const text = (value: string | null | undefined) => value ?? '';
+  return {
+    dni: text(athlete.dni),
+    nombre: athlete.nombre,
+    apellido: athlete.apellido,
+    cuil: text(athlete.cuil),
+    fechaNacimiento: text(athlete.fechaNacimiento),
+    nacionalidad: text(athlete.nacionalidad),
+    domicilio: text(athlete.domicilio),
+    otrosDatosDomicilio: text(athlete.otrosDatosDomicilio),
+    localidad: text(athlete.localidad),
+    partido: text(athlete.partido),
+    codigoPostal: text(athlete.codigoPostal),
+    telefonoContacto: text(athlete.telefonoContacto),
+    emailFederativo: text(athlete.emailFederativo),
+  };
+}
+
+/**
+ * Edit: the PUT is a COMPLETE replacement, so every field travels and an optional one that is empty is sent as an explicit `null`.
+ * The form starts from ALL the values of the full detail, so a field is only cleared when the administrator cleared it.
+ */
+export function toUpdateInput(values: Values): AthleteUpdateInput {
+  const optional = (value: string) => (value.trim() === '' ? null : value.trim());
+  return {
+    dni: values.dni.trim(),
+    nombre: values.nombre.trim(),
+    apellido: values.apellido.trim(),
+    cuil: optional(values.cuil),
+    fechaNacimiento: optional(values.fechaNacimiento),
+    nacionalidad: optional(values.nacionalidad),
+    domicilio: optional(values.domicilio),
+    otrosDatosDomicilio: optional(values.otrosDatosDomicilio),
+    localidad: optional(values.localidad),
+    partido: optional(values.partido),
+    codigoPostal: optional(values.codigoPostal),
+    telefonoContacto: optional(values.telefonoContacto),
+    emailFederativo: optional(values.emailFederativo),
+  };
+}
+
+/** How the backend would store a value, so that «the same data» is compared the way the server compares it. */
+function normalized(field: FieldName, value: string): string {
+  const trimmed = value.trim();
+  if (field === 'dni') return normalizeDni(trimmed);
+  if (field === 'cuil') return normalizeCuil(trimmed);
+  if (field === 'emailFederativo') return trimmed.toLowerCase();
+  return trimmed;
+}
+
+export const sameField = (field: FieldName, a: string, b: string) => normalized(field, a) === normalized(field, b);
+
+export const sameValues = (a: Values, b: Values) => FIELDS.every((field) => sameField(field, a[field], b[field]));
+
+/** Names (never values) of the optional fields that had data and that this submission would clear. */
+export function clearedFields(original: Values, draft: Values): FieldName[] {
+  return FIELDS.filter((field) => field !== 'dni' && field !== 'nombre' && field !== 'apellido' && normalized(field, original[field]) !== '' && normalized(field, draft[field]) === '');
 }

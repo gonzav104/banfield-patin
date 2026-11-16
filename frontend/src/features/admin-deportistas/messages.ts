@@ -54,7 +54,7 @@ export function classifyCreateFailure(error: ApiError): CreateFailure {
 
 export const DNI_DUPLICATE_TEXT = 'Ya existe un deportista activo con ese DNI. Buscalo en el listado en lugar de crear uno nuevo.';
 export const DNI_RESERVED_TEXT =
-  'Ya existe un deportista inactivo con ese DNI y el DNI sigue reservado. Buscalo en el listado con el filtro «Inactivos»: no se puede crear uno nuevo con el mismo DNI.';
+  'Ya existe un deportista inactivo con ese DNI y el DNI sigue reservado. Buscalo en el listado con el filtro «Inactivos» y reactivalo desde su detalle: no se puede crear uno nuevo con el mismo DNI.';
 export const CUIL_DUPLICATE_TEXT = 'Ya existe un deportista con ese CUIL. Revisá el número o buscalo en el listado.';
 /** Added to a duplicate answer that follows an attempt whose result could not be confirmed. */
 export const DUPLICATE_AFTER_UNCERTAIN_TEXT =
@@ -91,3 +91,74 @@ export const verifyIncomplete = (inspected: number, total: number) =>
 export const VERIFY_RETRY_NOTE =
   'Si volvés a intentar y el primer envío sí se había aplicado, el sistema lo rechazará por DNI duplicado: no se crea dos veces.';
 export const VERIFY_ERROR = 'No pudimos verificar el listado ahora. Intentá de nuevo en unos instantes.';
+
+/* ---- Edit and status (U8). Fixed texts: the backend message is never echoed. ---- */
+
+export const EDIT_SAVED_NOTICE = 'Cambios guardados.';
+
+/** How a failed edit or status change must be told to the administrator. */
+export type EditFailure = CreateFailure | 'stale' | 'missing';
+
+export function classifyEditFailure(error: ApiError): EditFailure {
+  if (error.status === 409 && error.code === 'EDICION_DESACTUALIZADA') return 'stale';
+  if (error.status === 404) return 'missing';
+  return classifyCreateFailure(error);
+}
+
+export const EDIT_DNI_DUPLICATE_TEXT = 'Ya existe otro deportista activo con ese DNI. Revisá el número.';
+export const EDIT_DNI_RESERVED_TEXT =
+  'Otro deportista inactivo tiene reservado ese DNI. Revisá el número, o buscalo en el listado con el filtro «Inactivos» y reactivalo desde su detalle.';
+export const EDIT_CUIL_DUPLICATE_TEXT = 'Ya existe otro deportista con ese CUIL. Revisá el número.';
+export const STALE_EDIT_TEXT =
+  'Otro administrador pudo haber modificado este deportista mientras lo editabas. Tu borrador sigue acá, pero todavía no se guardó y el guardado queda bloqueado hasta que revises los datos vigentes.';
+export const UNCERTAIN_EDIT_TEXT = 'No pudimos confirmar si el cambio se guardó. Tu borrador sigue acá. Verificá los datos vigentes antes de volver a intentar.';
+
+export function updateAthleteErrorMessage(failure: EditFailure, error: ApiError): string {
+  switch (failure) {
+    case 'busy':
+      return 'Otra operación está en curso sobre este deportista. Esperá unos segundos y volvé a intentarlo.';
+    case 'validation':
+      return 'Revisá los datos del deportista: el DNI, el nombre y el apellido son obligatorios y el resto debe respetar los formatos y límites.';
+    case 'forbidden':
+      return 'No tenés permiso para editar deportistas.';
+    case 'missing':
+      return 'El deportista ya no existe.';
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos guardar el cambio. Intentá de nuevo.';
+  }
+}
+
+export const EDIT_REVIEW_INTRO = 'Estos son los datos vigentes. Tu borrador no se guardó ni se mezcló con ellos.';
+export const EDIT_NO_DIFFERENCES =
+  'Los datos personales vigentes no tienen diferencias con los que viste al empezar: otra operación (por ejemplo un cambio de estado) movió la revisión.';
+export const EDIT_CONTINUE_NOTE =
+  'Al seguir editando, los campos que no modificaste pasan a los datos vigentes y los que modificaste conservan tu borrador. Nada se guarda hasta que toques «Guardar cambios».';
+export const EDIT_CONFLICT_NOTE = 'Modificaste y otra persona también modificó estos campos: elegí qué valor conservar en cada uno para poder seguir.';
+export const EDIT_MATCHES_DRAFT =
+  'Los datos vigentes ya coinciden con tu borrador: no queda nada por guardar. No podemos saber si fue tu envío u otro cambio.';
+export const EDIT_UNCHANGED =
+  'No vemos cambios guardados al verificar. Si la solicitud original todavía se estuviera procesando, un nuevo intento se rechazaría por revisión obsoleta en lugar de aplicarse dos veces.';
+/** Names of the saved data that the submission would remove (never their values). */
+export const clearedFieldsText = (names: string[]) => `Al guardar se van a quitar estos datos: ${names.join(', ')}.`;
+
+export const STALE_STATUS_TEXT = 'Otro administrador pudo haber modificado este deportista. Revisá los datos vigentes antes de decidir de nuevo.';
+export const UNCERTAIN_STATUS_TEXT = 'No pudimos confirmar si el cambio de estado se aplicó. Verificá el estado vigente antes de volver a intentar.';
+export const STATUS_VERIFY_UNCHANGED =
+  'No vemos el cambio aplicado. La solicitud original podría seguir procesándose: si volvés a intentar y ya se había aplicado, se rechazará por revisión obsoleta en lugar de aplicarse dos veces.';
+export const STATUS_VERIFY_MOVED =
+  'El deportista cambió desde tu solicitud. Otra operación pudo haberlo modificado: no podemos saber si el cambio actual fue tu solicitud. Decidí de nuevo con el estado vigente.';
+
+export function statusErrorMessage(failure: EditFailure, error: ApiError): string {
+  switch (failure) {
+    case 'busy':
+      return 'Otra operación está en curso sobre este deportista. Esperá unos segundos y volvé a intentarlo.';
+    case 'validation':
+      return 'No pudimos procesar la solicitud. Recargá los datos vigentes y volvé a intentar.';
+    case 'forbidden':
+      return 'No tenés permiso para cambiar el estado de deportistas.';
+    case 'missing':
+      return 'El deportista ya no existe.';
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos cambiar el estado. Intentá de nuevo.';
+  }
+}

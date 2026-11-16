@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/session';
@@ -8,8 +8,9 @@ import { ApiError } from '@/lib/api-error';
 import { isSafeAthleteId } from './api';
 import { AthleteNotFound, BackToListLink } from './AthleteNotFound';
 import { AthleteStatusBadge } from './AthleteStatusBadge';
+import { AthleteStatusControl } from './AthleteStatusControl';
 import { useAthleteDetail } from './hooks';
-import { CREATED_NOTICE, detailErrorMessage, isNotFound, PRIVATE_DATA_NOTE } from './messages';
+import { CREATED_NOTICE, detailErrorMessage, EDIT_SAVED_NOTICE, isNotFound, PRIVATE_DATA_NOTE } from './messages';
 import type { AthleteDetail } from './schemas';
 
 function Row({ label, children, breakAll = false }: { label: string; children: string | null | undefined; breakAll?: boolean }) {
@@ -37,12 +38,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+type Reloaded = { fresh: AthleteDetail; error?: undefined } | { error: ApiError; fresh?: undefined };
+
 /**
- * Individual view. The only screen that shows the FULL DNI and CUIL; the revision is validated but not shown (the edit unit
- * captures its own). The notice after a creation travels in the navigation state: a flag, never data.
+ * Individual view. The only screen (with the edit form) that shows the FULL DNI and CUIL; the revision is validated and used by the
+ * edit form and the status control, never shown. The notices after a creation or a saved edit travel in the navigation state: a
+ * flag, never data. A change of state shows its notice only after the backend confirmed it.
  */
-function Detail({ athlete, created }: { athlete: AthleteDetail; created: boolean }) {
-  const [notice] = useState<string | null>(created ? CREATED_NOTICE : null);
+function Detail({ athlete, notice: initialNotice, reload }: { athlete: AthleteDetail; notice: string | null; reload: () => Promise<Reloaded> }) {
+  const [notice, setNotice] = useState<string | null>(initialNotice);
   return (
     <div className="max-w-3xl space-y-6">
       <BackToListLink />
@@ -60,7 +64,11 @@ function Detail({ athlete, created }: { athlete: AthleteDetail; created: boolean
           <AthleteStatusBadge active={athlete.activo} />
         </div>
         <p className="text-sm text-muted">{PRIVATE_DATA_NOTE}</p>
+        <Button asChild variant="outline">
+          <Link to={`/admin/deportistas/${encodeURIComponent(athlete.id)}/editar`}>Editar deportista</Link>
+        </Button>
       </header>
+      <AthleteStatusControl athlete={athlete} onNotice={setNotice} reload={reload} />
       <Section title="Identificación">
         <Row label="DNI">{athlete.dni}</Row>
         <Row label="CUIL">{athlete.cuil}</Row>
@@ -91,7 +99,8 @@ function AthleteScreen() {
   const athlete = useAthleteDetail(valid ? id : '', valid);
 
   if (!valid) return <AthleteNotFound />;
-  if (athlete.isError) {
+  // A failed REFRESH (a verification asked by the administrator) must not take the data, and the operation in progress, off the screen.
+  if (athlete.isError && !athlete.data) {
     const error = ApiError.from(athlete.error);
     if (isNotFound(error)) return <AthleteNotFound />;
     return (
@@ -112,7 +121,14 @@ function AthleteScreen() {
       </div>
     );
   }
-  return <Detail key={athlete.data.id} athlete={athlete.data} created={(location.state as { athleteCreated?: unknown } | null)?.athleteCreated === true} />;
+  const state = location.state as { athleteCreated?: unknown; athleteUpdated?: unknown } | null;
+  const notice = state?.athleteCreated === true ? CREATED_NOTICE : state?.athleteUpdated === true ? EDIT_SAVED_NOTICE : null;
+  const reload = async (): Promise<Reloaded> => {
+    const result = await athlete.refetch();
+    if (result.isError || !result.data) return { error: ApiError.from(result.error) };
+    return { fresh: result.data };
+  };
+  return <Detail key={athlete.data.id} athlete={athlete.data} notice={notice} reload={reload} />;
 }
 
 /**
