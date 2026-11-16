@@ -8,6 +8,7 @@ import { LogoutButton } from './LogoutButton';
 const navItems = [
   { to: '/admin', label: 'Inicio', end: true },
   { to: '/admin/familias', label: 'Familias', end: false },
+  { to: '/admin/deportistas', label: 'Deportistas', end: false },
   { to: '/admin/invitaciones', label: 'Invitaciones', end: false },
 ];
 
@@ -24,7 +25,7 @@ export function AdminLayout() {
           <BrandMark className="size-9" />
           <BrandName />
         </div>
-        <nav aria-label="Principal" className="flex gap-1 lg:flex-col">
+        <nav aria-label="Principal" className="flex flex-wrap gap-1 lg:flex-col">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
