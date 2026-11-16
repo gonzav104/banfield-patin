@@ -10,6 +10,7 @@
       "tutores-edicion.real.spec.ts"
     ],
     "2": [
+      "deportistas-consulta-alta.real.spec.ts",
       "familias-detalle-alta.real.spec.ts",
       "familias-listado.real.spec.ts",
       "familias-tutores.real.spec.ts"
