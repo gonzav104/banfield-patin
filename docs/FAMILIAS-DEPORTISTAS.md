@@ -47,10 +47,10 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `PUT /api/admin/tutores/{id}` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?, versionEsperada, versionFamiliaEsperada}` (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/deportistas` | ADMIN | `estado` (por defecto `ACTIVOS`), `busqueda` (apellido, nombre, ambos órdenes o prefijo de DNI), `page`, `size` | `200` `Pagina<{id, nombre, apellido, dniEnmascarado, fechaNacimiento, activo}>` (el DNI completo **no** viaja en el listado; ver sección 11) | `400 SOLICITUD_INVALIDA` |
 | `POST /api/admin/deportistas` | ADMIN | `{dni, nombre, apellido, cuil?, fechaNacimiento?, nacionalidad?, domicilio?, otrosDatosDomicilio?, localidad?, partido?, codigoPostal?, telefonoContacto?, emailFederativo?}` | `201` `DeportistaDetalle` + `Location` | `400 VALIDACION`, `409 DNI_DUPLICADO`, `409 DNI_RESERVADO_POR_INACTIVO`, `409 CUIL_DUPLICADO` |
-| `GET /api/admin/deportistas/{id}` | ADMIN | — | `200` `DeportistaDetalle` (datos permanentes y `activo`) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` |
-| `PUT /api/admin/deportistas/{id}` | ADMIN | igual que el alta (reemplazo completo) | `200` `DeportistaDetalle` | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409` (los tres de arriba) |
-| `POST /api/admin/deportistas/{id}/activar` | ADMIN | — | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `404 DEPORTISTA_NO_ENCONTRADO` |
-| `POST /api/admin/deportistas/{id}/desactivar` | ADMIN | — | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/admin/deportistas/{id}` | ADMIN | — | `200` `DeportistaDetalle` (datos permanentes, `activo` y `version`) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` |
+| `PUT /api/admin/deportistas/{id}` | ADMIN | los mismos campos que el alta + `versionEsperada` (reemplazo completo; la revisión del detalle que se observó) | `200` `DeportistaDetalle` | `400 VALIDACION` (revisión ausente), `400 SOLICITUD_INVALIDA` (formato), `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA`, `409` (los tres de arriba) |
+| `POST /api/admin/deportistas/{id}/activar` | ADMIN | `{versionEsperada}` | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `POST /api/admin/deportistas/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/familias/{familiaId}/deportistas` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 FAMILIA_NO_ENCONTRADA` |
 | `GET /api/admin/deportistas/{deportistaId}/familias` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 DEPORTISTA_NO_ENCONTRADO` |
 | `POST /api/admin/familias/{familiaId}/deportistas` | ADMIN | `{deportistaIds: [uuid]}` (1..50, se quitan repetidos; todo o nada) | `200` `{resultados: [{vinculo, resultado: CREADO\|REACTIVADO\|SIN_CAMBIOS}]}` en el orden pedido | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 DEPORTISTA_NO_ENCONTRADO` y `409 DEPORTISTA_INACTIVO` (con `detalles` `deportistaIds[i]`), `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
@@ -328,6 +328,23 @@ enmascarado) ni a ningún DTO del portal FAMILIA. Los tutores no se desactivan: 
 
 La migración V8 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo a `tutor`, sin cambiar datos ni relaciones. V1–V7 permanecen intactas. `Tutor` solo se escribe a través de este servicio (no hay otros escritores ni SQL nativo).
 
+### Revisión optimista de Deportista (FE-05 / U6)
+
+`DeportistaDetalle` (GET, alta, edición y cambios de estado) devuelve `version`, la revisión de escritura de los **datos
+personales y el estado** del deportista, como cadena decimal. No se agrega al resumen del listado ni a ningún DTO del portal
+FAMILIA. La revisión **no cubre** los vínculos con familias ni las filas de temporada, que tienen su propio ciclo de vida:
+vincular, revocar o cargar documentos no la mueven.
+
+- Alta: `POST /api/admin/deportistas` conserva su cuerpo (un deportista nuevo no tiene revisión que esperar); la revisión inicial es `"0"` y una `versionEsperada` en el alta se rechaza como propiedad no admitida.
+- Edición: `PUT /api/admin/deportistas/{id}` exige los mismos campos que el alta más `versionEsperada`. Estado: activar y desactivar exigen `{versionEsperada}`. Desactivar sigue sin revocar vínculos ni borrar historial.
+- `versionEsperada` es una cadena de 1 a 19 dígitos ASCII, como en Familia y Tutor. Ausencia o nulo: `400 VALIDACION`; formato, tipo o rango inválido: `400 SOLICITUD_INVALIDA`. No se aceptan propiedades adicionales.
+- Orden de comprobaciones: `400` → `404` (otra escuela = mismo `404`, con cualquier revisión) → revisión (`409 EDICION_DESACTUALIZADA`, incluso si los datos o el estado ya coinciden; mensaje fijo, sin ids ni datos personales) → unicidad de DNI/CUIL (`409 DNI_DUPLICADO`, `DNI_RESERVADO_POR_INACTIVO`, `CUIL_DUPLICADO`) → escritura. La revisión va antes que la unicidad para que un formulario viejo no aprenda, por un `DNI_DUPLICADO`, que otro deportista tiene ese DNI.
+- Revisión vigente y sin cambios: `200`, misma revisión, sin `UPDATE` ni auditoría.
+- Concurrencia: `@Version` condiciona el `UPDATE` (dos escrituras sobre la misma revisión dejan un único ganador, también una edición contra una activación o desactivación) y `LockModeType.OPTIMISTIC` hace que un «sin cambios» también falle si el deportista cambió antes del commit. Un conflicto de JPA revierte datos, versión y auditoría de la transacción. La contención de base conserva `409 CONFLICTO_CONCURRENCIA`. Deportista no tiene un recurso padre que condicione sus escrituras: no hay bloqueo de otra fila ni revisión adicional. No se agrega `lock_timeout` (riesgo residual, igual que en Familia y Tutor).
+- Interacción con vincular y la carga de documentos: esos flujos bloquean la fila del deportista `FOR UPDATE` y la leen sin modificarla; una desactivación concurrente espera a que terminen y se aplica con la misma revisión.
+
+La migración V9 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo a `deportista`, sin cambiar datos ni relaciones. V1–V8 permanecen intactas. `Deportista` solo se escribe a través de `DeportistaAdminService` (no hay otros escritores ni SQL nativo).
+
 ### Compatibilidad y despliegue
 
 El campo del detalle es aditivo; los cuerpos de PUT y cambios de estado cambian intencionalmente. Los consumidores
@@ -345,6 +362,8 @@ propiedad no admitida. No existe un modo permanente de compatibilidad sin versio
 manuales no quedan protegidas por JPA: no son un canal administrativo soportado.
 
 Tutores (FE-05/U4): el contrato de escritura de tutores también cambia de forma intencional (revisiones obligatorias; ver arriba). Orden: aplicar V8 antes de iniciar la versión nueva (V7 ya es previa), luego el backend nuevo y recién después cualquier cliente que edite tutores (FE-05/U5). Contra un backend anterior, un cuerpo con `versionEsperada` o `versionFamiliaEsperada` se rechaza como propiedad no admitida; contra el nuevo, un cliente anterior sin revisiones recibe `400 VALIDACION`. No existe un modo de compatibilidad sin revisión; no mezclar instancias antiguas y nuevas escribiendo tutores. Los consumidores de lectura no cambian: `version` es un campo adicional de `TutorRespuesta`.
+
+Deportistas (FE-05/U6): el contrato de escritura de deportistas también cambia de forma intencional (`versionEsperada` obligatoria al editar, activar y desactivar; ver arriba). Orden: aplicar V9 antes de iniciar la versión nueva (V8 ya es previa), luego el backend nuevo y recién después cualquier cliente que edite o cambie el estado de deportistas. Contra un backend anterior, un cuerpo con `versionEsperada` se rechaza como propiedad no admitida; contra el nuevo, un cliente anterior sin revisión recibe `400 VALIDACION` (editar) o `400 SOLICITUD_INVALIDA` (activar o desactivar sin cuerpo). No existe un modo de compatibilidad sin revisión; no mezclar instancias antiguas y nuevas escribiendo deportistas. Los consumidores de lectura y el alta no cambian: `version` es un campo adicional de `DeportistaDetalle`. Los consumidores conocidos de las escrituras que cambian son el seed de los E2E (`frontend/e2e/support/seed.ts`, adaptado) y el paso de desactivación del deportista de `backend/scripts/smoke-familias.sh`, que **no** se adaptó en esta unidad (queda con el paso 12 pendiente de su PR de mantenimiento independiente).
 
 Ante timeout de escritura el resultado es incierto: consultar antes de decidir un nuevo intento. Ante conflicto,
 recargar explicitamente y revisar los cambios; no sustituir automaticamente la revision de un formulario viejo.

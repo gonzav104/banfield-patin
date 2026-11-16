@@ -133,8 +133,19 @@ export class AdminSeed {
     await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistaIds: athleteIds }, 'link athletes');
   }
 
+  /**
+   * The revision of an athlete as the backend stores it right now (FE-05/U6): a decimal string. It is read, never invented:
+   * the athlete contract requires the revision the caller observed to edit, activate or deactivate.
+   */
+  private async athleteVersion(athleteId: string): Promise<string> {
+    const athlete = await expectOk<{ version?: unknown }>(await this.admin.get(`/api/admin/deportistas/${athleteId}`), `read athlete ${athleteId}`);
+    expect(typeof athlete.version === 'string' && /^[0-9]{1,19}$/.test(athlete.version), `athlete ${athleteId}: version must be a decimal string`).toBe(true);
+    return athlete.version as string;
+  }
+
+  /** Since FE-05/U6 the state change must carry the athlete revision the caller observed: it is read just before and sent unchanged. */
   async deactivate(athleteId: string): Promise<void> {
-    await this.post(`/api/admin/deportistas/${athleteId}/desactivar`, {}, 'deactivate athlete');
+    await this.post(`/api/admin/deportistas/${athleteId}/desactivar`, { versionEsperada: await this.athleteVersion(athleteId) }, 'deactivate athlete');
   }
 
   async revoke(familyId: string, athleteId: string): Promise<void> {

@@ -47,6 +47,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import jakarta.servlet.http.Cookie;
+import jakarta.persistence.EntityManager;
 
 /**
  * REQ-DEP-10 S1 (sin base de datos): el controlador, el servicio REAL y el manejador de errores, atravesados por
@@ -67,6 +68,8 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 	private static final String CUIL_CRUDO = "20-37123456-0";
 	private static final String CUERPO = "{\"dni\":\"" + DNI_CRUDO + "\",\"nombre\":\"Zuleica\",\"apellido\":\"Quintana\","
 			+ "\"cuil\":\"" + CUIL_CRUDO + "\",\"domicilio\":\"Calle Secreta 123\"}";
+	/** El reemplazo completo lleva ademas la revision observada (el deportista de prueba esta en la 0). */
+	private static final String CUERPO_PUT = CUERPO.replace("}", ",\"versionEsperada\":\"0\"}");
 
 	@Autowired
 	MockMvc mvc;
@@ -76,6 +79,8 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 	DeportistaRepository deportistas;
 	@MockitoBean
 	AuditoriaService auditoria;
+	@MockitoBean
+	EntityManager em;
 
 	private final UUID escuelaId = UUID.randomUUID();
 	private final UUID id = UUID.randomUUID();
@@ -175,9 +180,25 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 	void unaEdicionConCambiosOSinEllosNoRegistraDniNiCuil() throws Exception {
 		existente();
 
-		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO)).andReturn();
-		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO)).andReturn();
+		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO_PUT)).andReturn();
+		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO_PUT)).andReturn();
 
+		sinDocumentosEnLogs();
+	}
+
+	@Test
+	void unaEdicionOUnCambioDeEstadoConRevisionObsoletaNoRegistraDniNiCuil() throws Exception {
+		existente();
+
+		MockHttpServletResponse edicion = mvc
+				.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO.replace("}", ",\"versionEsperada\":\"9\"}")))
+				.andReturn().getResponse();
+		MockHttpServletResponse estado = mvc
+				.perform(conCuerpo(post("/api/admin/deportistas/" + id + "/desactivar"), "{\"versionEsperada\":\"9\"}"))
+				.andReturn().getResponse();
+
+		assertThat(edicion.getStatus()).isEqualTo(409);
+		assertThat(estado.getStatus()).isEqualTo(409);
 		sinDocumentosEnLogs();
 	}
 
@@ -186,7 +207,7 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 		existente();
 		when(deportistas.activoPorDniDeOtro(any(), any(), any())).thenReturn(Optional.of(false));
 
-		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO.replace(DNI_CRUDO, "37.999.888"))).andReturn();
+		mvc.perform(conCuerpo(put("/api/admin/deportistas/" + id), CUERPO_PUT.replace(DNI_CRUDO, "37.999.888"))).andReturn();
 
 		sinDocumentosEnLogs();
 	}

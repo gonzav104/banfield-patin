@@ -45,6 +45,7 @@ import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
+import jakarta.persistence.EntityManager;
 
 class DeportistaAdminServiceTest {
 
@@ -63,13 +64,15 @@ class DeportistaAdminServiceTest {
 
 	private DeportistaRepository deportistas;
 	private AuditoriaService auditoria;
+	private EntityManager em;
 	private DeportistaAdminService servicio;
 
 	@BeforeEach
 	void preparar() {
 		deportistas = mock(DeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new DeportistaAdminService(deportistas, auditoria);
+		em = mock(EntityManager.class);
+		servicio = new DeportistaAdminService(deportistas, auditoria, em);
 		when(deportistas.saveAndFlush(any(Deportista.class))).thenAnswer(inv -> {
 			Deportista d = inv.getArgument(0);
 			if (d.getId() == null) {
@@ -290,7 +293,7 @@ class DeportistaAdminServiceTest {
 	void actualizarConUnCampoNuevoAuditaSoloSuNombre() {
 		Deportista d = existente();
 
-		DeportistaDetalle r = servicio.actualizar(admin, id, solicitud(DNI, CUIL, "Temperley"), DATOS);
+		DeportistaDetalle r = servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Temperley"), 0L), DATOS);
 
 		assertThat(r.localidad()).isEqualTo("Temperley");
 		assertThat(d.getLocalidad()).isEqualTo("Temperley");
@@ -306,8 +309,8 @@ class DeportistaAdminServiceTest {
 	void actualizarDniYTelefonoAuditaSusNombresSinValores() {
 		existente();
 
-		servicio.actualizar(admin, id, new DeportistaSolicitud("30999888", "Juan", "Perez", CUIL, NACIMIENTO, null, null,
-				null, null, null, null, "11-9999-0000", null), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(new DeportistaSolicitud("30999888", "Juan", "Perez", CUIL, NACIMIENTO, null, null,
+				null, null, null, null, "11-9999-0000", null), 0L), DATOS);
 
 		EventoAuditoria evento = unicoEvento();
 		@SuppressWarnings("unchecked")
@@ -321,7 +324,7 @@ class DeportistaAdminServiceTest {
 		existente();
 
 		// DNI y CUIL escritos con separadores: tras normalizar son los mismos.
-		servicio.actualizar(admin, id, solicitud(DNI_CRUDO, CUIL_CRUDO, "Banfield"), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI_CRUDO, CUIL_CRUDO, "Banfield"), 0L), DATOS);
 
 		verify(deportistas, never()).saveAndFlush(any());
 		verify(deportistas, never()).activoPorDniDeOtro(any(), any(), any());
@@ -333,7 +336,7 @@ class DeportistaAdminServiceTest {
 	void conservarElPropioDniYCuilNoEsUnConflictoAunqueOtroCambie() {
 		existente();
 
-		servicio.actualizar(admin, id, solicitud(DNI, CUIL, "Temperley"), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Temperley"), 0L), DATOS);
 
 		verify(deportistas, never()).activoPorDniDeOtro(any(), any(), any());
 		verify(deportistas, never()).existsByEscuelaIdAndCuilAndIdNot(any(), any(), any());
@@ -344,7 +347,7 @@ class DeportistaAdminServiceTest {
 	void cambiarElDniAUnoLibreComprobandoLaUnicidadIgnorandoAlPropioDeportista() {
 		Deportista d = existente();
 
-		servicio.actualizar(admin, id, solicitud("30.999.888", CUIL, "Banfield"), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("30.999.888", CUIL, "Banfield"), 0L), DATOS);
 
 		verify(deportistas).activoPorDniDeOtro(escuelaId, "30999888", id);
 		assertThat(d.getDni()).isEqualTo("30999888");
@@ -357,9 +360,9 @@ class DeportistaAdminServiceTest {
 		when(deportistas.activoPorDniDeOtro(escuelaId, "30999888", id)).thenReturn(Optional.of(true));
 		when(deportistas.activoPorDniDeOtro(escuelaId, "30888777", id)).thenReturn(Optional.of(false));
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud("30999888", CUIL, "Banfield"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("30999888", CUIL, "Banfield"), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "DNI_DUPLICADO"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud("30888777", CUIL, "Banfield"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("30888777", CUIL, "Banfield"), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "DNI_RESERVADO_POR_INACTIVO"));
 
 		assertThat(d.getDni()).isEqualTo(DNI);
@@ -372,7 +375,7 @@ class DeportistaAdminServiceTest {
 		Deportista d = existente();
 		when(deportistas.existsByEscuelaIdAndCuilAndIdNot(escuelaId, "27234567891", id)).thenReturn(true);
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud(DNI, "27-23456789-1", "Banfield"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, "27-23456789-1", "Banfield"), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "CUIL_DUPLICADO"));
 
 		assertThat(d.getCuil()).isEqualTo(CUIL);
@@ -385,11 +388,11 @@ class DeportistaAdminServiceTest {
 		existente();
 		when(deportistas.saveAndFlush(any(Deportista.class))).thenThrow(violacion("uq_deportista_dni_escuela"));
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud("30999888", CUIL, "Banfield"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("30999888", CUIL, "Banfield"), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "DNI_DUPLICADO"));
 
 		when(deportistas.saveAndFlush(any(Deportista.class))).thenThrow(violacion("uq_deportista_cuil_escuela"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud("30999888", "27234567891", "Banfield"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("30999888", "27234567891", "Banfield"), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "CUIL_DUPLICADO"));
 		verifyNoInteractions(auditoria);
 	}
@@ -398,7 +401,7 @@ class DeportistaAdminServiceTest {
 	void actualizarUnDeportistaAjenoDa404SinEscribirNiAuditar() {
 		when(deportistas.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud(DNI, null, null), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, null, null), 0L), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
 
 		verify(deportistas, never()).saveAndFlush(any());
@@ -410,7 +413,7 @@ class DeportistaAdminServiceTest {
 		Deportista d = existente();
 		d.desactivar();
 
-		servicio.actualizar(admin, id, solicitud(DNI, CUIL, "Temperley"), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Temperley"), 0L), DATOS);
 
 		assertThat(d.isActivo()).isFalse();
 	}
@@ -421,7 +424,7 @@ class DeportistaAdminServiceTest {
 	void desactivarCambiaElEstadoAuditaYDevuelveElDetalle() {
 		Deportista d = existente();
 
-		DeportistaDetalle r = servicio.desactivar(admin, id, DATOS);
+		DeportistaDetalle r = servicio.desactivar(admin, id, 0L, DATOS);
 
 		assertThat(r.activo()).isFalse();
 		assertThat(d.isActivo()).isFalse();
@@ -435,7 +438,7 @@ class DeportistaAdminServiceTest {
 	void desactivarDeNuevoEsIdempotenteSinEscribirNiAuditarOtraVez() {
 		existente().desactivar();
 
-		DeportistaDetalle r = servicio.desactivar(admin, id, DATOS);
+		DeportistaDetalle r = servicio.desactivar(admin, id, 0L, DATOS);
 
 		assertThat(r.activo()).isFalse();
 		verify(deportistas, never()).saveAndFlush(any());
@@ -447,7 +450,7 @@ class DeportistaAdminServiceTest {
 		Deportista d = existente();
 		d.desactivar();
 
-		DeportistaDetalle r = servicio.activar(admin, id, DATOS);
+		DeportistaDetalle r = servicio.activar(admin, id, 0L, DATOS);
 
 		assertThat(r.activo()).isTrue();
 		assertThat(unicoEvento().accion()).isEqualTo(AccionAuditoria.DEPORTISTA_ACTIVADO);
@@ -457,7 +460,7 @@ class DeportistaAdminServiceTest {
 	void activarUnActivoEsIdempotenteSinEscribirNiAuditar() {
 		existente();
 
-		assertThat(servicio.activar(admin, id, DATOS).activo()).isTrue();
+		assertThat(servicio.activar(admin, id, 0L, DATOS).activo()).isTrue();
 
 		verify(deportistas, never()).saveAndFlush(any());
 		verifyNoInteractions(auditoria);
@@ -467,19 +470,116 @@ class DeportistaAdminServiceTest {
 	void activarYDesactivarDeUnDeportistaAjenoDan404() {
 		when(deportistas.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS))
+		assertThatThrownBy(() -> servicio.activar(admin, id, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
-		assertThatThrownBy(() -> servicio.desactivar(admin, id, DATOS))
+		assertThatThrownBy(() -> servicio.desactivar(admin, id, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
 
 		verifyNoInteractions(auditoria);
 	}
 
+	// ---------- revision optimista (FE-05/U6) ----------
+
+	private Deportista existenteEnRevision(long version) {
+		Deportista d = existente();
+		ReflectionTestUtils.setField(d, "version", version);
+		return d;
+	}
+
+	@Test
+	void unaRevisionObsoletaSeRechazaEnLasTresOperacionesSinEscribirNiAuditarNiBloquear() {
+		Deportista d = existenteEnRevision(5);
+
+		for (long vieja : new long[] { 4, 6, 0 }) {
+			assertThatThrownBy(() -> servicio.actualizar(admin, id,
+					DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Temperley"), vieja), DATOS))
+					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+			assertThatThrownBy(() -> servicio.desactivar(admin, id, vieja, DATOS))
+					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+			assertThatThrownBy(() -> servicio.activar(admin, id, vieja, DATOS))
+					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+		}
+
+		assertThat(d.getLocalidad()).isEqualTo("Banfield");
+		assertThat(d.isActivo()).isTrue();
+		verify(deportistas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria, em);
+	}
+
+	@Test
+	void unaRevisionObsoletaSeRechazaIncluidoUnNoOpYAntesDeConsultarLaUnicidad() {
+		existenteEnRevision(5);
+		// Un formulario viejo que ademas trae un DNI ajeno recibe la revision obsoleta, no «DNI_DUPLICADO»: no se filtra
+		// si otro deportista tiene ese DNI.
+		when(deportistas.activoPorDniDeOtro(any(), any(), any())).thenReturn(Optional.of(true));
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, id,
+				DeportistaPruebas.conRevision(solicitud("30999888", CUIL, "Banfield"), 4), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+		// Mismos datos y revision vieja: no es un no-op silencioso, se rechaza igual (aunque el valor ya coincida).
+		assertThatThrownBy(() -> servicio.actualizar(admin, id,
+				DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Banfield"), 4), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(deportistas, never()).activoPorDniDeOtro(any(), any(), any());
+		verify(deportistas, never()).existsByEscuelaIdAndCuilAndIdNot(any(), any(), any());
+	}
+
+	@Test
+	void unaRevisionAusenteOInvalidaDa400ValidacionYUnDeportistaAjenoSiempreDa404() {
+		existenteEnRevision(0);
+
+		assertThatThrownBy(() -> servicio.desactivar(admin, id, null, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION"));
+		assertThatThrownBy(() -> servicio.activar(admin, id, -1L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION"));
+		// Otra escuela o inexistente: el mismo 404 sea cual sea la revision (no revela si existe).
+		UUID ajeno = UUID.randomUUID();
+		when(deportistas.findByIdAndEscuelaId(ajeno, escuelaId)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.desactivar(admin, ajeno, 99L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
+		assertThatThrownBy(() -> servicio.actualizar(admin, ajeno,
+				DeportistaPruebas.conRevision(solicitud(DNI, CUIL, "Banfield"), 99), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
+
+		verify(deportistas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void conLaRevisionVigenteUnNoOpNoEscribeNiAuditaPeroBloqueaOptimistaYUnCambioSiEscribeYAudita() {
+		Deportista d = existenteEnRevision(5);
+
+		// Mismo estado y mismos datos con la revision vigente: nada que escribir, y el bloqueo optimista cubre el commit.
+		servicio.activar(admin, id, 5L, DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI_CRUDO, CUIL_CRUDO, "Banfield"), 5), DATOS);
+		verify(deportistas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+		verify(em, org.mockito.Mockito.times(2)).lock(d, jakarta.persistence.LockModeType.OPTIMISTIC);
+
+		servicio.desactivar(admin, id, 5L, DATOS);
+		assertThat(d.isActivo()).isFalse();
+		verify(deportistas).saveAndFlush(d);
+		assertThat(unicoEvento().accion()).isEqualTo(AccionAuditoria.DEPORTISTA_DESACTIVADO);
+	}
+
+	@Test
+	void elDetalleExponeLaRevisionComoCadenaDecimalYNuncaLaDelListado() {
+		existenteEnRevision(12);
+
+		assertThat(servicio.obtener(admin, id).version()).isEqualTo("12");
+		assertThat(DeportistaDetalle.de(Deportista.crear(escuelaId, "A", "B", DNI, null, null, null, null, null, null,
+				null, null, null, null)).version()).isEqualTo("0");
+		assertThat(java.util.Arrays.stream(com.banfieldpatin.backend.deportistas.dto.DeportistaResumen.class
+				.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName)).doesNotContain("version");
+	}
+
 	@Test
 	void elServicioNoTieneDependenciaConVinculosNiFamiliasPorLoQueNuncaLosToca() {
-		// F4: activar/desactivar y editar solo hablan con el repositorio de deportistas y la auditoria.
+		// F4: activar/desactivar y editar solo hablan con el repositorio de deportistas, la auditoria y el gestor de
+		// entidades (solo para el bloqueo optimista del propio deportista, FE-05/U6).
 		assertThat(DeportistaAdminService.class.getDeclaredConstructors()).hasSize(1);
 		assertThat(DeportistaAdminService.class.getDeclaredConstructors()[0].getParameterTypes())
-				.containsExactly(DeportistaRepository.class, AuditoriaService.class);
+				.containsExactly(DeportistaRepository.class, AuditoriaService.class, EntityManager.class);
 	}
 }

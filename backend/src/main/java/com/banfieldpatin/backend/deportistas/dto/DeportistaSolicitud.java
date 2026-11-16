@@ -1,7 +1,6 @@
 package com.banfieldpatin.backend.deportistas.dto;
 
 import java.time.LocalDate;
-import java.util.Locale;
 
 import com.banfieldpatin.backend.deportistas.Cuil;
 import com.banfieldpatin.backend.deportistas.Dni;
@@ -13,7 +12,7 @@ import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
 
 /**
- * Alta y reemplazo completo (PUT) de un deportista (solo datos permanentes). Todo se recorta; un opcional en blanco pasa
+ * Alta de un deportista (solo datos permanentes); el reemplazo completo usa {@link DeportistaActualizacion}. Todo se recorta; un opcional en blanco pasa
  * a null y el email se guarda en minusculas. DNI y CUIL conservan el formato recibido (hasta 20 caracteres, con puntos,
  * guiones o espacios): el servicio los normaliza. Una fecha mal formada hace fallar la lectura del cuerpo (400
  * SOLICITUD_INVALIDA). El estado, el id y la escuela salen del contexto, nunca del cuerpo: cualquier otra propiedad
@@ -32,30 +31,21 @@ public record DeportistaSolicitud(
 		@Size(max = 100) String partido,
 		@Size(max = 15) String codigoPostal,
 		@Size(max = 40) String telefonoContacto,
-		@Email @Size(max = 180) String emailFederativo) {
+		@Email @Size(max = 180) String emailFederativo) implements DatosDeportista {
 
 	public DeportistaSolicitud {
-		dni = recortar(dni);
-		nombre = recortar(nombre);
-		apellido = recortar(apellido);
-		cuil = opcional(cuil);
-		nacionalidad = opcional(nacionalidad);
-		domicilio = opcional(domicilio);
-		otrosDatosDomicilio = opcional(otrosDatosDomicilio);
-		localidad = opcional(localidad);
-		partido = opcional(partido);
-		codigoPostal = opcional(codigoPostal);
-		telefonoContacto = opcional(telefonoContacto);
-		emailFederativo = opcional(emailFederativo) == null ? null : opcional(emailFederativo).toLowerCase(Locale.ROOT);
-	}
-
-	private static String recortar(String valor) {
-		return valor == null ? null : valor.strip();
-	}
-
-	private static String opcional(String valor) {
-		String limpio = recortar(valor);
-		return limpio == null || limpio.isEmpty() ? null : limpio;
+		dni = DatosDeportista.recortar(dni);
+		nombre = DatosDeportista.recortar(nombre);
+		apellido = DatosDeportista.recortar(apellido);
+		cuil = DatosDeportista.opcional(cuil);
+		nacionalidad = DatosDeportista.opcional(nacionalidad);
+		domicilio = DatosDeportista.opcional(domicilio);
+		otrosDatosDomicilio = DatosDeportista.opcional(otrosDatosDomicilio);
+		localidad = DatosDeportista.opcional(localidad);
+		partido = DatosDeportista.opcional(partido);
+		codigoPostal = DatosDeportista.opcional(codigoPostal);
+		telefonoContacto = DatosDeportista.opcional(telefonoContacto);
+		emailFederativo = DatosDeportista.emailNormalizado(emailFederativo);
 	}
 
 	@JsonAnySetter

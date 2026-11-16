@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +41,7 @@ import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.JsonDeContrato;
 import com.banfieldpatin.backend.compartido.web.Pagina;
+import com.banfieldpatin.backend.deportistas.dto.DeportistaActualizacion;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
@@ -64,6 +66,8 @@ import jakarta.servlet.http.Cookie;
 class DeportistaAdminControllerWebMvcTest {
 
 	private static final String MINIMO = "{\"dni\":\"30.111.222\",\"nombre\":\"Juan\",\"apellido\":\"Perez\"}";
+	private static final String MINIMO_PUT = "{\"dni\":\"30.111.222\",\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"versionEsperada\":\"0\"}";
+	private static final String VERSION = "{\"versionEsperada\":\"0\"}";
 	private static final String RUTA = "/api/admin/deportistas";
 
 	@Autowired
@@ -101,7 +105,12 @@ class DeportistaAdminControllerWebMvcTest {
 	private DeportistaDetalle detalle(boolean activo) {
 		return new DeportistaDetalle(id, "Juan", "Perez", "30111222", "20301112220", LocalDate.of(2012, 5, 10),
 				"Argentina", "Calle 1", "Piso 2", "Banfield", "Lomas", "1828", "11-5555-0000", "juan@example.com",
-				activo);
+				activo, "3");
+	}
+
+	private static String conCampoPut(String campo, String valor) {
+		return "{\"dni\":\"30111222\",\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"versionEsperada\":\"0\",\"" + campo
+				+ "\":" + valor + "}";
 	}
 
 	private static String conCampo(String campo, String valor) {
@@ -266,7 +275,7 @@ class DeportistaAdminControllerWebMvcTest {
 	void unConflictoEnLaEdicionTambienDa409() throws Exception {
 		when(servicio.actualizar(any(), eq(id), any(), any())).thenThrow(DeportistaAdminService.dniDuplicado());
 
-		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO)).andExpect(status().isConflict())
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO_PUT)).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.codigo").value("DNI_DUPLICADO"));
 	}
 
@@ -401,11 +410,12 @@ class DeportistaAdminControllerWebMvcTest {
 	void actualizarDevuelve200YValidaElCuerpo() throws Exception {
 		when(servicio.actualizar(any(), eq(id), any(), any())).thenReturn(detalle(true));
 
-		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO)).andExpect(status().isOk())
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO_PUT)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(id.toString()));
-		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), conCampo("cuil", "\"20-30111222-5\"")))
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), conCampoPut("cuil", "\"20-30111222-5\"")))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.detalles[0].campo").value("cuil"));
-		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), "{\"nombre\":\"Juan\",\"apellido\":\"Perez\"}"))
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(),
+				"{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"versionEsperada\":\"0\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.detalles[0].campo").value("dni"));
 	}
 
@@ -413,7 +423,7 @@ class DeportistaAdminControllerWebMvcTest {
 	void actualizarUnDeportistaAjenoDa404() throws Exception {
 		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
 
-		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO)).andExpect(status().isNotFound())
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO_PUT)).andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.codigo").value("DEPORTISTA_NO_ENCONTRADO"));
 	}
 
@@ -434,25 +444,114 @@ class DeportistaAdminControllerWebMvcTest {
 	// ---------- activar / desactivar ----------
 
 	@Test
-	void activarYDesactivarDevuelven200ConElDetalleDelDeportista() throws Exception {
-		when(servicio.activar(any(), eq(id), any())).thenReturn(detalle(true));
-		when(servicio.desactivar(any(), eq(id), any())).thenReturn(detalle(false));
+	void activarYDesactivarDevuelven200ConElDetalleDelDeportistaYLaRevisionObservada() throws Exception {
+		when(servicio.activar(any(), eq(id), eq(0L), any())).thenReturn(detalle(true));
+		when(servicio.desactivar(any(), eq(id), eq(0L), any())).thenReturn(detalle(false));
 
-		mvc.perform(conCsrf(post(RUTA + "/" + id + "/activar")).cookie(admin())).andExpect(status().isOk())
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), VERSION)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(id.toString())).andExpect(jsonPath("$.activo").value(true))
-				.andExpect(jsonPath("$.dni").value("30111222"));
-		mvc.perform(conCsrf(post(RUTA + "/" + id + "/desactivar")).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.dni").value("30111222")).andExpect(jsonPath("$.version").value("3"));
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/desactivar"), admin(), VERSION)).andExpect(status().isOk())
 				.andExpect(jsonPath("$.activo").value(false)).andExpect(jsonPath("$.nombre").value("Juan"));
 	}
 
 	@Test
 	void activarYDesactivarDeUnoAjenoDan404() throws Exception {
-		when(servicio.activar(any(), any(), any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
-		when(servicio.desactivar(any(), any(), any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
+		when(servicio.activar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
+		when(servicio.desactivar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
 
-		mvc.perform(conCsrf(post(RUTA + "/" + id + "/activar")).cookie(admin())).andExpect(status().isNotFound());
-		mvc.perform(conCsrf(post(RUTA + "/" + id + "/desactivar")).cookie(admin())).andExpect(status().isNotFound())
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), VERSION)).andExpect(status().isNotFound());
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/desactivar"), admin(), VERSION)).andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.codigo").value("DEPORTISTA_NO_ENCONTRADO"));
+	}
+
+	// ---------- revision optimista (FE-05/U6) ----------
+
+	@Test
+	void editarYCambiarElEstadoExigenLaRevisionYElAltaNo() throws Exception {
+		// PUT, activar y desactivar sin revision: 400 VALIDACION nombrando el campo; nunca llegan al servicio.
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.codigo").value("VALIDACION"))
+				.andExpect(jsonPath("$.detalles[0].campo").value("versionEsperada"));
+		for (String accion : new String[] { "activar", "desactivar" }) {
+			mvc.perform(cuerpo(post(RUTA + "/" + id + "/" + accion), admin(), "{}")).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("VALIDACION"))
+					.andExpect(jsonPath("$.detalles[0].campo").value("versionEsperada"));
+			mvc.perform(cuerpo(post(RUTA + "/" + id + "/" + accion), admin(), "{\"versionEsperada\":null}"))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("VALIDACION"));
+			mvc.perform(conCsrf(post(RUTA + "/" + id + "/" + accion)).cookie(admin())).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA")); // sin cuerpo
+		}
+		verifyNoInteractions(servicio);
+
+		// El alta no tiene revision que esperar: se acepta como siempre y rechaza una revision que no le corresponde.
+		when(servicio.crear(any(), any(), any())).thenReturn(detalle(true));
+		mvc.perform(cuerpo(post(RUTA), admin(), MINIMO)).andExpect(status().isCreated());
+		mvc.perform(cuerpo(post(RUTA), admin(), MINIMO.replace("}", ",\"versionEsperada\":\"0\"}")))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+	}
+
+	@Test
+	void unaRevisionInvalidaDa400SolicitudInvalidaSinEcoDelValorEnLasTresOperaciones() throws Exception {
+		String[] invalidas = { "\"abc\"", "\"-1\"", "\"1.5\"", "\" 1\"", "\"+1\"", "\"\"", "3", "-1", "1.5", "true",
+				"\"99999999999999999999\"", "\"9223372036854775808\"", "[\"1\"]", "{}" };
+		for (String valor : invalidas) {
+			String revision = "\"versionEsperada\":" + valor;
+			for (String respuesta : new String[] {
+					mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO.replace("}", "," + revision + "}")))
+							.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+							.andReturn().getResponse().getContentAsString(),
+					mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), "{" + revision + "}"))
+							.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+							.andReturn().getResponse().getContentAsString(),
+					mvc.perform(cuerpo(post(RUTA + "/" + id + "/desactivar"), admin(), "{" + revision + "}"))
+							.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+							.andReturn().getResponse().getContentAsString() }) {
+				assertThat(respuesta).doesNotContain("30111222").doesNotContain("Juan");
+			}
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void laRevisionLlegaAlServicioComoNumeroYLosComandosDeEstadoNoAdmitenOtrasPropiedades() throws Exception {
+		when(servicio.actualizar(any(), eq(id), any(), any())).thenReturn(detalle(true));
+		when(servicio.activar(any(), eq(id), any(), any())).thenReturn(detalle(true));
+
+		mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO.replace("}", ",\"versionEsperada\":\"12\"}")))
+				.andExpect(status().isOk());
+		ArgumentCaptor<DeportistaActualizacion> captor = ArgumentCaptor.forClass(DeportistaActualizacion.class);
+		verify(servicio).actualizar(any(), eq(id), captor.capture(), any());
+		assertThat(captor.getValue().versionEsperada()).isEqualTo(12L);
+		assertThat(captor.getValue().toString()).doesNotContain("Juan").doesNotContain("30111222");
+
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), "{\"versionEsperada\":\"7\"}"))
+				.andExpect(status().isOk());
+		verify(servicio).activar(any(), eq(id), eq(7L), any());
+		mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), "{\"versionEsperada\":\"7\",\"activo\":false}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		verifyNoMoreInteractions(servicio);
+	}
+
+	@Test
+	void unaRevisionObsoletaDa409EdicionDesactualizadaSinDatosPersonalesNiIds() throws Exception {
+		when(servicio.actualizar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.edicionDesactualizada());
+		when(servicio.activar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.edicionDesactualizada());
+		when(servicio.desactivar(any(), any(), any(), any())).thenThrow(DeportistaAdminService.edicionDesactualizada());
+
+		for (String cuerpo : new String[] {
+				mvc.perform(cuerpo(put(RUTA + "/" + id), admin(), MINIMO_PUT)).andExpect(status().isConflict())
+						.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA")).andReturn().getResponse()
+						.getContentAsString(),
+				mvc.perform(cuerpo(post(RUTA + "/" + id + "/activar"), admin(), VERSION)).andExpect(status().isConflict())
+						.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA")).andReturn().getResponse()
+						.getContentAsString(),
+				mvc.perform(cuerpo(post(RUTA + "/" + id + "/desactivar"), admin(), VERSION)).andExpect(status().isConflict())
+						.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA")).andReturn().getResponse()
+						.getContentAsString() }) {
+			assertThat(cuerpo).doesNotContain("30111222").doesNotContain("30.111.222").doesNotContain("Juan")
+					.doesNotContain(escuelaId.toString()).doesNotContain(id.toString());
+		}
 	}
 
 	// ---------- 405 ----------

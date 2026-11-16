@@ -18,9 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.compartido.web.Pagina;
+import com.banfieldpatin.backend.deportistas.dto.DeportistaActualizacion;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
+import com.banfieldpatin.backend.deportistas.dto.DeportistaVersionEsperada;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,7 +30,8 @@ import jakarta.validation.Valid;
 
 /**
  * Gestion de deportistas para ADMIN (la cadena de seguridad protege /api/admin/**). La escuela y el actor salen del JWT.
- * No hay DELETE ni PATCH (405 METODO_NO_PERMITIDO): un deportista se desactiva, nunca se borra.
+ * No hay DELETE ni PATCH (405 METODO_NO_PERMITIDO): un deportista se desactiva, nunca se borra. Editar, activar y
+ * desactivar exigen la revision observada ({@code versionEsperada}); el alta no (un deportista nuevo no tiene revision).
  */
 @RestController
 @RequestMapping("/api/admin/deportistas")
@@ -64,19 +67,21 @@ public class DeportistaAdminController {
 
 	@PutMapping("/{id}")
 	public DeportistaDetalle actualizar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			@Valid @RequestBody DeportistaSolicitud solicitud, HttpServletRequest request) {
+			@Valid @RequestBody DeportistaActualizacion solicitud, HttpServletRequest request) {
 		return servicio.actualizar(UsuarioAutenticado.desde(jwt), id, solicitud, DatosSolicitud.de(request));
 	}
 
 	@PostMapping("/{id}/activar")
 	public DeportistaDetalle activar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			HttpServletRequest request) {
-		return servicio.activar(UsuarioAutenticado.desde(jwt), id, DatosSolicitud.de(request));
+			@Valid @RequestBody DeportistaVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.activar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(),
+				DatosSolicitud.de(request));
 	}
 
 	@PostMapping("/{id}/desactivar")
 	public DeportistaDetalle desactivar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			HttpServletRequest request) {
-		return servicio.desactivar(UsuarioAutenticado.desde(jwt), id, DatosSolicitud.de(request));
+			@Valid @RequestBody DeportistaVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.desactivar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(),
+				DatosSolicitud.de(request));
 	}
 }

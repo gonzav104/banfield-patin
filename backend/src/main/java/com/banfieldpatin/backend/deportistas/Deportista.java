@@ -12,13 +12,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
  * Mapeo de los datos PERMANENTES de gestion_patin.deportista (V1): sin datos de temporada, sin asociaciones (UUID
- * planos) y sin setters. La escuela es inmutable ({@code updatable = false}). Los datos personales se cambian solo con
+ * planos) y sin setters. {@code version} es la revision optimista (U6): la gestiona JPA. La escuela es inmutable ({@code updatable = false}). Los datos personales se cambian solo con
  * {@link #actualizar}, que informa los NOMBRES de los campos modificados (nunca sus valores); el estado, solo con
  * {@link #activar()} y {@link #desactivar()}. Los DNI y CUIL llegan ya normalizados (solo digitos).
  */
@@ -71,6 +72,11 @@ public class Deportista {
 
 	@Column(nullable = false)
 	private boolean activo;
+
+	/** Revision de escritura (datos personales y estado): solo avanza cuando algo cambia. No cubre vinculos ni temporadas. */
+	@Version
+	@Column(nullable = false)
+	private long version;
 
 	/** Alta de un deportista activo de la escuela, sin ningun vinculo con familias. */
 	public static Deportista crear(UUID escuelaId, String nombre, String apellido, String dni, String cuil,
