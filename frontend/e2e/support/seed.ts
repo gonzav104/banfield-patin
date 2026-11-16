@@ -129,6 +129,11 @@ export class AdminSeed {
     return { id: created.id, dni };
   }
 
+  /** An athlete with the exact data given (any DeportistaSolicitud field), through the real admin API. Returns the stored id and revision. */
+  async createAthleteWith(data: Record<string, string>): Promise<{ id: string; version: string }> {
+    return this.post('/api/admin/deportistas', data, `create athlete ${data.nombre ?? ''}`);
+  }
+
   async link(familyId: string, athleteIds: string[]): Promise<void> {
     await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistaIds: athleteIds }, 'link athletes');
   }

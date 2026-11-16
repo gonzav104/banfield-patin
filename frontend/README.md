@@ -117,7 +117,7 @@ dirección (`/familia/deportistas/<id>`), con recarga y con el historial del nav
 - **Mientras no cargue:** estado de carga («Cargando la ficha…»), sesión vencida (vuelve al login y, después de ingresar, a la misma ficha) y error de red con «Reintentar» (la sesión se conserva).
 
 Para verlo con datos, un ADMIN crea y vincula deportistas con la API de administración (`POST /api/admin/deportistas`,
-`POST /api/admin/familias/{id}/deportistas`); esta unidad no incluye pantallas de administración de deportistas.
+`POST /api/admin/familias/{id}/deportistas`); esta unidad no incluye pantallas de administración de deportistas (las del listado, detalle y alta están en la sección «Deportistas en el panel ADMIN», FE-05 / U7).
 
 ### 6. Familias en el panel ADMIN (FE-05 / U2)
 
@@ -198,6 +198,7 @@ confirmación (la familia **deja de poder ingresar** de verdad y vuelve a poder 
 ADMIN con segundo factor pendiente) y 360 px. El «otro administrador» es el mismo administrador escribiendo por la API con una revisión más nueva; para el backend es equivalente.
 `familias-tutores.real.spec.ts` (FE-05/U5-A) prueba contra el backend real la consulta (DNI enmascarado en el detalle de familia y completo solo en el individual, mismo «no encontrado» para un tutor inexistente, de **otra familia** o mal formado), el alta con la revisión capturada (la revisión de la familia no se mueve y no se crean cuentas ni invitaciones, comprobado en la base), validaciones, doble clic, una revisión obsoleta real (borrador conservado y continuación solo por elección explícita), familia inactiva (al cargar y desactivada mientras tanto), dos cortes **simulados** (`page.route`): respuesta perdida **después** de que el backend creó el tutor (la verificación informa la coincidencia como no confirmable, no afirma la creación, mantiene el reenvío bloqueado y no se duplica) y solicitud que nunca llegó (la verificación informa que no encontró el tutor, advierte la posible duplicación y recién ante una acción explícita se reintenta, una vez), permisos (anónimo, FAMILIA, sin CSRF) y 360 px.
 
+`deportistas-consulta-alta.real.spec.ts` (FE-05/U7, 16 escenarios) prueba contra el backend real el listado (DNI enmascarado, filtros, búsqueda por nombre y por DNI sin escribirla en la URL, paginación y retorno desde el detalle), el detalle (DNI y CUIL completos solo ahí, «No informado», identificadores inexistentes o mal formados con un mismo «no encontrado»), el alta (normalización del backend, sin vínculos, cuentas ni invitaciones), los tres duplicados, el doble clic, las dos caídas **simuladas** (respuesta perdida después de crear y petición que no llegó), el aviso de cambios sin guardar, los permisos (anónimo, FAMILIA y sin CSRF), 360 px y que ningún dato personal llegue a URL, almacenamiento ni consola.
 `tutores-edicion.real.spec.ts` (FE-05/U5-B) prueba contra el backend real la edición con las **dos** revisiones capturadas (la del tutor se mueve y la de la familia no, sin cuentas ni invitaciones, nada en URL, consola ni almacenamiento), el reemplazo completo (los opcionales vaciados se guardan como `null`), validación y doble clic, un tutor modificado por otro administrador (borrador conservado, comparación, continuación explícita que no deshace el cambio ajeno, y nuevo conflicto si vuelve a cambiar), una familia modificada, una familia desactivada mientras se edita o inactiva al abrir, dos cortes **simulados** (`page.route`: respuesta perdida después de que el backend aplicó la edición, y solicitud que nunca llegó con reintento explícito único), permisos (anónimo, FAMILIA, sin CSRF, sin revisiones) y 360 px (formulario y comparación).
 `portal-ficha.real.spec.ts` (FE-04, 22 pruebas) siembra, también por la API real de ADMIN, una temporada anterior (con datos distintos, que nunca deben verse) y la
 vigente, y ocho deportistas con un caso cada uno: completo (`007`), suspendido, inactivo, sin edad, sin fila en la temporada vigente, con campos nulos, con vínculo
@@ -271,6 +272,29 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
   corre Playwright. Las credenciales se generan en cada ejecución y el contenedor se elimina al terminar. El mismo
   script sirve en local (Docker, Java 21, `npm ci` y `npx playwright install chromium`): `bash .github/scripts/frontend-e2e.sh`
   **sin ninguna variable corre la suite completa**, como siempre.
+
+### 7. Deportistas en el panel ADMIN (FE-05 / U7)
+
+Menú **Deportistas** (`/admin/deportistas`), siempre con ADMIN + MFA completada y limitado a la escuela de la sesión. Esta unidad es de **solo consulta y alta**: no edita, no activa ni
+desactiva (U8), no asigna familias, no crea cuentas ni invitaciones y no administra temporadas ni datos deportivos.
+
+| Ruta | Qué hace | Contrato backend |
+| --- | --- | --- |
+| `/admin/deportistas` | Listado paginado (20), búsqueda por nombre, apellido o DNI (con debounce) y filtro Activos (por defecto, como el backend) / Inactivos / Todos. Muestra apellido y nombre, **DNI enmascarado** y estado | `GET /api/admin/deportistas` |
+| `/admin/deportistas/:id` | Detalle **individual**, de solo lectura: es la única pantalla con el **DNI y el CUIL completos**; muestra fecha de nacimiento, contacto y domicilio («No informado» si falta) y el estado. Valida la revisión `version` (cadena decimal) sin mostrarla | `GET /api/admin/deportistas/{id}` |
+| `/admin/deportistas/nuevo` | Alta (DNI, nombre y apellido obligatorios; CUIL, nacimiento, nacionalidad, domicilio y contacto opcionales). Al confirmarse el `201` lleva al detalle | `POST /api/admin/deportistas` |
+
+- **Privacidad:** el término de búsqueda, los nombres y el DNI **no** van en la URL de navegación, ni en storage ni en consola (el término sí viaja como parámetro de la petición `GET`). Estado y página
+  sí van en la URL (`?estado=…&pagina=…`) y «Volver al listado» los conserva; la búsqueda no se conserva. El detalle no deja el DNI ni el CUIL en memoria al salir (`gcTime: 0`) y se reinicia
+  si cambia la identidad o el deportista. El listado también se reinicia al cambiar la identidad: descarta el término escrito, las filas y cualquier respuesta pendiente de la identidad anterior.
+- **Duplicados:** `DNI_DUPLICADO` (titular activo), `DNI_RESERVADO_POR_INACTIVO` (titular inactivo: el índice único de DNI no es parcial, no se puede crear otro) y `CUIL_DUPLICADO` se explican
+  cada uno junto a su campo, con el borrador intacto. El backend no devuelve el id del titular existente: el aviso remite al listado.
+- **Resultado incierto:** el alta nunca se reintenta sola ni se declara creada por coincidencia. Ante un corte de red, un timeout o un 5xx el formulario queda cerrado con el borrador a la vista;
+  «Verificar en el listado» consulta por DNI (solo lectura, todos los estados, la primera página de hasta **100** resultados, el máximo del backend) y compara el **DNI enmascarado completo**, nunca nombre y
+  apellido; una coincidencia se presenta como **indicio**, no como confirmación. Sin coincidencias solo dice que **no se observa** el registro en ese momento (no que la solicitud no se aplicó). Si la
+  búsqueda devolvió más resultados de los revisados (posible con DNI de 7 dígitos, cuya búsqueda por prefijo abarca hasta 111) la verificación se declara **incompleta** y no concluye nada; no recorre páginas.
+  «Volver a intentar» es una decisión explícita: como el DNI es único, un reenvío no puede duplicar al deportista (si el primero sí se aplicó, el segundo recibe `DNI_DUPLICADO`, y el aviso dice que
+  podría ser el primero).
 
 ### E2E reales repartidos en shards
 

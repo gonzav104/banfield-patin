@@ -67,6 +67,41 @@ interface FakeInvitation {
   revocadaEn: string | null;
 }
 
+/** An athlete as the ADMIN endpoints of FE-05/U7 see it (DeportistaDetalle). The list only shows the masked DNI; the detail the full one. */
+export interface FakeAdminAthlete {
+  id: string;
+  dni: string;
+  nombre: string;
+  apellido: string;
+  cuil: string | null;
+  fechaNacimiento: string | null;
+  nacionalidad: string | null;
+  domicilio: string | null;
+  otrosDatosDomicilio: string | null;
+  localidad: string | null;
+  partido: string | null;
+  codigoPostal: string | null;
+  telefonoContacto: string | null;
+  emailFederativo: string | null;
+  activo: boolean;
+  version: number;
+}
+
+const ATHLETE_FIELDS = ['dni', 'nombre', 'apellido', 'cuil', 'fechaNacimiento', 'nacionalidad', 'domicilio', 'otrosDatosDomicilio', 'localidad', 'partido', 'codigoPostal', 'telefonoContacto', 'emailFederativo'];
+
+/** The backend's EnmascaradoDni: only the last three digits are shown. */
+const maskDni = (dni: string) => '•'.repeat(Math.max(dni.length - 3, 0)) + dni.slice(Math.max(dni.length - 3, 0));
+
+/** DocumentoIdentidad.cuilValido: 11 digits and the check digit. */
+function validCuil(raw: string): boolean {
+  const cuil = raw.replace(/[.\-\s]/g, '');
+  if (!/^[0-9]{11}$/.test(cuil)) return false;
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = weights.reduce((total, w, i) => total + Number(cuil[i]) * w, 0);
+  const rest = 11 - (sum % 11);
+  return rest !== 10 && Number(cuil[10]) === (rest === 11 ? 0 : rest);
+}
+
 const DAY = 86_400_000;
 
 export interface FakeTutor {
@@ -125,6 +160,7 @@ export class FakeBackend {
   private holds: { method: string; url: string; deliver?: () => void }[] = [];
   private enrolledInFlight = new Set<string>();
   private families: FakeFamily[] = [];
+  private adminAthletes: FakeAdminAthlete[] = [];
   private invitations: FakeInvitation[] = [];
   private counter = 0;
   private portalFamilies = new Map<string, PortalFamily>();
@@ -400,6 +436,110 @@ export class FakeBackend {
     return { status: 200, body: this.tutorFull(tutor, family.id) };
   }
 
+
+  /** An athlete that already exists in the school (GET/POST /admin/deportistas see it). */
+  addAdminAthlete(data: Partial<Omit<FakeAdminAthlete, 'id' | 'version'>> & { nombre: string; apellido: string; dni: string }): FakeAdminAthlete {
+    const athlete: FakeAdminAthlete = {
+      id: `dep-${++this.counter}`,
+      cuil: null,
+      fechaNacimiento: null,
+      nacionalidad: null,
+      domicilio: null,
+      otrosDatosDomicilio: null,
+      localidad: null,
+      partido: null,
+      codigoPostal: null,
+      telefonoContacto: null,
+      emailFederativo: null,
+      activo: true,
+      version: 0,
+      ...data,
+    };
+    this.adminAthletes.push(athlete);
+    return athlete;
+  }
+
+  /** What really happened on the server although the client never saw the answer (a lost response): the athlete exists. */
+  addAdminAthleteBehindTheScenes(data: { nombre: string; apellido: string; dni: string }): FakeAdminAthlete {
+    return this.addAdminAthlete(data);
+  }
+
+  adminAthleteCount(): number {
+    return this.adminAthletes.length;
+  }
+
+  private athleteDetail(a: FakeAdminAthlete) {
+    const { version, ...rest } = a;
+    return { ...rest, version: String(version) };
+  }
+
+  /**
+   * Mirrors POST /admin/deportistas (DeportistaSolicitud): any other property -> 400 SOLICITUD_INVALIDA, bean validation (400
+   * VALIDACION), then DNI_DUPLICADO (active holder) / DNI_RESERVADO_POR_INACTIVO (inactive holder: the unique index is not
+   * partial), then CUIL_DUPLICADO. No revision travels: a new athlete has none. Blank optionals become null, e-mail lowercase.
+   */
+  private createAthlete(body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (Object.keys(input).some((k) => !ATHLETE_FIELDS.includes(k))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const bad = { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const optional = (v: unknown) => (text(v) === '' ? null : text(v));
+    const dniRaw = text(input.dni);
+    const dni = dniRaw.replace(/[.\s]/g, '');
+    const nombre = text(input.nombre);
+    const apellido = text(input.apellido);
+    if (dniRaw === '' || dniRaw.length > 20 || !/^[0-9]{7,9}$/.test(dni) || nombre === '' || apellido === '' || nombre.length > 100 || apellido.length > 100) return bad;
+    const cuilRaw = optional(input.cuil);
+    if (cuilRaw !== null && (cuilRaw.length > 20 || !validCuil(cuilRaw))) return bad;
+    const birth = optional(input.fechaNacimiento);
+    if (birth !== null && (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || birth >= new Date().toISOString().slice(0, 10))) return bad;
+    const limits: Record<string, number> = { nacionalidad: 80, domicilio: 180, otrosDatosDomicilio: 250, localidad: 100, partido: 100, codigoPostal: 15, telefonoContacto: 40 };
+    for (const [field, max] of Object.entries(limits)) if ((optional(input[field])?.length ?? 0) > max) return bad;
+    const email = optional(input.emailFederativo);
+    if (email !== null && (email.length > 180 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) return bad;
+    const holder = this.adminAthletes.find((a) => a.dni === dni);
+    if (holder) return holder.activo ? this.error(409, 'DNI_DUPLICADO', 'Ya existe un deportista con ese DNI.') : this.error(409, 'DNI_RESERVADO_POR_INACTIVO', 'Ya existe un deportista inactivo con ese DNI.');
+    const cuil = cuilRaw === null ? null : cuilRaw.replace(/[.\-\s]/g, '');
+    if (cuil !== null && this.adminAthletes.some((a) => a.cuil === cuil)) return this.error(409, 'CUIL_DUPLICADO', 'Ya existe un deportista con ese CUIL.');
+    const athlete = this.addAdminAthlete({
+      dni,
+      nombre,
+      apellido,
+      cuil,
+      fechaNacimiento: birth,
+      nacionalidad: optional(input.nacionalidad),
+      domicilio: optional(input.domicilio),
+      otrosDatosDomicilio: optional(input.otrosDatosDomicilio),
+      localidad: optional(input.localidad),
+      partido: optional(input.partido),
+      codigoPostal: optional(input.codigoPostal),
+      telefonoContacto: optional(input.telefonoContacto),
+      emailFederativo: email === null ? null : email.toLowerCase(),
+    });
+    return { status: 201, body: this.athleteDetail(athlete) };
+  }
+
+  /** Mirrors GET /admin/deportistas: `estado` defaults to ACTIVOS (unknown -> 400), «contains» search over names and DNI prefix, order apellido, nombre, id. */
+  private listAthletes(params: URLSearchParams): { status: number; body?: unknown } {
+    const estado = (params.get('estado') ?? '').trim() || 'ACTIVOS';
+    if (!['TODOS', 'ACTIVOS', 'INACTIVOS'].includes(estado)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const search = (params.get('busqueda') ?? '').trim().slice(0, 100).toLowerCase();
+    const digits = search.replace(/[.\s]/g, '');
+    const dniSearch = /^[0-9]+$/.test(digits) ? digits : '';
+    const rows = this.adminAthletes
+      .filter((a) => (estado === 'TODOS' ? true : estado === 'ACTIVOS' ? a.activo : !a.activo))
+      .filter(
+        (a) =>
+          search === '' ||
+          [a.apellido, a.nombre, `${a.nombre} ${a.apellido}`, `${a.apellido} ${a.nombre}`].some((v) => v.toLowerCase().includes(search)) ||
+          (dniSearch !== '' && a.dni.startsWith(dniSearch)),
+      )
+      .sort((a, b) => a.apellido.toLowerCase().localeCompare(b.apellido.toLowerCase()) || a.nombre.toLowerCase().localeCompare(b.nombre.toLowerCase()) || a.id.localeCompare(b.id))
+      // DeportistaResumen: the DNI is MASKED and nothing else of the detail travels.
+      .map((a) => ({ id: a.id, nombre: a.nombre, apellido: a.apellido, dniEnmascarado: maskDni(a.dni), fechaNacimiento: a.fechaNacimiento, activo: a.activo }));
+    return { status: 200, body: this.page(rows, params) };
+  }
+
   private familyDetail(f: FakeFamily) {
     return { id: f.id, nombreReferencia: f.nombreReferencia, activa: f.activa, tutores: f.tutores.map((t) => this.tutorSummary(t, f.id)), version: String(f.version) };
   }
@@ -490,6 +630,14 @@ export class FakeBackend {
         return { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'nombreReferencia', mensaje: 'detalle del servidor' }] } };
       }
       return { status: 201, body: this.familyDetail(this.addFamily(name)) };
+    }
+    if (method === 'get' && path === '/admin/deportistas') return this.listAthletes(params);
+    if (method === 'post' && path === '/admin/deportistas') return this.createAthlete(body);
+    const athleteDetail = /^\/admin\/deportistas\/([^/]+)$/.exec(path);
+    if (method === 'get' && athleteDetail) {
+      const athlete = this.adminAthletes.find((a) => a.id === athleteDetail[1]);
+      if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      return { status: 200, body: this.athleteDetail(athlete) };
     }
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');
