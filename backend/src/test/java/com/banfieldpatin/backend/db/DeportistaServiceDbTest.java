@@ -27,6 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
+import com.banfieldpatin.backend.deportistas.DeportistaPruebas;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
@@ -119,7 +120,7 @@ class DeportistaServiceDbTest extends BaseDbTest {
 	void reactivarAlInactivoPermiteSeguirYElDniVuelveAReservarseComoDuplicado() {
 		UUID inactivo = datos.deportista(escuelaA, DNI, "Inactivo", "Titular", false);
 
-		servicio.activar(admin, inactivo, DATOS);
+		servicio.activar(admin, inactivo, version(inactivo), DATOS);
 
 		assertThatThrownBy(() -> servicio.crear(admin, solicitud(DNI, null), DATOS))
 				.satisfies(e -> assertError(e, "DNI_DUPLICADO"));
@@ -144,19 +145,19 @@ class DeportistaServiceDbTest extends BaseDbTest {
 		datos.deportistaConCuil(escuelaA, "36789016", "20123456786", "Otro", "Cuil");
 
 		// Conserva el propio DNI y CUIL y cambia otro dato: 200.
-		assertThat(servicio.actualizar(admin, propio, new DeportistaSolicitud(DNI_CRUDO, "Zuleica", "Quintana",
-				CUIL_CRUDO, null, null, "Otra calle", null, null, null, null, null, null), DATOS).domicilio())
+		assertThat(servicio.actualizar(admin, propio, DeportistaPruebas.conRevision(new DeportistaSolicitud(DNI_CRUDO, "Zuleica", "Quintana",
+				CUIL_CRUDO, null, null, "Otra calle", null, null, null, null, null, null), version(propio)), DATOS).domicilio())
 				.isEqualTo("Otra calle");
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, propio, solicitud("36789014", CUIL), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, propio, DeportistaPruebas.conRevision(solicitud("36789014", CUIL), version(propio)), DATOS))
 				.satisfies(e -> assertError(e, "DNI_DUPLICADO"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, propio, solicitud("36789015", CUIL), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, propio, DeportistaPruebas.conRevision(solicitud("36789015", CUIL), version(propio)), DATOS))
 				.satisfies(e -> assertError(e, "DNI_RESERVADO_POR_INACTIVO"));
-		assertThatThrownBy(() -> servicio.actualizar(admin, propio, solicitud(DNI, "20-12345678-6"), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, propio, DeportistaPruebas.conRevision(solicitud(DNI, "20-12345678-6"), version(propio)), DATOS))
 				.satisfies(e -> assertError(e, "CUIL_DUPLICADO"));
 
 		// Cambiar a un DNI libre si funciona.
-		assertThat(servicio.actualizar(admin, propio, solicitud("36789099", CUIL), DATOS).dni()).isEqualTo("36789099");
+		assertThat(servicio.actualizar(admin, propio, DeportistaPruebas.conRevision(solicitud("36789099", CUIL), version(propio)), DATOS).dni()).isEqualTo("36789099");
 	}
 
 	@Test
@@ -314,14 +315,14 @@ class DeportistaServiceDbTest extends BaseDbTest {
 	@Test
 	void laAuditoriaGuardaIdsFlagsYNombresDeCamposPeroNingunDocumentoNiDatoPersonal() {
 		UUID id = servicio.crear(admin, solicitud(DNI_CRUDO, CUIL_CRUDO), DATOS).id();
-		servicio.actualizar(admin, id, new DeportistaSolicitud(DNI_CRUDO, "Zuleica", "Quintana", CUIL_CRUDO, null, null,
-				"Calle Secreta 123", null, "Banfield", null, null, "11-4444-5555", "zuleica@example.com"), DATOS);
-		servicio.actualizar(admin, id, solicitud("36789099", CUIL_CRUDO), DATOS);
-		servicio.actualizar(admin, id, solicitud("36789099", CUIL_CRUDO), DATOS); // identica: sin auditoria
-		servicio.desactivar(admin, id, DATOS);
-		servicio.desactivar(admin, id, DATOS); // repetida: sin auditoria
-		servicio.activar(admin, id, DATOS);
-		servicio.activar(admin, id, DATOS); // repetida: sin auditoria
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(new DeportistaSolicitud(DNI_CRUDO, "Zuleica", "Quintana", CUIL_CRUDO, null, null,
+				"Calle Secreta 123", null, "Banfield", null, null, "11-4444-5555", "zuleica@example.com"), version(id)), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("36789099", CUIL_CRUDO), version(id)), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("36789099", CUIL_CRUDO), version(id)), DATOS); // identica: sin auditoria
+		servicio.desactivar(admin, id, version(id), DATOS);
+		servicio.desactivar(admin, id, version(id), DATOS); // repetida: sin auditoria
+		servicio.activar(admin, id, version(id), DATOS);
+		servicio.activar(admin, id, version(id), DATOS); // repetida: sin auditoria
 
 		List<Map<String, Object>> eventos = jdbc.sql("""
 				SELECT accion, usuario_id, recurso_tipo, recurso_id, detalle::text AS detalle
@@ -352,11 +353,11 @@ class DeportistaServiceDbTest extends BaseDbTest {
 		Map<String, Object> antes = jdbc.sql("SELECT * FROM gestion_patin.deportista WHERE id = :id").param("id", id).query()
 				.singleRow();
 
-		assertThatThrownBy(() -> servicio.actualizar(admin, id, solicitud("36789014", CUIL), DATOS))
+		assertThatThrownBy(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("36789014", CUIL), version(id)), DATOS))
 				.satisfies(e -> assertError(e, "DNI_DUPLICADO"));
 		assertThatThrownBy(() -> servicio.crear(admin, solicitud(DNI, null), DATOS))
 				.satisfies(e -> assertError(e, "DNI_DUPLICADO"));
-		servicio.actualizar(admin, id, solicitud(DNI, CUIL), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud(DNI, CUIL), version(id)), DATOS);
 
 		assertThat(contar("auditoria", escuelaA)).isEqualTo(auditoriasAntes);
 		assertThat(jdbc.sql("SELECT * FROM gestion_patin.deportista WHERE id = :id").param("id", id).query().singleRow())
@@ -370,7 +371,7 @@ class DeportistaServiceDbTest extends BaseDbTest {
 		ListAppender<ILoggingEvent> logs = capturarLogs();
 		try {
 			UUID id = servicio.crear(admin, solicitud(DNI_CRUDO, CUIL_CRUDO), DATOS).id();
-			servicio.actualizar(admin, id, solicitud("36.789.099", CUIL_CRUDO), DATOS);
+			servicio.actualizar(admin, id, DeportistaPruebas.conRevision(solicitud("36.789.099", CUIL_CRUDO), version(id)), DATOS);
 			assertThatThrownBy(() -> servicio.crear(admin, solicitud("36.789.099", null), DATOS))
 					.isInstanceOf(ExcepcionNegocio.class);
 			servicio.crear(adminDeB, solicitud(DNI, CUIL), DATOS);
@@ -423,5 +424,10 @@ class DeportistaServiceDbTest extends BaseDbTest {
 			Thread.sleep(100);
 		}
 		throw new IllegalStateException("ninguna sesion quedo esperando el bloqueo del indice unico");
+	}
+
+	/** Revision vigente del deportista, tal como la veria un administrador al abrirlo. */
+	private long version(UUID deportistaId) {
+		return Long.parseLong(servicio.obtener(admin, deportistaId).version());
 	}
 }

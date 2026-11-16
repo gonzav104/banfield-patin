@@ -21,10 +21,15 @@ import com.banfieldpatin.backend.compartido.web.Busqueda;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.FiltroEstado;
 import com.banfieldpatin.backend.compartido.web.Pagina;
+import com.banfieldpatin.backend.deportistas.dto.DeportistaActualizacion;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
+import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 /**
  * Gestion administrativa de deportistas (datos permanentes). La escuela y el actor salen siempre del JWT; un id de otra
@@ -44,10 +49,12 @@ public class DeportistaAdminService {
 
 	private final DeportistaRepository deportistas;
 	private final AuditoriaService auditoria;
+	private final EntityManager em;
 
-	public DeportistaAdminService(DeportistaRepository deportistas, AuditoriaService auditoria) {
+	public DeportistaAdminService(DeportistaRepository deportistas, AuditoriaService auditoria, EntityManager em) {
 		this.deportistas = deportistas;
 		this.auditoria = auditoria;
+		this.em = em;
 	}
 
 	public static ExcepcionNegocio deportistaNoEncontrado() {
@@ -101,8 +108,9 @@ public class DeportistaAdminService {
 	 * conflicto: la unicidad solo se comprueba cuando el valor cambia (y siempre ignorando al propio deportista).
 	 */
 	@Transactional
-	public DeportistaDetalle actualizar(UsuarioAutenticado admin, UUID id, DeportistaSolicitud s, DatosSolicitud datos) {
-		Deportista deportista = cargar(admin, id);
+	public DeportistaDetalle actualizar(UsuarioAutenticado admin, UUID id, DeportistaActualizacion s,
+			DatosSolicitud datos) {
+		Deportista deportista = cargarParaModificar(admin, id, s.versionEsperada());
 		String dni = DocumentoIdentidad.normalizarDni(s.dni());
 		String cuil = DocumentoIdentidad.normalizarCuil(s.cuil());
 		if (!dni.equals(deportista.getDni())) {
@@ -124,8 +132,8 @@ public class DeportistaAdminService {
 	}
 
 	@Transactional
-	public DeportistaDetalle activar(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
-		Deportista deportista = cargar(admin, id);
+	public DeportistaDetalle activar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Deportista deportista = cargarParaModificar(admin, id, versionEsperada);
 		if (deportista.activar()) {
 			deportistas.saveAndFlush(deportista);
 			registrar(admin, AccionAuditoria.DEPORTISTA_ACTIVADO, deportista, Map.of(), datos);
@@ -134,13 +142,36 @@ public class DeportistaAdminService {
 	}
 
 	@Transactional
-	public DeportistaDetalle desactivar(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
-		Deportista deportista = cargar(admin, id);
+	public DeportistaDetalle desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Deportista deportista = cargarParaModificar(admin, id, versionEsperada);
 		if (deportista.desactivar()) {
 			deportistas.saveAndFlush(deportista);
 			registrar(admin, AccionAuditoria.DEPORTISTA_DESACTIVADO, deportista, Map.of(), datos);
 		}
 		return DeportistaDetalle.de(deportista);
+	}
+
+	public static ExcepcionNegocio edicionDesactualizada() {
+		return FamiliaAdminService.edicionDesactualizada();
+	}
+
+	/**
+	 * Orden: 404 (otra escuela = mismo 404) -> revision (409 EDICION_DESACTUALIZADA, incluso si el valor ya coincide) ->
+	 * lo demas. La comparacion detecta formularios viejos; {@code @Version} agrega el predicado atomico al UPDATE (dos
+	 * escrituras sobre la misma revision dejan un unico ganador); OPTIMISTIC comprueba tambien la revision al completar
+	 * una transaccion sin cambios (sin UPDATE). El commit ocurre antes de entregar el DTO al controller; cualquier
+	 * conflicto revierte tambien la auditoria.
+	 */
+	private Deportista cargarParaModificar(UsuarioAutenticado admin, UUID id, Long versionEsperada) {
+		Deportista deportista = cargar(admin, id);
+		if (versionEsperada == null || versionEsperada < 0) {
+			throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "VALIDACION", "La revisión es obligatoria y no negativa.");
+		}
+		if (deportista.getVersion() != versionEsperada) {
+			throw edicionDesactualizada();
+		}
+		em.lock(deportista, LockModeType.OPTIMISTIC);
+		return deportista;
 	}
 
 	private Deportista cargar(UsuarioAutenticado admin, UUID id) {

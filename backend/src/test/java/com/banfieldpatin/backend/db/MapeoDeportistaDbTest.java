@@ -22,6 +22,7 @@ import com.banfieldpatin.backend.compartido.error.RestriccionViolada;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.Deportista;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
+import com.banfieldpatin.backend.deportistas.DeportistaPruebas;
 import com.banfieldpatin.backend.deportistas.DeportistaRepository;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
@@ -156,7 +157,7 @@ class MapeoDeportistaDbTest extends BaseDbTest {
 	void editarReemplazaTodosLosCamposYVaciarUnOpcionalLoDejaNulo() {
 		UUID id = servicio.crear(admin, completa(DNI, CUIL), DATOS).id();
 
-		DeportistaDetalle editado = servicio.actualizar(admin, id, minima(DNI), DATOS);
+		DeportistaDetalle editado = servicio.actualizar(admin, id, DeportistaPruebas.conRevision(minima(DNI), version(id)), DATOS);
 
 		Map<String, Object> fila = fila(id);
 		assertThat(fila.get("cuil")).isNull();
@@ -194,9 +195,9 @@ class MapeoDeportistaDbTest extends BaseDbTest {
 	void elEstadoActivoSePersisteEnAmbosSentidos() {
 		UUID id = servicio.crear(admin, minima(DNI), DATOS).id();
 
-		assertThat(servicio.desactivar(admin, id, DATOS).activo()).isFalse();
+		assertThat(servicio.desactivar(admin, id, version(id), DATOS).activo()).isFalse();
 		assertThat(fila(id).get("activo")).isEqualTo(false);
-		assertThat(servicio.activar(admin, id, DATOS).activo()).isTrue();
+		assertThat(servicio.activar(admin, id, version(id), DATOS).activo()).isTrue();
 		assertThat(fila(id).get("activo")).isEqualTo(true);
 	}
 
@@ -259,11 +260,11 @@ class MapeoDeportistaDbTest extends BaseDbTest {
 		Map<String, Object> antes = jdbc.sql("SELECT * FROM gestion_patin.familia_deportista WHERE id = :id")
 				.param("id", vinculo).query().singleRow();
 
-		servicio.desactivar(admin, id, DATOS);
-		servicio.desactivar(admin, id, DATOS);
-		servicio.activar(admin, id, DATOS);
-		servicio.desactivar(admin, id, DATOS);
-		servicio.actualizar(admin, id, completa(DNI, null), DATOS);
+		servicio.desactivar(admin, id, version(id), DATOS);
+		servicio.desactivar(admin, id, version(id), DATOS);
+		servicio.activar(admin, id, version(id), DATOS);
+		servicio.desactivar(admin, id, version(id), DATOS);
+		servicio.actualizar(admin, id, DeportistaPruebas.conRevision(completa(DNI, null), version(id)), DATOS);
 
 		Map<String, Object> despues = jdbc.sql("SELECT * FROM gestion_patin.familia_deportista WHERE id = :id")
 				.param("id", vinculo).query().singleRow();
@@ -285,8 +286,8 @@ class MapeoDeportistaDbTest extends BaseDbTest {
 		Map<String, Object> filaAntes = fila(id);
 
 		for (Runnable accion : new Runnable[] { () -> servicio.obtener(adminDeB, id),
-				() -> servicio.actualizar(adminDeB, id, minima("30999888"), DATOS),
-				() -> servicio.activar(adminDeB, id, DATOS), () -> servicio.desactivar(adminDeB, id, DATOS),
+				() -> servicio.actualizar(adminDeB, id, DeportistaPruebas.conRevision(minima("30999888"), version(id)), DATOS),
+				() -> servicio.activar(adminDeB, id, version(id), DATOS), () -> servicio.desactivar(adminDeB, id, version(id), DATOS),
 				() -> servicio.obtener(adminDeB, UUID.randomUUID()) }) {
 			assertThatThrownBy(accion::run).hasMessage("El deportista no existe.");
 		}
@@ -308,11 +309,19 @@ class MapeoDeportistaDbTest extends BaseDbTest {
 
 		long obtener = sentencias(() -> servicio.obtener(admin, id));
 		long crear = sentencias(() -> servicio.crear(admin, minima("31999888"), DATOS));
-		long editar = sentencias(() -> servicio.actualizar(admin, id, completa("31.999.777", CUIL), DATOS));
+		long revision = version(id); // la lectura previa de la revision no cuenta: es lo que ya vio el administrador
+		long editar = sentencias(() -> servicio.actualizar(admin, id, DeportistaPruebas.conRevision(completa("31.999.777", CUIL), revision), DATOS));
 
 		assertThat(obtener).isLessThanOrEqualTo(1);
-		// pre-chequeo de DNI + insert (+ la auditoria por JDBC); deportista + pre-chequeo de DNI + update (+ auditoria).
+		// pre-chequeo de DNI + insert (+ la auditoria por JDBC); deportista + pre-chequeo de DNI + update (+ auditoria) + la
+		// verificacion de la revision al confirmar (LockModeType.OPTIMISTIC, FE-05/U6: el mismo costo que Familia y Tutor,
+		// necesario para que un «sin cambios» tambien falle si el deportista cambio antes del commit).
 		assertThat(crear).isLessThanOrEqualTo(3);
-		assertThat(editar).isLessThanOrEqualTo(3);
+		assertThat(editar).isLessThanOrEqualTo(4);
+	}
+
+	/** Revision vigente del deportista, tal como la veria un administrador al abrirlo. */
+	private long version(UUID deportistaId) {
+		return Long.parseLong(servicio.obtener(admin, deportistaId).version());
 	}
 }
