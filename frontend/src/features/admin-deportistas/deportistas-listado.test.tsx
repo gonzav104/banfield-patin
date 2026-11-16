@@ -120,6 +120,7 @@ describe('athlete list (mock backend)', () => {
     await openAthletes();
     expect(await screen.findByText('Todavía no hay deportistas registrados.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nuevo deportista' })).toHaveAttribute('href', '/admin/deportistas/nuevo');
   });
 
   it('shows a safe error with a working retry', async () => {

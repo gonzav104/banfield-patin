@@ -92,6 +92,9 @@ function AthleteList() {
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Deportistas</h1>
           <p className="mt-2 text-muted">Consultá los deportistas de la escuela. El DNI se muestra parcialmente: el completo está en el detalle.</p>
         </div>
+        <Button asChild>
+          <Link to="/admin/deportistas/nuevo">Nuevo deportista</Link>
+        </Button>
       </header>
 
       <section aria-label="Filtros" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">

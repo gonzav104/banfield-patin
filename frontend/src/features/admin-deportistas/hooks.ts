@@ -1,5 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { getAthlete, listAthletes, type AthleteListParams } from './api';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ApiError } from '@/lib/api-error';
+import { createAthlete, getAthlete, listAthletes, type AthleteListParams } from './api';
+import type { AthleteDetail, AthleteInput } from './schemas';
 
 /** Prefix of every athlete-related query (list and detail): one invalidation refreshes the lists. */
 const athletesKey = ['admin', 'athletes'] as const;
@@ -21,4 +23,13 @@ export function useAthleteList(params: AthleteListParams) {
  */
 export function useAthleteDetail(id: string, enabled: boolean) {
   return useQuery({ queryKey: athleteDetailKey(id), queryFn: () => getAthlete(id), enabled, gcTime: 0 });
+}
+
+/** After a confirmed creation the lists are refreshed from the server; the detail is read fresh by its own screen. */
+export function useCreateAthlete() {
+  const queryClient = useQueryClient();
+  return useMutation<AthleteDetail, ApiError, AthleteInput>({
+    mutationFn: createAthlete,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: athletesKey }),
+  });
 }

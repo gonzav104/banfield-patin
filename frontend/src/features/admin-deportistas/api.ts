@@ -1,9 +1,11 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
-import { apiGet } from '@/lib/http';
-import { athleteDetailSchema, athletePageSchema, type AthleteDetail, type AthletePage, type AthleteStatusFilter } from './schemas';
+import { apiGet, apiWrite } from '@/lib/http';
+import { athleteDetailSchema, athletePageSchema, type AthleteDetail, type AthleteInput, type AthletePage, type AthleteStatusFilter } from './schemas';
 
 export const ATHLETE_PAGE_SIZE = 20;
+/** The most the backend returns in one page (Pagina.TAMANIO_MAXIMO): the verification of an uncertain creation asks for all of it. */
+export const ATHLETE_VERIFY_PAGE_SIZE = 100;
 /** The backend cuts the search term at this length (Busqueda.LONGITUD_MAXIMA). */
 export const SEARCH_MAX_LENGTH = 100;
 
@@ -19,11 +21,13 @@ export interface AthleteListParams {
   busqueda: string;
   /** Zero-based, as the backend expects. */
   page: number;
+  /** Defaults to the list's page size. */
+  size?: number;
 }
 
 /** The backend default is ACTIVOS, so `estado` always travels: what the screen shows is what is requested. */
-export async function listAthletes({ estado, busqueda, page }: AthleteListParams): Promise<AthletePage> {
-  const query = new URLSearchParams({ estado, page: String(page), size: String(ATHLETE_PAGE_SIZE) });
+export async function listAthletes({ estado, busqueda, page, size = ATHLETE_PAGE_SIZE }: AthleteListParams): Promise<AthletePage> {
+  const query = new URLSearchParams({ estado, page: String(page), size: String(size) });
   if (busqueda !== '') query.set('busqueda', busqueda);
   return parse(athletePageSchema, await apiGet(`/admin/deportistas?${query.toString()}`));
 }
@@ -35,4 +39,12 @@ export const isSafeAthleteId = (id: string | undefined): id is string => id !== 
 /** GET /api/admin/deportistas/{id}: the individual ADMIN view, with the FULL DNI and CUIL. */
 export async function getAthlete(id: string): Promise<AthleteDetail> {
   return parse(athleteDetailSchema, await apiGet(`/admin/deportistas/${encodeURIComponent(id)}`));
+}
+
+/**
+ * POST /api/admin/deportistas. It carries no revision (a new athlete has none). Never retried (apiWrite): a failed write is
+ * ambiguous, and the caller must tell the administrator so instead of resending.
+ */
+export async function createAthlete(datos: AthleteInput): Promise<AthleteDetail> {
+  return parse(athleteDetailSchema, await apiWrite('post', '/admin/deportistas', datos));
 }

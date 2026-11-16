@@ -45,3 +45,20 @@ export const athleteDetailSchema = z.object({
   version: z.string().regex(/^[0-9]{1,19}$/),
 });
 export type AthleteDetail = z.infer<typeof athleteDetailSchema>;
+
+/** The data of a new athlete, exactly the fields of the backend contract (DeportistaSolicitud). A blank optional is never sent. */
+export interface AthleteInput {
+  dni: string;
+  nombre: string;
+  apellido: string;
+  cuil?: string;
+  fechaNacimiento?: string;
+  nacionalidad?: string;
+  domicilio?: string;
+  otrosDatosDomicilio?: string;
+  localidad?: string;
+  partido?: string;
+  codigoPostal?: string;
+  telefonoContacto?: string;
+  emailFederativo?: string;
+}
