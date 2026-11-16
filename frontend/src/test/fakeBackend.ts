@@ -519,6 +519,82 @@ export class FakeBackend {
     return { status: 201, body: this.athleteDetail(athlete) };
   }
 
+  /** Another administrator edits the athlete while this one is editing: the revision moves on, as the real backend would. */
+  changeAdminAthleteBehindTheScenes(id: string, change: Partial<Omit<FakeAdminAthlete, 'id' | 'version'>>): void {
+    const athlete = this.adminAthletes.find((a) => a.id === id);
+    if (!athlete) throw new Error(`Unknown fake athlete ${id}`);
+    Object.assign(athlete, change);
+    athlete.version += 1;
+  }
+
+  adminAthleteVersion(id: string): string {
+    return String(this.adminAthletes.find((a) => a.id === id)?.version);
+  }
+
+  adminAthlete(id: string): FakeAdminAthlete | undefined {
+    return this.adminAthletes.find((a) => a.id === id);
+  }
+
+  /**
+   * Mirrors PUT /admin/deportistas/{id} (DeportistaActualizacion, a COMPLETE replacement): any other property -> 400
+   * SOLICITUD_INVALIDA, bean validation (400 VALIDACION, the revision is required), 404, the revision (409 EDICION_DESACTUALIZADA,
+   * BEFORE any uniqueness rule and even when the data already match), then DNI/CUIL uniqueness only when the value changes and
+   * ignoring the athlete itself. A write with no change does not move the revision; a real one does. `activo` is never touched.
+   */
+  private updateAthlete(id: string, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (Object.keys(input).some((k) => ![...ATHLETE_FIELDS, 'versionEsperada'].includes(k))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const bad = { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: [{ campo: 'x', mensaje: 'detalle del servidor' }] } };
+    const revision = input.versionEsperada;
+    if (revision === undefined || revision === null) return bad;
+    if (typeof revision !== 'string' || !/^[0-9]{1,19}$/.test(revision)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const optional = (v: unknown) => (text(v) === '' ? null : text(v));
+    const dniRaw = text(input.dni);
+    const dni = dniRaw.replace(/[.\s]/g, '');
+    const nombre = text(input.nombre);
+    const apellido = text(input.apellido);
+    if (dniRaw === '' || dniRaw.length > 20 || !/^[0-9]{7,9}$/.test(dni) || nombre === '' || apellido === '' || nombre.length > 100 || apellido.length > 100) return bad;
+    const cuilRaw = optional(input.cuil);
+    if (cuilRaw !== null && (cuilRaw.length > 20 || !validCuil(cuilRaw))) return bad;
+    const birth = optional(input.fechaNacimiento);
+    if (birth !== null && (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || birth >= new Date().toISOString().slice(0, 10))) return bad;
+    const limits: Record<string, number> = { nacionalidad: 80, domicilio: 180, otrosDatosDomicilio: 250, localidad: 100, partido: 100, codigoPostal: 15, telefonoContacto: 40 };
+    for (const [field, max] of Object.entries(limits)) if ((optional(input[field])?.length ?? 0) > max) return bad;
+    const email = optional(input.emailFederativo);
+    if (email !== null && (email.length > 180 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) return bad;
+    const athlete = this.adminAthletes.find((a) => a.id === id);
+    if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    if (String(athlete.version) !== revision) return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    const cuil = cuilRaw === null ? null : cuilRaw.replace(/[.\-\s]/g, '');
+    if (dni !== athlete.dni) {
+      const holder = this.adminAthletes.find((a) => a.dni === dni && a.id !== id);
+      if (holder) return holder.activo ? this.error(409, 'DNI_DUPLICADO', 'Ya existe un deportista con ese DNI.') : this.error(409, 'DNI_RESERVADO_POR_INACTIVO', 'Ya existe un deportista inactivo con ese DNI.');
+    }
+    if (cuil !== null && cuil !== athlete.cuil && this.adminAthletes.some((a) => a.cuil === cuil && a.id !== id)) return this.error(409, 'CUIL_DUPLICADO', 'Ya existe un deportista con ese CUIL.');
+    const next = {
+      dni,
+      nombre,
+      apellido,
+      cuil,
+      fechaNacimiento: birth,
+      nacionalidad: optional(input.nacionalidad),
+      domicilio: optional(input.domicilio),
+      otrosDatosDomicilio: optional(input.otrosDatosDomicilio),
+      localidad: optional(input.localidad),
+      partido: optional(input.partido),
+      codigoPostal: optional(input.codigoPostal),
+      telefonoContacto: optional(input.telefonoContacto),
+      emailFederativo: email === null ? null : email.toLowerCase(),
+    };
+    const changed = (Object.keys(next) as (keyof typeof next)[]).some((key) => athlete[key] !== next[key]);
+    if (changed) {
+      Object.assign(athlete, next);
+      athlete.version += 1;
+    }
+    return { status: 200, body: this.athleteDetail(athlete) };
+  }
+
   /** Mirrors GET /admin/deportistas: `estado` defaults to ACTIVOS (unknown -> 400), «contains» search over names and DNI prefix, order apellido, nombre, id. */
   private listAthletes(params: URLSearchParams): { status: number; body?: unknown } {
     const estado = (params.get('estado') ?? '').trim() || 'ACTIVOS';
@@ -639,6 +715,8 @@ export class FakeBackend {
       if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
       return { status: 200, body: this.athleteDetail(athlete) };
     }
+    const athleteWrite = /^\/admin\/deportistas\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
+    if (method === 'put' && athleteWrite && !athleteWrite[2]) return this.updateAthlete(athleteWrite[1]!, body);
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');
       const rows = this.invitations.filter((i) => !wanted || this.statusOf(i) === wanted).map((i) => this.view(i));

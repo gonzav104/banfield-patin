@@ -1,7 +1,9 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AuthUser } from '@/features/auth/api';
+import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { createAthlete, getAthlete, listAthletes, type AthleteListParams } from './api';
-import type { AthleteDetail, AthleteInput } from './schemas';
+import { createAthlete, getAthlete, listAthletes, updateAthlete, type AthleteListParams } from './api';
+import type { AthleteDetail, AthleteInput, AthleteUpdateInput } from './schemas';
 
 /** Prefix of every athlete-related query (list and detail): one invalidation refreshes the lists. */
 const athletesKey = ['admin', 'athletes'] as const;
@@ -32,4 +34,30 @@ export function useCreateAthlete() {
     mutationFn: createAthlete,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: athletesKey }),
   });
+}
+
+/** Who the session belongs to right now (null: nobody). */
+const currentUserId = (queryClient: QueryClient): string | null => queryClient.getQueryData<AuthUser | null>(sessionKey)?.id ?? null;
+
+/**
+ * After a CONFIRMED write the response (the current state of the athlete, with its new revision) replaces the cached detail and the
+ * lists are refreshed from the server: nothing is shown as saved until the backend said so. A write is not cancelled when the
+ * session changes while it is in flight: if its answer arrives for ANOTHER identity than the one that issued it, it is dropped
+ * (it must never put the previous identity's full detail, DNI and CUIL included, back in a cache that was just cleared).
+ */
+function useAthleteWrite<TInput extends { id: string }>(write: (input: TInput) => Promise<AthleteDetail>) {
+  const queryClient = useQueryClient();
+  return useMutation<AthleteDetail, ApiError, TInput, { identity: string | null }>({
+    mutationFn: write,
+    onMutate: () => ({ identity: currentUserId(queryClient) }),
+    onSuccess: (saved, _input, context) => {
+      if (context?.identity !== currentUserId(queryClient)) return;
+      queryClient.setQueryData(athleteDetailKey(saved.id), saved);
+      return queryClient.invalidateQueries({ queryKey: athletesKey });
+    },
+  });
+}
+
+export function useUpdateAthlete() {
+  return useAthleteWrite((input: { id: string; datos: AthleteUpdateInput; version: string }) => updateAthlete(input));
 }

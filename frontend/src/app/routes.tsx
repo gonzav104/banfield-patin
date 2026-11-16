@@ -14,6 +14,7 @@ import { AdminTutorEditarPage } from '@/features/admin-familias/AdminTutorEditar
 import { AdminTutorDetallePage } from '@/features/admin-familias/AdminTutorDetallePage';
 import { AdminTutorNuevoPage } from '@/features/admin-familias/AdminTutorNuevoPage';
 import { AdminDeportistaDetallePage } from '@/features/admin-deportistas/AdminDeportistaDetallePage';
+import { AdminDeportistaEditarPage } from '@/features/admin-deportistas/AdminDeportistaEditarPage';
 import { AdminDeportistaNuevoPage } from '@/features/admin-deportistas/AdminDeportistaNuevoPage';
 import { AdminDeportistasPage } from '@/features/admin-deportistas/AdminDeportistasPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
@@ -77,6 +78,7 @@ export function AppRoutes() {
           <Route path="/admin/deportistas" element={<AdminDeportistasPage />} />
           <Route path="/admin/deportistas/nuevo" element={<AdminDeportistaNuevoPage />} />
           <Route path="/admin/deportistas/:id" element={<AdminDeportistaDetallePage />} />
+          <Route path="/admin/deportistas/:id/editar" element={<AdminDeportistaEditarPage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>

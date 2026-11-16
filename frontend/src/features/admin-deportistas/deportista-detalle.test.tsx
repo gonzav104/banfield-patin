@@ -94,13 +94,13 @@ describe('athlete detail: data (mock backend)', () => {
     expect(screen.queryByText('Activo')).not.toBeInTheDocument();
   });
 
-  it('is read-only: no edit, status or write control, no write request, and the revision is not shown', async () => {
+  it('does not edit in place: the data are plain text, the revision is not shown, editing is a separate screen and nothing is written on load', async () => {
     const athlete = seedFull();
     athlete.version = 7;
     open(`/admin/deportistas/${athlete.id}`);
     await screen.findByRole('heading', { level: 1, name: 'Lucía Sintética' });
-    expect(screen.queryByRole('button', { name: /editar|guardar|desactivar|activar/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /editar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Editar deportista' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/editar`);
     expect(screen.queryByText(/revisión|versión/i)).not.toBeInTheDocument();
     expect(writes()).toHaveLength(0);
   });
