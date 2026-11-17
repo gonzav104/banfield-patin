@@ -269,8 +269,16 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
 `.github/workflows/frontend.yml` corre en cada `push` y `pull_request`, con Node fijado en `frontend/.node-version`:
 
 - **Verificación:** `npm ci`, `typecheck`, `lint`, `npm test` y `npm run build`.
-- **Auditoría:** `npm audit --audit-level=moderate`, en un job aparte: un aviso nuevo del registro de npm lo hace
-  fallar sin que el código haya cambiado, y así se distingue de una regresión.
+- **Auditoría:** `npm audit` con el umbral en `moderate`, en un job aparte: un aviso nuevo del registro de npm lo hace
+  fallar sin que el código haya cambiado, y así se distingue de una regresión. El job usa
+  `.github/scripts/auditoria-npm.mjs`, que **solo acepta** los avisos listados en `.github/auditoria-excepciones.json`,
+  cada uno con su motivo y una fecha de vencimiento (como máximo 30 días): cualquier otro aviso `moderate` o superior
+  falla, y una excepción deja de valer al vencer o apenas cambia el rango afectado que informa npm (señal de que se
+  publicó una versión corregida). Para dar de baja una excepción alcanza con actualizar la dependencia y borrar su
+  entrada; el job avisa cuando una excepción ya no la usa ningún aviso. Vigente hoy: `GHSA-fc5q-39xc-vjpf` (ReDoS de
+  `picomatch` sin versión corregida; dependencia solo de desarrollo, ver el motivo en el archivo). Se prueba con
+  `node --test .github/scripts/auditoria-npm.test.mjs`; `node .github/scripts/auditoria-npm.mjs` corre el gate real
+  desde `frontend/`.
 - **E2E reales:** `.github/scripts/frontend-e2e.sh` levanta una PostgreSQL descartable con Docker, el backend y Vite, y
   corre Playwright. Las credenciales se generan en cada ejecución y el contenedor se elimina al terminar. El mismo
   script sirve en local (Docker, Java 21, `npm ci` y `npx playwright install chromium`): `bash .github/scripts/frontend-e2e.sh`

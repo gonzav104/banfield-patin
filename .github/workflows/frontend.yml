@@ -64,9 +64,13 @@ jobs:
         with:
           node-version-file: frontend/.node-version
 
-      # Usa solo package-lock.json; no hace falta instalar.
-      - name: npm audit
-        run: npm audit --audit-level=moderate
+      - name: Pruebas del evaluador de la auditoría
+        run: node --test ../.github/scripts/auditoria-npm.test.mjs
+
+      # `npm audit` con el umbral en `moderate`; solo acepta los avisos listados, con motivo y vencimiento, en
+      # .github/auditoria-excepciones.json (ver .github/scripts/auditoria-npm.mjs). Usa solo package-lock.json; no hace falta instalar.
+      - name: npm audit (con excepciones acotadas y con vencimiento)
+        run: node ../.github/scripts/auditoria-npm.mjs
 
   # Flujos reales: navegador -> Vite -> backend Spring -> PostgreSQL. La suite se reparte en shards (frontend/e2e/shards.json): cada
   # shard es un runner independiente con su propia base PostgreSQL descartable, backend, frontend y credenciales efimeras (nada
