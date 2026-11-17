@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { countSeasons, createSportsRow, getAthleteHeader, getSportsHistory, getSportsRow, listAllSeasons } from './api';
+import { countSeasons, createSportsRow, getAthleteHeader, getSportsHistory, getSportsRow, listAllSeasons, updateSportsRow } from './api';
 import type { SportsRow } from './schemas';
-import type { CreateSportsInput } from './sports-form';
+import type { CreateSportsInput, UpdateSportsInput } from './sports-form';
 
 /**
  * Every key starts with `admin`, so the session code treats it as PRIVATE: the cache is dropped, and what is in flight aborted, as soon
@@ -55,6 +55,24 @@ export function useCreateSportsRow() {
   const queryClient = useQueryClient();
   return useMutation<SportsRow, ApiError, { athleteId: string; datos: CreateSportsInput }, { identity: string | null }>({
     mutationFn: createSportsRow,
+    onMutate: () => ({ identity: currentUserId(queryClient) }),
+    onSuccess: (_row, input, context) => {
+      if (context?.identity !== currentUserId(queryClient)) return;
+      return queryClient.invalidateQueries({ queryKey: athleteSportsKey(input.athleteId) });
+    },
+  });
+}
+
+/**
+ * Edits a row. After a CONFIRMED 200 what was cached about that athlete is refreshed from the server; nothing is shown as saved until
+ * the backend said so. The request is not cancelled when the session changes while it is in flight: if its answer arrives for ANOTHER
+ * identity than the one that sent it, it is dropped and touches no cache. The screens' own `mutate` callbacks do not run once their
+ * screen is gone, which is what keeps a late answer from navigating anywhere.
+ */
+export function useUpdateSportsRow() {
+  const queryClient = useQueryClient();
+  return useMutation<SportsRow, ApiError, { athleteId: string; seasonId: string; datos: UpdateSportsInput; version: string }, { identity: string | null }>({
+    mutationFn: updateSportsRow,
     onMutate: () => ({ identity: currentUserId(queryClient) }),
     onSuccess: (_row, input, context) => {
       if (context?.identity !== currentUserId(queryClient)) return;

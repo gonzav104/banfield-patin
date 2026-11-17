@@ -16,6 +16,7 @@ import { AdminTutorNuevoPage } from '@/features/admin-familias/AdminTutorNuevoPa
 import { AdminDeportistaDetallePage } from '@/features/admin-deportistas/AdminDeportistaDetallePage';
 import { AdminDatosDeportivosAltaPage } from '@/features/admin-datos-deportivos/AdminDatosDeportivosAltaPage';
 import { AdminDatosDeportivosDetallePage } from '@/features/admin-datos-deportivos/AdminDatosDeportivosDetallePage';
+import { AdminDatosDeportivosEdicionPage } from '@/features/admin-datos-deportivos/AdminDatosDeportivosEdicionPage';
 import { AdminDatosDeportivosHistorialPage } from '@/features/admin-datos-deportivos/AdminDatosDeportivosHistorialPage';
 import { AdminDeportistaEditarPage } from '@/features/admin-deportistas/AdminDeportistaEditarPage';
 import { AdminDeportistaNuevoPage } from '@/features/admin-deportistas/AdminDeportistaNuevoPage';
@@ -85,6 +86,7 @@ export function AppRoutes() {
           <Route path="/admin/deportistas/:id/temporadas" element={<AdminDatosDeportivosHistorialPage />} />
           <Route path="/admin/deportistas/:id/temporadas/nueva" element={<AdminDatosDeportivosAltaPage />} />
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId" element={<AdminDatosDeportivosDetallePage />} />
+          <Route path="/admin/deportistas/:id/temporadas/:temporadaId/editar" element={<AdminDatosDeportivosEdicionPage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>

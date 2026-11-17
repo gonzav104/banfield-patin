@@ -3,7 +3,7 @@ import { isSafeAthleteId } from '@/features/admin-deportistas/api';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiWrite } from '@/lib/http';
 import { athleteHeaderSchema, seasonPageSchema, sportsHistorySchema, sportsRowSchema, type AthleteHeader, type Season, type SportsRow } from './schemas';
-import type { CreateSportsInput } from './sports-form';
+import type { CreateSportsInput, UpdateSportsInput } from './sports-form';
 
 /** An id taken from the address is requested only if it cannot alter the path (same rule as the athlete screens). */
 export const isSafeId = isSafeAthleteId;
@@ -73,5 +73,18 @@ export async function listAllSeasons(): Promise<Season[]> {
 export async function createSportsRow(input: { athleteId: string; datos: CreateSportsInput }): Promise<SportsRow> {
   const row = parse(sportsRowSchema, await apiWrite('post', `/admin/deportistas/${encodeURIComponent(input.athleteId)}/temporadas`, input.datos));
   if (row.deportistaId !== input.athleteId || row.temporadaId !== input.datos.temporadaId) throw new ApiError('server', 'El servidor respondió con datos que no corresponden.');
+  return row;
+}
+
+/**
+ * PUT /api/admin/deportistas/{id}/temporadas/{temporadaId}: a COMPLETE replacement protected by the revision of THAT row. `version` is the
+ * revision the administrator observed (versionEsperada, a decimal string): it is sent as it is, never refreshed on the way. Never retried
+ * (apiWrite): a failed write is ambiguous. A 200 whose body is unreadable or belongs to another athlete or season is treated as an
+ * answer that cannot be confirmed.
+ */
+export async function updateSportsRow(input: { athleteId: string; seasonId: string; datos: UpdateSportsInput; version: string }): Promise<SportsRow> {
+  const path = `/admin/deportistas/${encodeURIComponent(input.athleteId)}/temporadas/${encodeURIComponent(input.seasonId)}`;
+  const row = parse(sportsRowSchema, await apiWrite('put', path, { ...input.datos, versionEsperada: input.version }));
+  if (row.deportistaId !== input.athleteId || row.temporadaId !== input.seasonId) throw new ApiError('server', 'El servidor respondió con datos que no corresponden.');
   return row;
 }

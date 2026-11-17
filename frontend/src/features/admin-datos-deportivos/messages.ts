@@ -118,3 +118,85 @@ export function loadErrorMessage(failure: LoadFailure, error: ApiError): string 
       return commonErrorMessage(error) ?? 'No pudimos cargar los datos deportivos. Intentá de nuevo.';
   }
 }
+
+/* ---- Editing sports data (U10-C). Fixed texts: the backend message is never echoed. ---- */
+
+export const EDIT_LINK = 'Editar datos deportivos';
+export const EDIT_TITLE = 'Editar datos deportivos';
+export const EDIT_INTRO = 'Los datos se guardan solo cuando tocás «Guardar cambios». La temporada y el deportista no se pueden cambiar. El estado en la escuela se cambia desde el detalle del deportista.';
+export const EDITED_NOTICE = 'Cambios guardados.';
+export const EDIT_SUBMIT = 'Guardar cambios';
+export const EDIT_SUBMITTING = 'Guardando…';
+export const EDIT_NOTHING_TO_SAVE = 'No hay cambios para guardar.';
+
+export const STALE_ROW_TEXT =
+  'Otra persona pudo haber modificado estos datos mientras los editabas. Tu borrador sigue acá, pero todavía no se guardó y el guardado queda bloqueado hasta que revises los datos vigentes.';
+export const UNCERTAIN_EDIT_TEXT = 'No pudimos confirmar si el cambio se guardó. Tu borrador sigue acá. Verificá los datos vigentes antes de volver a intentar.';
+export const BUSY_EDIT_TEXT = 'Otra operación está en curso sobre estos datos. Esperá unos segundos y volvé a intentarlo. No se guardó nada.';
+export const INVALID_EDIT_TEXT = 'Revisá los datos: el estado deportivo es obligatorio y el resto debe respetar los formatos y límites.';
+export const EDIT_FORBIDDEN_TEXT = 'No tenés permiso para editar datos deportivos.';
+
+/** How a failed edit must be told to the administrator. */
+export type EditFailure = 'stale' | 'numberTaken' | 'busy' | 'athleteGone' | 'seasonGone' | 'rowGone' | 'uncertain' | 'validation' | 'forbidden' | 'other';
+
+export function classifyEditFailure(error: ApiError): EditFailure {
+  if (error.status === 409) {
+    if (error.code === 'EDICION_DESACTUALIZADA') return 'stale';
+    if (error.code === 'NUMERO_CORREDOR_DUPLICADO') return 'numberTaken';
+    return 'busy'; // any other conflict (CONFLICTO_CONCURRENCIA: the lock could not be had): nothing was applied
+  }
+  if (error.status === 404) {
+    if (error.code === 'DEPORTISTA_NO_ENCONTRADO') return 'athleteGone';
+    if (error.code === 'DEPORTISTA_TEMPORADA_NO_ENCONTRADA') return 'rowGone';
+    return 'seasonGone';
+  }
+  // A network failure, a timeout, any 5xx and an unreadable 2xx may have been applied: never assume it was not.
+  if (error.kind === 'network' || error.kind === 'unavailable' || error.kind === 'server') return 'uncertain';
+  if (error.kind === 'validation') return 'validation';
+  if (error.kind === 'forbidden') return 'forbidden';
+  return 'other';
+}
+
+/** The alert of a failure (the ones that have a field or a screen of their own are not here). */
+export function editErrorMessage(failure: EditFailure, error: ApiError): string {
+  switch (failure) {
+    case 'stale':
+      return STALE_ROW_TEXT;
+    case 'uncertain':
+      return UNCERTAIN_EDIT_TEXT;
+    case 'busy':
+      return BUSY_EDIT_TEXT;
+    case 'validation':
+      return INVALID_EDIT_TEXT;
+    case 'forbidden':
+      return EDIT_FORBIDDEN_TEXT;
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos guardar los cambios. Intentá de nuevo.';
+  }
+}
+
+export const clearedFieldsText = (labels: string[]) =>
+  `Se van a quitar estos datos guardados: ${labels.join(', ')}. El guardado reemplaza todos los datos de la temporada y lo que dejes en blanco se borra.`;
+
+export const REVIEW_INTRO = 'Estos son los datos que tiene la temporada ahora. Revisá qué cambió antes de seguir.';
+export const REVIEW_NO_DIFFERENCES = 'Los datos vigentes son los mismos que viste al abrir: la revisión cambió pero ningún dato.';
+export const REVIEW_MATCHES_DRAFT = 'Los datos vigentes coinciden con tu borrador, pero no podemos saber si los guardó tu envío u otro cambio. No hace falta volver a guardar.';
+export const REVIEW_CONFLICT_NOTE = 'Cambiaron los dos: elegí con qué valor seguir en cada campo.';
+export const REVIEW_CONTINUE_NOTE =
+  'Al seguir, tu borrador se completa con los datos vigentes y el próximo guardado usa la revisión vigente. Nada se guarda hasta que toques «Guardar cambios».';
+export const VERIFY_UNCHANGED_TEXT =
+  'La revisión no cambió: no vemos cambios guardados. Eso no descarta del todo que el envío se haya aplicado: un cambio sin efecto no mueve la revisión.';
+export const VERIFY_UNCHANGED_RETRY_TEXT = 'Si volvés a intentar con la misma revisión y el primer envío sí se había aplicado, el sistema lo rechazará: no se guarda dos veces.';
+export const KIND_TEXT = {
+  incorporated: 'Cambió otra persona: se incorpora el valor vigente',
+  mine: 'Solo cambiaste vos: se conserva tu valor',
+  coincide: 'Los dos lo cambiaron igual',
+  conflict: 'Conflicto: los dos lo cambiaron distinto',
+} as const;
+/** When VERIFYING an uncertain result nobody can say WHO changed what: the texts only describe how the current data compare with the draft. */
+export const KIND_TEXT_VERIFY = {
+  incorporated: 'Cambió el valor vigente desde que abriste: se incorpora',
+  mine: 'Solo cambió tu borrador: se conserva tu valor',
+  coincide: 'El valor vigente ya coincide con tu borrador',
+  conflict: 'El valor vigente y tu borrador son distintos: elegí uno',
+} as const;

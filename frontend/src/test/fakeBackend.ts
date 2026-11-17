@@ -604,11 +604,29 @@ export class FakeBackend {
   }
 
   /**
+   * The normalisation and the bean validation the sports DTOs share: blank optionals become null, category/branch/division are trimmed and
+   * their inner spaces collapsed, the runner number is only trimmed (leading zeros kept), nothing may contain a control character and the
+   * LENGTHS are those of the NORMALISED values. `valid: false` is a 400 VALIDACION.
+   */
+  private sportsText(input: Record<string, unknown>): { valid: boolean; values: { categoria: string | null; rama: string | null; divisional: string | null; numeroCorredor: string | null } } {
+    const text = (value: unknown): string | null => (typeof value === 'string' ? (value.trim().replace(/\s+/g, ' ') || null) : null);
+    const code = (value: unknown): string | null => (typeof value === 'string' ? (value.trim() || null) : null);
+    const values = { categoria: text(input.categoria), rama: text(input.rama), divisional: text(input.divisional), numeroCorredor: code(input.numeroCorredor) };
+    const limits: [keyof typeof values, number][] = [['categoria', 80], ['rama', 40], ['divisional', 80], ['numeroCorredor', 30]];
+    const noControl = (value: string | null) => value === null || ![...value].some((character) => (character.codePointAt(0) ?? 0) < 32 || character === '\u007f');
+    const textFields = [input.categoria, input.rama, input.divisional, input.numeroCorredor];
+    const valid =
+      !textFields.some((value) => value !== undefined && value !== null && typeof value !== 'string') &&
+      !limits.some(([field, max]) => (values[field]?.length ?? 0) > max) &&
+      Object.values(values).every(noControl);
+    return { valid, values };
+  }
+
+  /**
    * Mirrors POST /admin/deportistas/{id}/temporadas (DeportistaTemporadaSolicitud, U9). A property that is not part of the request ->
    * 400 SOLICITUD_INVALIDA (also an unknown sports status); bean validation (a season id, the lengths of the NORMALISED values, no control
    * characters) -> 400 VALIDACION. Then, in the backend's order: 404 athlete, 404 season, 409 inactive athlete, 409 pair already there,
-   * 409 runner number already taken in that season (by anybody). Blank optionals become null; the status defaults to ACTIVO; the
-   * runner number is only trimmed (leading zeros are kept), the other texts also collapse their inner spaces.
+   * 409 runner number already taken in that season (by anybody). The status defaults to ACTIVO.
    */
   private createSportsRow(athleteId: string, body: unknown): { status: number; body?: unknown } {
     const input = (body ?? {}) as Record<string, unknown>;
@@ -616,20 +634,8 @@ export class FakeBackend {
     const invalidRequest = () => this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
     if (Object.keys(input).some((k) => !allowed.includes(k))) return invalidRequest();
     if (input.estadoDeportivo !== undefined && input.estadoDeportivo !== null && (typeof input.estadoDeportivo !== 'string' || !['ACTIVO', 'INACTIVO', 'SUSPENDIDO'].includes(input.estadoDeportivo))) return invalidRequest();
-    const text = (value: unknown): string | null => (typeof value === 'string' ? (value.trim().replace(/\s+/g, ' ') || null) : null);
-    const code = (value: unknown): string | null => (typeof value === 'string' ? (value.trim() || null) : null);
-    const values = { categoria: text(input.categoria), rama: text(input.rama), divisional: text(input.divisional), numeroCorredor: code(input.numeroCorredor) };
-    const limits: [keyof typeof values, number][] = [['categoria', 80], ['rama', 40], ['divisional', 80], ['numeroCorredor', 30]];
-    const noControl = (value: string | null) => value === null || ![...value].some((character) => (character.codePointAt(0) ?? 0) < 32 || character === '\u007f');
-    const textFields = [input.categoria, input.rama, input.divisional, input.numeroCorredor];
-    if (
-      typeof input.temporadaId !== 'string' ||
-      textFields.some((value) => value !== undefined && value !== null && typeof value !== 'string') ||
-      limits.some(([field, max]) => (values[field]?.length ?? 0) > max) ||
-      !Object.values(values).every(noControl)
-    ) {
-      return this.error(400, 'VALIDACION', 'Hay datos inválidos en la solicitud.');
-    }
+    const { valid, values } = this.sportsText(input);
+    if (typeof input.temporadaId !== 'string' || !valid) return this.error(400, 'VALIDACION', 'Hay datos inválidos en la solicitud.');
     const athlete = this.adminAthletes.find((a) => a.id === athleteId);
     if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
     const season = this.seasons.find((t) => t.id === input.temporadaId);
@@ -644,6 +650,58 @@ export class FakeBackend {
   }
 
   /**
+   * Mirrors PUT /admin/deportistas/{id}/temporadas/{temporadaId} (DeportistaTemporadaActualizacion, U9): a COMPLETE replacement protected by
+   * the revision of THAT row. Deserialisation first (any other property, a revision that is not a decimal string within BIGINT, an unknown
+   * status -> 400 SOLICITUD_INVALIDA), then bean validation (no revision or no status, the lengths -> 400 VALIDACION). Then the
+   * backend's order: 404 athlete, season, row; the REVISION (409 EDICION_DESACTUALIZADA, even when the values sent equal the stored
+   * ones); the uniqueness of the runner number in the season among the OTHER rows (409 NUMERO_CORREDOR_DUPLICADO); and the write. With
+   * the current revision and nothing that really changes nothing is written and the revision does not move; every real write adds 1.
+   */
+  private updateSportsRow(athleteId: string, seasonId: string, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = ['categoria', 'rama', 'divisional', 'numeroCorredor', 'estadoDeportivo', 'versionEsperada'];
+    const invalidRequest = () => this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (Object.keys(input).some((k) => !allowed.includes(k))) return invalidRequest();
+    const version = input.versionEsperada;
+    if (version !== undefined && version !== null && (typeof version !== 'string' || !/^[0-9]{1,19}$/.test(version) || BigInt(version) > 9223372036854775807n)) return invalidRequest();
+    const status = input.estadoDeportivo;
+    if (status !== undefined && status !== null && (typeof status !== 'string' || !['ACTIVO', 'INACTIVO', 'SUSPENDIDO'].includes(status))) return invalidRequest();
+    const { valid, values } = this.sportsText(input);
+    if (version === undefined || version === null || status === undefined || status === null || !valid) return this.error(400, 'VALIDACION', 'Hay datos inválidos en la solicitud.');
+    if (!this.adminAthletes.some((a) => a.id === athleteId)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    if (!this.seasons.some((t) => t.id === seasonId)) return this.error(404, 'TEMPORADA_NO_ENCONTRADA', 'La temporada no existe.');
+    const row = this.sportsRows.find((r) => r.deportistaId === athleteId && r.temporadaId === seasonId);
+    if (!row) return this.error(404, 'DEPORTISTA_TEMPORADA_NO_ENCONTRADA', 'El deportista no tiene datos deportivos en esa temporada.');
+    if (BigInt(row.version) !== BigInt(version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Los datos cambiaron mientras los editabas.');
+    if (values.numeroCorredor !== null && this.sportsRows.some((r) => r !== row && r.temporadaId === seasonId && r.numeroCorredor === values.numeroCorredor)) {
+      return this.error(409, 'NUMERO_CORREDOR_DUPLICADO', 'El número de corredor ya está en uso en esa temporada.');
+    }
+    const next = { ...values, estadoDeportivo: status as FakeSportsStatus };
+    const changes = (Object.keys(next) as (keyof typeof next)[]).some((field) => next[field] !== row[field]);
+    if (changes) {
+      Object.assign(row, next);
+      row.version += 1;
+    }
+    return { status: 200, body: this.sportsRowView(row) };
+  }
+
+  /** What another administrator (or a request whose answer was lost) did on the server: a real write, so the revision moves when something changes. */
+  changeSportsRowBehindTheScenes(athleteId: string, seasonId: string, change: Partial<Pick<FakeSportsRow, 'categoria' | 'rama' | 'divisional' | 'numeroCorredor' | 'estadoDeportivo'>>): void {
+    const row = this.sportsRows.find((r) => r.deportistaId === athleteId && r.temporadaId === seasonId);
+    if (!row) throw new Error('Unknown fake sports row');
+    const changes = (Object.keys(change) as (keyof typeof change)[]).some((field) => change[field] !== undefined && change[field] !== row[field]);
+    Object.assign(row, change);
+    if (changes) row.version += 1;
+  }
+
+  /** The revision of one row as the server holds it (a decimal string, as on the wire). */
+  sportsRowVersion(athleteId: string, seasonId: string): string {
+    const row = this.sportsRows.find((r) => r.deportistaId === athleteId && r.temporadaId === seasonId);
+    if (!row) throw new Error('Unknown fake sports row');
+    return String(row.version);
+  }
+
+  /**
    * Mirrors GET /admin/deportistas/{id}/temporadas[/{temporadaId}] (U9) and the POST of the history path. The history is an UNPAGED
    * array, newest year first; the single row answers 404 in the backend's order: athlete, then season, then the row (another school's
    * athlete is just «not found»).
@@ -652,6 +710,7 @@ export class FakeBackend {
     const history = /^\/admin\/deportistas\/([^/]+)\/temporadas$/.exec(path);
     const one = /^\/admin\/deportistas\/([^/]+)\/temporadas\/([^/]+)$/.exec(path);
     if (method === 'post' && history) return this.createSportsRow(history[1]!, body);
+    if (method === 'put' && one) return this.updateSportsRow(one[1]!, one[2]!, body);
     if (method !== 'get' || (!history && !one)) return null;
     const athleteId = (history ?? one)![1]!;
     if (!this.adminAthletes.some((a) => a.id === athleteId)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');

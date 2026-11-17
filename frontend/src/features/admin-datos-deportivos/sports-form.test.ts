@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { availableSeasons, EMPTY_VALUES, MAX_LENGTH, normalizeCode, normalizeText, toInput, validate, type Values } from './sports-form';
+import { availableSeasons, clearedFields, EDIT_FIELDS, EMPTY_VALUES, MAX_LENGTH, normalizeCode, normalizeText, sameField, sameValues, toInput, toUpdateInput, validate, valuesOfRow, type Values } from './sports-form';
 
 const values = (over: Partial<Values> = {}): Values => ({ ...EMPTY_VALUES, temporadaId: 'temp-1', ...over });
 
@@ -98,5 +98,68 @@ describe('the seasons that can still be loaded', () => {
 
   it('ignores a history row of a season the list does not carry', () => {
     expect(availableSeasons(seasons, [{ temporadaId: 'otra' }]).map((s) => s.id)).toEqual(['t28', 't27', 't26']);
+  });
+});
+
+const row = {
+  id: 'dt-1',
+  deportistaId: 'dep-1',
+  temporadaId: 'temp-1',
+  anio: 2027,
+  categoria: 'Sub 14',
+  rama: null,
+  divisional: 'A',
+  numeroCorredor: '0007',
+  estadoDeportivo: 'SUSPENDIDO' as const,
+  version: '3',
+};
+
+describe('editing: the draft starts from the stored row', () => {
+  it('turns a row into text values: null becomes empty, the number keeps its zeros, the season is the row\'s own', () => {
+    expect(valuesOfRow(row)).toEqual({ temporadaId: 'temp-1', categoria: 'Sub 14', rama: '', divisional: 'A', numeroCorredor: '0007', estadoDeportivo: 'SUSPENDIDO' });
+  });
+
+  it('treats a property the server left out like a null', () => {
+    const withoutCategory: Parameters<typeof valuesOfRow>[0] = { ...row };
+    delete withoutCategory.categoria;
+    expect(valuesOfRow(withoutCategory).categoria).toBe('');
+  });
+
+  it('builds the body of the PUT: the five fields, a null for each blank optional and NEVER the season', () => {
+    const input = toUpdateInput({ ...valuesOfRow(row), categoria: '  Sub   16 ', rama: '   ', numeroCorredor: ' 0008 ' });
+    expect(input).toEqual({ categoria: 'Sub 16', rama: null, divisional: 'A', numeroCorredor: '0008', estadoDeportivo: 'SUSPENDIDO' });
+    expect(Object.keys(input).sort()).toEqual(['categoria', 'divisional', 'estadoDeportivo', 'numeroCorredor', 'rama']);
+  });
+
+  it('is valid as it came: an edit never asks for the season', () => {
+    expect(validate(valuesOfRow(row))).toEqual({});
+  });
+});
+
+describe('editing: what counts as a change', () => {
+  it('lists the five editable fields', () => {
+    expect(EDIT_FIELDS).toEqual(['categoria', 'rama', 'divisional', 'numeroCorredor', 'estadoDeportivo']);
+  });
+
+  it('compares the texts the way the backend normalises them', () => {
+    expect(sameField('categoria', ' Sub   14 ', 'Sub 14')).toBe(true);
+    expect(sameField('rama', '', '   ')).toBe(true);
+    expect(sameField('numeroCorredor', ' 007 ', '007')).toBe(true);
+    expect(sameField('numeroCorredor', '007', '7')).toBe(false); // leading zeros are data
+    expect(sameField('numeroCorredor', '12  34', '12 34')).toBe(false); // the number keeps its inner spaces
+    expect(sameField('estadoDeportivo', 'ACTIVO', 'SUSPENDIDO')).toBe(false);
+  });
+
+  it('has no changes when the draft only differs by what normalisation removes', () => {
+    const original = valuesOfRow(row);
+    expect(sameValues(original, { ...original, categoria: ' Sub  14 ', rama: '  ' })).toBe(true);
+    expect(sameValues(original, { ...original, divisional: 'B' })).toBe(false);
+  });
+
+  it('names the saved data an edit would remove: only optional texts that had a value and are now blank', () => {
+    const original = valuesOfRow(row);
+    expect(clearedFields(original, { ...original, categoria: '  ', numeroCorredor: '' })).toEqual(['categoria', 'numeroCorredor']);
+    expect(clearedFields(original, { ...original, categoria: 'Sub 16' })).toEqual([]);
+    expect(clearedFields(original, { ...original, rama: '' })).toEqual([]); // it was already empty
   });
 });

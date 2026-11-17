@@ -1,13 +1,14 @@
 import { useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { AthleteNotFound } from '@/features/admin-deportistas/AthleteNotFound';
 import { useSession } from '@/features/auth/session';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
 import { isSafeId } from './api';
 import { useSportsRow } from './hooks';
-import { classifyRowAbsence, LOADED_NOTICE, LOADING_TEXT, NO_ROW_TEXT, NO_ROW_TITLE, SECTION_TITLE, SEASON_NOT_FOUND_TEXT, SEASON_NOT_FOUND_TITLE } from './messages';
-import { sportsHistoryPath } from './navigation';
+import { classifyRowAbsence, EDIT_LINK, EDITED_NOTICE, LOADED_NOTICE, LOADING_TEXT, NO_ROW_TEXT, NO_ROW_TITLE, SECTION_TITLE, SEASON_NOT_FOUND_TEXT, SEASON_NOT_FOUND_TITLE } from './messages';
+import { sportsHistoryPath, sportsRowPath } from './navigation';
 import type { SportsRow } from './schemas';
 import { Notice, ReadError, Row, SportsLink, SportsStatusBadge, textOrNotInformed } from './SportsUi';
 
@@ -34,6 +35,11 @@ function RowView({ athleteId, row, notice }: { athleteId: string; row: SportsRow
       <header className="space-y-2">
         <p className="text-sm font-semibold text-brand-700">{SECTION_TITLE}</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Temporada {row.anio}</h1>
+        <Button asChild variant="outline">
+          <SportsLink to={`${sportsRowPath(athleteId, row.temporadaId)}/editar`} className="">
+            {EDIT_LINK}
+          </SportsLink>
+        </Button>
       </header>
       <section aria-label={`Datos de la temporada ${row.anio}`} className="rounded-2xl border border-line bg-white p-5">
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -88,8 +94,9 @@ function RowScreen() {
     );
   }
   // The notice after a load travels in the navigation state as a FLAG, never as data; a detail opened directly never shows it.
-  const state = location.state as { sportsRowCreated?: unknown } | null;
-  return <RowView athleteId={id} row={row.data} notice={state?.sportsRowCreated === true ? LOADED_NOTICE : null} />;
+  const state = location.state as { sportsRowCreated?: unknown; sportsRowUpdated?: unknown } | null;
+  const notice = state?.sportsRowCreated === true ? LOADED_NOTICE : state?.sportsRowUpdated === true ? EDITED_NOTICE : null;
+  return <RowView athleteId={id} row={row.data} notice={notice} />;
 }
 
 /**
