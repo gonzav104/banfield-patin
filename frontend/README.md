@@ -274,7 +274,13 @@ prueba (necesarios entre corridas): es local, ignorado por Git, con permisos 600
   `.github/scripts/auditoria-npm.mjs`, que **solo acepta** los avisos listados en `.github/auditoria-excepciones.json`,
   cada uno con su motivo y una fecha de vencimiento (como máximo 30 días): cualquier otro aviso `moderate` o superior
   falla, y una excepción deja de valer al vencer o apenas cambia el rango afectado que informa npm (señal de que se
-  publicó una versión corregida). Para dar de baja una excepción alcanza con actualizar la dependencia y borrar su
+  publicó una versión corregida). Tener el aviso permitido no alcanza: **cada** vulnerabilidad `moderate` o superior del
+  reporte tiene que quedar explicada siguiendo sus referencias transitivas hasta avisos de origen verificables (se
+  rechazan una referencia desconocida, una entrada incompleta, un ciclo sin origen o una severidad sin respaldo). Además
+  corre una **segunda auditoría de producción** (`npm audit --omit=dev`) **sin ninguna excepción**: la excepción vigente se
+  justifica porque `picomatch` es solo de desarrollo, y esa condición se comprueba en cada ejecución. Un reporte que no
+  se puede interpretar (sin JSON, con error, sin versión 2 o con `metadata` que no coincide con las entradas) no cuenta
+  como aprobado. Para dar de baja una excepción alcanza con actualizar la dependencia y borrar su
   entrada; el job avisa cuando una excepción ya no la usa ningún aviso. Vigente hoy: `GHSA-fc5q-39xc-vjpf` (ReDoS de
   `picomatch` sin versión corregida; dependencia solo de desarrollo, ver el motivo en el archivo). Se prueba con
   `node --test .github/scripts/auditoria-npm.test.mjs`; `node .github/scripts/auditoria-npm.mjs` corre el gate real
