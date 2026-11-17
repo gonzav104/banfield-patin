@@ -1,4 +1,5 @@
 import type { SportsStatus } from '@/features/familia/schemas';
+import type { SportsRow } from './schemas';
 
 /** The draft of the form: everything the administrator types or chooses, as text. It only ever lives in the component's memory. */
 export interface Values {
@@ -100,4 +101,62 @@ export interface SeasonOption {
 export function availableSeasons(seasons: SeasonOption[], history: { temporadaId: string }[]): SeasonOption[] {
   const used = new Set(history.map((row) => row.temporadaId));
   return seasons.filter((season) => !used.has(season.id)).sort((a, b) => b.anio - a.anio);
+}
+
+/* ---- Editing (U10-C): the same fields, the same normalisation, compared and sent as a COMPLETE replacement. ---- */
+
+/** The five editable fields of a row. The season and the athlete are its identity and are never edited. */
+export const EDIT_FIELDS = ['categoria', 'rama', 'divisional', 'numeroCorredor', 'estadoDeportivo'] as const;
+export type EditField = (typeof EDIT_FIELDS)[number];
+
+export const FIELD_LABELS: Record<EditField, string> = {
+  categoria: 'Categoría',
+  rama: 'Rama',
+  divisional: 'Divisional',
+  numeroCorredor: 'Número de corredor',
+  estadoDeportivo: 'Estado deportivo',
+};
+
+/** One field of two drafts, compared the way the backend compares them (the status is an enum: exact). */
+export function sameField(field: EditField, a: string, b: string): boolean {
+  if (field === 'estadoDeportivo') return a === b;
+  return normalizers[field](a) === normalizers[field](b);
+}
+
+export const sameValues = (a: Values, b: Values): boolean => EDIT_FIELDS.every((field) => sameField(field, a[field], b[field]));
+
+/** The stored row as the form's text values: null is empty, the number is kept as stored (zeros included). */
+export function valuesOfRow(row: SportsRow): Values {
+  return {
+    temporadaId: row.temporadaId,
+    categoria: row.categoria ?? '',
+    rama: row.rama ?? '',
+    divisional: row.divisional ?? '',
+    numeroCorredor: row.numeroCorredor ?? '',
+    estadoDeportivo: row.estadoDeportivo,
+  };
+}
+
+/** The body of PUT .../temporadas/{temporadaId} WITHOUT the revision: the five fields, a null for every blank optional, never the season. */
+export interface UpdateSportsInput {
+  categoria: string | null;
+  rama: string | null;
+  divisional: string | null;
+  numeroCorredor: string | null;
+  estadoDeportivo: SportsStatus;
+}
+
+export function toUpdateInput(values: Values): UpdateSportsInput {
+  return {
+    categoria: normalizeText(values.categoria),
+    rama: normalizeText(values.rama),
+    divisional: normalizeText(values.divisional),
+    numeroCorredor: normalizeCode(values.numeroCorredor),
+    estadoDeportivo: values.estadoDeportivo,
+  };
+}
+
+/** The optional fields that had a saved value and are now blank: the PUT replaces everything, so they would be removed. */
+export function clearedFields(original: Values, draft: Values): TextField[] {
+  return TEXT_FIELDS.filter((field) => normalizers[field](original[field]) !== null && normalizers[field](draft[field]) === null);
 }

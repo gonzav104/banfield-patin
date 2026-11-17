@@ -83,7 +83,7 @@ describe('season detail: what the administrator sees', () => {
     expect(location()).toBe(`/admin/deportistas/${athlete.id}/temporadas`);
   });
 
-  it('offers no edit control and sends only reads', async () => {
+  it('offers the way to EDIT the row (U10-C) but no way to load, activate or create anything, and sends only reads', async () => {
     const athlete = seedAthlete();
     const season = backend.addSeason(2027);
     backend.addSportsRow(athlete.id, season.id, {});
@@ -92,7 +92,8 @@ describe('season detail: what the administrator sees', () => {
     await screen.findByRole('heading', { level: 1, name: 'Temporada 2027' });
     const main = within(screen.getByRole('main'));
     expect(main.queryByRole('button')).not.toBeInTheDocument();
-    expect(main.queryByRole('link', { name: /editar|cargar|activar|crear/i })).not.toBeInTheDocument();
+    expect(main.getByRole('link', { name: 'Editar datos deportivos' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/temporadas/${season.id}/editar`);
+    expect(main.queryByRole('link', { name: /cargar|activar|crear|eliminar|borrar/i })).not.toBeInTheDocument();
     expect(backend.requests.filter((r) => r.method !== 'get' && !r.url.startsWith('/auth/'))).toEqual([]);
   });
 });
