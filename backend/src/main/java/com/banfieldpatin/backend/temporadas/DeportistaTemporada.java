@@ -13,6 +13,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,7 +22,7 @@ import lombok.NoArgsConstructor;
  * Mapeo de gestion_patin.deportista_temporada (V1): datos deportivos de UN deportista en UNA temporada, sin asociaciones
  * (UUID planos). La escuela, el deportista y la temporada son la identidad de la fila y no se modifican. Los datos se
  * reemplazan solo con {@link #reemplazar}, que informa los NOMBRES de los campos modificados (nunca sus valores). Las marcas
- * de tiempo las asigna la base y no se mapean.
+ * de tiempo las asigna la base y no se mapean. {@code version} es la revision optimista de ESTA fila (U9): la gestiona JPA.
  */
 @Entity
 @Table(name = "deportista_temporada")
@@ -54,6 +55,14 @@ public class DeportistaTemporada {
 	@Enumerated(EnumType.STRING)
 	@Column(name = "estado_deportivo", nullable = false)
 	private EstadoDeportivo estadoDeportivo;
+
+	/**
+	 * Revision de escritura de esta fila (datos deportivos de UN deportista en UNA temporada): solo avanza cuando algo cambia.
+	 * Es independiente de la revision de la ficha permanente del deportista y de la de otras temporadas.
+	 */
+	@Version
+	@Column(nullable = false)
+	private long version;
 
 	public static DeportistaTemporada crear(UUID escuelaId, UUID deportistaId, UUID temporadaId, String categoria,
 			String rama, String divisional, String numeroCorredor, EstadoDeportivo estadoDeportivo) {

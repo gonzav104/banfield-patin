@@ -60,9 +60,9 @@ class TemporadasLockTimeoutDbTest extends BaseTemporadasDb {
 		dts.crear(admin, d, new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaSolicitud(t, "Sub 12", null,
 				null, null, null), DATOS);
 		var cambioA = new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion("Sub 14", null, null, null,
-				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO);
+				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO, 0L);
 		var cambioB = new com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion("Sub 16", null, null, null,
-				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO);
+				com.banfieldpatin.backend.temporadas.EstadoDeportivo.ACTIVO, 0L);
 
 		try (Retencion a = new Retencion(() -> dts.actualizar(admin, d, t, cambioA, DATOS))) {
 			Future<Object> b = enOtroHilo(() -> dts.actualizar(admin, d, t, cambioB, DATOS));

@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.temporadas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -92,7 +93,7 @@ class DeportistaTemporadaAdminControllerWebMvcTest {
 
 	private DeportistaTemporadaRespuesta respuesta() {
 		return new DeportistaTemporadaRespuesta(UUID.randomUUID(), deportistaId, temporadaId, 2027, "Sub 12", "Femenino",
-				"A", "007", EstadoDeportivo.ACTIVO);
+				"A", "007", EstadoDeportivo.ACTIVO, "3");
 	}
 
 	private String altaJson(String extra) {
@@ -232,7 +233,7 @@ class DeportistaTemporadaAdminControllerWebMvcTest {
 		when(servicio.actualizar(any(), eq(deportistaId), eq(temporadaId), any(), any())).thenReturn(respuesta());
 
 		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(),
-				"{\"categoria\":\" Sub  14 \",\"numeroCorredor\":\"008\",\"estadoDeportivo\":\"SUSPENDIDO\"}"))
+				"{\"categoria\":\" Sub  14 \",\"numeroCorredor\":\"008\",\"estadoDeportivo\":\"SUSPENDIDO\",\"versionEsperada\":\"3\"}"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.id").exists());
 
 		ArgumentCaptor<DeportistaTemporadaActualizacion> a = ArgumentCaptor.forClass(DeportistaTemporadaActualizacion.class);
@@ -240,12 +241,103 @@ class DeportistaTemporadaAdminControllerWebMvcTest {
 		assertThat(a.getValue().categoria()).isEqualTo("Sub 14");
 		assertThat(a.getValue().numeroCorredor()).isEqualTo("008");
 		assertThat(a.getValue().estadoDeportivo()).isEqualTo(EstadoDeportivo.SUSPENDIDO);
+		assertThat(a.getValue().versionEsperada()).isEqualTo(3L);
 
 		for (String extra : List.of("\"temporadaId\":\"" + temporadaId + "\"", "\"deportistaId\":\"x\"", "\"escuelaId\":\"x\"")) {
-			mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), "{\"estadoDeportivo\":\"ACTIVO\"," + extra + "}"))
+			mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), "{\"estadoDeportivo\":\"ACTIVO\",\"versionEsperada\":\"3\"," + extra + "}"))
 					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
 		}
 		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), "{\"categoria\":\"Sub 12\"}")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.codigo").value("VALIDACION"));
+	}
+
+	// ---------- revision por fila (U9) ----------
+
+	private String edicionJson(String versionEsperada) {
+		return "{\"categoria\":\"Sub 14\",\"estadoDeportivo\":\"ACTIVO\"" + (versionEsperada == null ? "" : ",\"versionEsperada\":" + versionEsperada) + "}";
+	}
+
+	@Test
+	void todaRespuestaDeDatosDeportivosTraeLaRevisionDeLaFilaComoCadenaDecimal() throws Exception {
+		when(servicio.crear(any(), eq(deportistaId), any(), any())).thenReturn(respuesta());
+		when(servicio.historial(any(), eq(deportistaId))).thenReturn(List.of(respuesta()));
+		when(servicio.obtener(any(), eq(deportistaId), eq(temporadaId))).thenReturn(respuesta());
+		when(servicio.actualizar(any(), eq(deportistaId), eq(temporadaId), any(), any())).thenReturn(respuesta());
+
+		mvc.perform(cuerpo(post(base), admin(), altaJson(""))).andExpect(status().isCreated()).andExpect(jsonPath("$.version").value("3"));
+		mvc.perform(get(base).cookie(admin())).andExpect(status().isOk()).andExpect(jsonPath("$[0].version").value("3"));
+		mvc.perform(get(base + "/" + temporadaId).cookie(admin())).andExpect(status().isOk()).andExpect(jsonPath("$.version").value("3"));
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson("\"3\""))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value("3"));
+	}
+
+	@Test
+	void editarSinRevisionOConRevisionNulaDa400ValidacionSinLlamarAlServicio() throws Exception {
+		for (String json : List.of(edicionJson(null), edicionJson("null"))) {
+			mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), json)).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("VALIDACION"));
+		}
+		verify(servicio, never()).actualizar(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void editarConUnaRevisionMalformadaNoDecimalNegativaOFueraDeBigintDa400SolicitudInvalidaSinEcoDelValor() throws Exception {
+		for (String version : List.of("3", "-1", "\"-1\"", "\"abc\"", "\"\"", "\" 3\"", "\"3.0\"", "\"1e3\"", "true", "[3]",
+				"\"9223372036854775808\"", "\"99999999999999999999\"", "\"0x10\"")) {
+			String cuerpo = mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson(version)))
+					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA")).andReturn()
+					.getResponse().getContentAsString();
+			assertThat(cuerpo).doesNotContain("9223372036854775808").doesNotContain("99999999999999999999").doesNotContain("abc");
+		}
+		verify(servicio, never()).actualizar(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void editarAceptaElMaximoDeBigintComoCadenaYLoPasaTalCualAlServicio() throws Exception {
+		when(servicio.actualizar(any(), eq(deportistaId), eq(temporadaId), any(), any())).thenReturn(respuesta());
+
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson("\"9223372036854775807\""))).andExpect(status().isOk());
+
+		ArgumentCaptor<DeportistaTemporadaActualizacion> a = ArgumentCaptor.forClass(DeportistaTemporadaActualizacion.class);
+		verify(servicio).actualizar(any(), eq(deportistaId), eq(temporadaId), a.capture(), any());
+		assertThat(a.getValue().versionEsperada()).isEqualTo(Long.MAX_VALUE);
+	}
+
+	@Test
+	void unaRevisionObsoletaDelServicioSeResponde409EdicionDesactualizadaYUnBloqueoQueVenceConflictoDeConcurrencia() throws Exception {
+		when(servicio.actualizar(any(), eq(deportistaId), eq(temporadaId), any(), any()))
+				.thenThrow(com.banfieldpatin.backend.familias.FamiliaAdminService.edicionDesactualizada())
+				.thenThrow(new com.banfieldpatin.backend.compartido.error.ExcepcionNegocio(org.springframework.http.HttpStatus.CONFLICT,
+						"CONFLICTO_CONCURRENCIA", "Otra modificacion de los datos deportivos esta en curso."));
+
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson("\"2\""))).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"));
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson("\"2\""))).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("CONFLICTO_CONCURRENCIA"));
+	}
+
+	@Test
+	void unaViolacionDeLaRevisionDetectadaPorLaBaseSeResponde409EdicionDesactualizada() throws Exception {
+		when(servicio.actualizar(any(), eq(deportistaId), eq(temporadaId), any(), any()))
+				.thenThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(DeportistaTemporada.class, temporadaId));
+
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), admin(), edicionJson("\"2\""))).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"));
+	}
+
+	@Test
+	void elAltaConservaSuSemanticaNoExigeRevisionYNoLaAcepta() throws Exception {
+		when(servicio.crear(any(), eq(deportistaId), any(), any())).thenReturn(respuesta());
+
+		mvc.perform(cuerpo(post(base), admin(), altaJson(""))).andExpect(status().isCreated());
+		mvc.perform(cuerpo(post(base), admin(), altaJson(",\"versionEsperada\":\"0\""))).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		verify(servicio, org.mockito.Mockito.times(1)).crear(any(), eq(deportistaId), any(), any());
+	}
+
+	@Test
+	void sinSesionOConUnaFamiliaLaEdicionConRevisionSigueDando401Y403() throws Exception {
+		mvc.perform(cuerpo(put(base + "/" + temporadaId), familia(), edicionJson("\"0\""))).andExpect(status().isForbidden());
+		verify(servicio, never()).actualizar(any(), any(), any(), any(), any());
 	}
 }

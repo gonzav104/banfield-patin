@@ -146,7 +146,7 @@ public class OpenApiConfig {
 			entry("PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
 					ruta(200, "404 DEPORTISTA_NO_ENCONTRADO", "404 TEMPORADA_NO_ENCONTRADA",
 							"404 DEPORTISTA_TEMPORADA_NO_ENCONTRADA", "409 NUMERO_CORREDOR_DUPLICADO",
-							"409 CONFLICTO_CONCURRENCIA")),
+							"409 EDICION_DESACTUALIZADA", "409 CONFLICTO_CONCURRENCIA")),
 			entry("GET /api/admin/temporadas/{temporadaId}/deportistas", ruta(200, "404 TEMPORADA_NO_ENCONTRADA")),
 			// --- Portal de FAMILIA (solo lectura)
 			entry("GET /api/familia/mi-familia", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),

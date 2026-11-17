@@ -152,6 +152,7 @@ El portal (`/api/familia/**`, detalle en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPO
   vale solo hasta el fin de esa transacción, no se filtra a otras ni al pool y ninguna otra operación lo usa. Al vencer, o ante un *deadlock*, se responde
   `409 CONFLICTO_CONCURRENCIA` con un mensaje fijo propio de cada módulo (sin SQL, ids ni trazas), una sola línea `WARN` con la operación y la clase de la
   excepción, y la transacción se revierte sin escribir ni auditar. Detalle de temporadas en [TEMPORADAS.md](TEMPORADAS.md) secciones 3 y 8.
+  Además, la edición de datos deportivos exige la revisión de la fila (`versionEsperada`, V10): una edición armada sobre una lectura vieja recibe `409 EDICION_DESACTUALIZADA` y no pisa el cambio posterior (ya no gana la última escritura).
 - **DNI enmascarado en los listados ADMIN (O8).** Los listados de deportistas y los tutores anidados en el detalle de familia exponen `dniEnmascarado` (últimos 3 dígitos, resto `•`, mismo largo); el DNI completo solo viaja en los detalles individuales autorizados y, en el portal, en el detalle del propio deportista. Detalle y guardas en [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md) sección 11.
 - **Logs sin DNI ni CUIL aunque el nivel raíz sea DEBUG.** `application.yml` apaga el logger JDBC de Hibernate (`org.hibernate.orm.jdbc.error: OFF`, que de otro modo
   registra el mensaje de PostgreSQL con los valores de la clave) y fija en `INFO` los resolutores MVC `ExceptionHandlerExceptionResolver` y

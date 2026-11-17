@@ -78,12 +78,22 @@ class DeportistaTemporadaSolicitudTest {
 
 	@Test
 	void laActualizacionExigeElEstadoYNormalizaIgual() {
-		DeportistaTemporadaActualizacion sinEstado = new DeportistaTemporadaActualizacion(" Sub  14 ", null, null, " 08 ", null);
+		DeportistaTemporadaActualizacion sinEstado = new DeportistaTemporadaActualizacion(" Sub  14 ", null, null, " 08 ", null, 0L);
 
 		assertThat(sinEstado.categoria()).isEqualTo("Sub 14");
 		assertThat(sinEstado.numeroCorredor()).isEqualTo("08");
 		assertThat(camposInvalidos(sinEstado)).containsExactly("estadoDeportivo");
-		assertThat(camposInvalidos(new DeportistaTemporadaActualizacion(null, null, null, null, EstadoDeportivo.INACTIVO)))
+		assertThat(camposInvalidos(new DeportistaTemporadaActualizacion(null, null, null, null, EstadoDeportivo.INACTIVO, 0L)))
 				.isEmpty();
+	}
+
+	@Test
+	void laActualizacionExigeLaRevisionNoNegativa() {
+		assertThat(camposInvalidos(new DeportistaTemporadaActualizacion(null, null, null, null, EstadoDeportivo.ACTIVO, null)))
+				.containsExactly("versionEsperada");
+		assertThat(camposInvalidos(new DeportistaTemporadaActualizacion(null, null, null, null, EstadoDeportivo.ACTIVO, -1L)))
+				.containsExactly("versionEsperada");
+		assertThat(camposInvalidos(new DeportistaTemporadaActualizacion(null, null, null, null, EstadoDeportivo.ACTIVO,
+				Long.MAX_VALUE))).isEmpty();
 	}
 }
