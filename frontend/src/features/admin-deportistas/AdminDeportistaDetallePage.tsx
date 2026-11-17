@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { SportsAccess } from '@/features/admin-datos-deportivos/SportsAccess';
 import { useSession } from '@/features/auth/session';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
@@ -69,6 +70,7 @@ function Detail({ athlete, notice: initialNotice, reload }: { athlete: AthleteDe
         </Button>
       </header>
       <AthleteStatusControl athlete={athlete} onNotice={setNotice} reload={reload} />
+      <SportsAccess athleteId={athlete.id} />
       <Section title="Identificación">
         <Row label="DNI">{athlete.dni}</Row>
         <Row label="CUIL">{athlete.cuil}</Row>
