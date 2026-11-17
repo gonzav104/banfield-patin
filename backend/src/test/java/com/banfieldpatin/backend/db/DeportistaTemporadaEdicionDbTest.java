@@ -48,8 +48,16 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 	private record UsuarioDeEscuela(com.banfieldpatin.backend.seguridad.UsuarioAutenticado admin) {
 	}
 
-	private DeportistaTemporadaActualizacion cambio(String categoria, String numero, EstadoDeportivo estado) {
-		return new DeportistaTemporadaActualizacion(categoria, "Femenino", "A", numero, estado);
+	/** La revision que el administrador acaba de leer de ESA fila (0 si la fila no existe: los casos de 404 no la usan). */
+	private long versionActual(UUID deportista, UUID temporada) {
+		return jdbc.sql("SELECT version FROM gestion_patin.deportista_temporada WHERE deportista_id = :d AND temporada_id = :t")
+				.param("d", deportista).param("t", temporada).query(Long.class).optional().orElse(0L);
+	}
+
+	private DeportistaTemporadaActualizacion cambio(UUID deportista, UUID temporada, String categoria, String numero,
+			EstadoDeportivo estado) {
+		return new DeportistaTemporadaActualizacion(categoria, "Femenino", "A", numero, estado,
+				versionActual(deportista, temporada));
 	}
 
 	private String filaDeportista(UUID id) {
@@ -71,7 +79,7 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 		String ficha = filaDeportista(d);
 		Map<String, Object> antes26 = filaDt(de26.id());
 
-		DeportistaTemporadaRespuesta r = dts.actualizar(admin, d, t27, cambio("  Sub   14 ", " 008 ", EstadoDeportivo.SUSPENDIDO), DATOS);
+		DeportistaTemporadaRespuesta r = dts.actualizar(admin, d, t27, cambio(d, t27, "  Sub   14 ", " 008 ", EstadoDeportivo.SUSPENDIDO), DATOS);
 
 		assertThat(r.id()).isEqualTo(de27.id());
 		assertThat(r.categoria()).isEqualTo("Sub 14");
@@ -93,7 +101,7 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 				""").param("id", t).param("e", escuelaA).update();
 		DeportistaTemporadaRespuesta creada = alta(new UsuarioDeEscuela(admin), d, t, "Sub 12", "007");
 
-		dts.actualizar(admin, d, t, cambio("Sub 14", "009", EstadoDeportivo.SUSPENDIDO), DATOS);
+		dts.actualizar(admin, d, t, cambio(d, t, "Sub 14", "009", EstadoDeportivo.SUSPENDIDO), DATOS);
 
 		Map<String, Object> evento = jdbc.sql("""
 				SELECT recurso_id, usuario_id, detalle::text AS detalle FROM gestion_patin.auditoria
@@ -116,11 +124,12 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 		Object antes = jdbc.sql("SELECT actualizado_en FROM gestion_patin.deportista_temporada WHERE id = :i")
 				.param("i", creada.id()).query().singleValue();
 
-		dts.actualizar(admin, d, t, cambio("Sub 12", "007", EstadoDeportivo.ACTIVO), DATOS);
+		dts.actualizar(admin, d, t, cambio(d, t, "Sub 12", "007", EstadoDeportivo.ACTIVO), DATOS);
 
 		assertThat(jdbc.sql("SELECT actualizado_en FROM gestion_patin.deportista_temporada WHERE id = :i")
 				.param("i", creada.id()).query().singleValue()).as("sin UPDATE el trigger no toca actualizado_en").isEqualTo(antes);
 		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).isZero();
+		assertThat(versionActual(d, t)).as("sin cambio efectivo la revision no se mueve").isZero();
 	}
 
 	@Test
@@ -133,13 +142,13 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 		alta(new UsuarioDeEscuela(admin), d2, t27, null, "8");
 		alta(new UsuarioDeEscuela(admin), d2, t26, null, null);
 
-		assertThatThrownBy(() -> dts.actualizar(admin, d2, t27, cambio(null, "7", EstadoDeportivo.ACTIVO), DATOS))
+		assertThatThrownBy(() -> dts.actualizar(admin, d2, t27, cambio(d2, t27, null, "7", EstadoDeportivo.ACTIVO), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "NUMERO_CORREDOR_DUPLICADO"));
-		assertThat(dts.actualizar(admin, d2, t27, cambio("Sub 12", "8", EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
+		assertThat(dts.actualizar(admin, d2, t27, cambio(d2, t27, "Sub 12", "8", EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
 				.isEqualTo("8");
-		assertThat(dts.actualizar(admin, d2, t27, cambio("Sub 12", null, EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
+		assertThat(dts.actualizar(admin, d2, t27, cambio(d2, t27, "Sub 12", null, EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
 				.isNull();
-		assertThat(dts.actualizar(admin, d2, t26, cambio(null, "7", EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
+		assertThat(dts.actualizar(admin, d2, t26, cambio(d2, t26, null, "7", EstadoDeportivo.ACTIVO), DATOS).numeroCorredor())
 				.isEqualTo("7");
 		assertThat(dts.obtener(admin, d2, t27).numeroCorredor()).as("la fila rechazada no se modifico").isNull();
 	}
@@ -151,7 +160,7 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 		alta(new UsuarioDeEscuela(admin), d, t, "Sub 12", null);
 		jdbc.sql("UPDATE gestion_patin.deportista SET activo = false WHERE id = :i").param("i", d).update();
 
-		DeportistaTemporadaRespuesta r = dts.actualizar(admin, d, t, cambio("Sub 14", null, EstadoDeportivo.INACTIVO), DATOS);
+		DeportistaTemporadaRespuesta r = dts.actualizar(admin, d, t, cambio(d, t, "Sub 14", null, EstadoDeportivo.INACTIVO), DATOS);
 
 		assertThat(r.categoria()).isEqualTo("Sub 14");
 		assertThat(r.estadoDeportivo()).isEqualTo(EstadoDeportivo.INACTIVO);
@@ -165,16 +174,16 @@ class DeportistaTemporadaEdicionDbTest extends BaseTemporadasDb {
 		UUID tSinFila = datos.temporada(escuelaA, 2028, false);
 		alta(new UsuarioDeEscuela(admin), d, t, "Sub 12", null);
 
-		assertThatThrownBy(() -> dts.actualizar(adminDeB, d, t, cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+		assertThatThrownBy(() -> dts.actualizar(adminDeB, d, t, cambio(d, t, null, null, EstadoDeportivo.ACTIVO), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
-		assertThatThrownBy(() -> dts.actualizar(admin, dB, t, cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+		assertThatThrownBy(() -> dts.actualizar(admin, dB, t, cambio(dB, t, null, null, EstadoDeportivo.ACTIVO), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
-		assertThatThrownBy(() -> dts.actualizar(admin, d, UUID.randomUUID(), cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+		assertThatThrownBy(() -> dts.actualizar(admin, d, UUID.randomUUID(), cambio(d, UUID.randomUUID(), null, null, EstadoDeportivo.ACTIVO), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
-		assertThatThrownBy(() -> dts.actualizar(admin, d, tSinFila, cambio(null, null, EstadoDeportivo.ACTIVO), DATOS))
+		assertThatThrownBy(() -> dts.actualizar(admin, d, tSinFila, cambio(d, tSinFila, null, null, EstadoDeportivo.ACTIVO), DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_TEMPORADA_NO_ENCONTRADA"));
 
-		dts.actualizar(admin, d, t, cambio("Sub 12", null, EstadoDeportivo.SUSPENDIDO), DATOS);
+		dts.actualizar(admin, d, t, cambio(d, t, "Sub 12", null, EstadoDeportivo.SUSPENDIDO), DATOS);
 		assertThat(dts.plantel(admin, t, "SUSPENDIDO", PageRequest.of(0, 20)).contenido())
 				.extracting(PlantelRespuesta::apellido).containsExactly("Perez");
 		assertThat(dts.plantel(admin, t, "ACTIVO", PageRequest.of(0, 20)).contenido()).isEmpty();

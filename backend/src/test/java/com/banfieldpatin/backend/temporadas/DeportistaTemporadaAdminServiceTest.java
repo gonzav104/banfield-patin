@@ -22,6 +22,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
@@ -207,7 +209,7 @@ class DeportistaTemporadaAdminServiceTest {
 
 	private FilaDeportistaTemporada fila(int anio) {
 		return new FilaDeportistaTemporada(UUID.randomUUID(), deportistaId, UUID.randomUUID(), (short) anio, "Sub 12", null,
-				null, "007", EstadoDeportivo.ACTIVO);
+				null, "007", EstadoDeportivo.ACTIVO, 4L);
 	}
 
 	@Test
@@ -294,8 +296,13 @@ class DeportistaTemporadaAdminServiceTest {
 				EstadoDeportivo.ACTIVO);
 	}
 
+	/** Con la revision de la fila de prueba (0). */
 	private DeportistaTemporadaActualizacion cambio(String categoria, String numero, EstadoDeportivo estado) {
-		return new DeportistaTemporadaActualizacion(categoria, "Femenino", "A", numero, estado);
+		return cambio(categoria, numero, estado, 0L);
+	}
+
+	private DeportistaTemporadaActualizacion cambio(String categoria, String numero, EstadoDeportivo estado, Long version) {
+		return new DeportistaTemporadaActualizacion(categoria, "Femenino", "A", numero, estado, version);
 	}
 
 	private void conFilaBloqueada(DeportistaTemporada fila) {
@@ -423,5 +430,156 @@ class DeportistaTemporadaAdminServiceTest {
 				});
 		verifyNoInteractions(auditoria);
 	}
-}
 
+	// ---------- revision por fila (U9) ----------
+
+	/** La fila ya confirmada en la revision indicada (la gestiona JPA: en la prueba se fija a mano). */
+	private DeportistaTemporada filaConRevision(long revision) {
+		DeportistaTemporada fila = filaEntidad();
+		ReflectionTestUtils.setField(fila, "version", revision);
+		return fila;
+	}
+
+	/** El guardado simula a JPA: la revision avanza una vez cuando se escribe. */
+	private void guardadoQueAvanzaLaRevision() {
+		when(datos.saveAndFlush(any(DeportistaTemporada.class))).thenAnswer(i -> {
+			DeportistaTemporada f = i.getArgument(0);
+			ReflectionTestUtils.setField(f, "version", f.getVersion() + 1);
+			return f;
+		});
+	}
+
+	@Test
+	void actualizarConLaRevisionVigenteGuardaYDevuelveLaRevisionNuevaComoCadenaDecimal() {
+		DeportistaTemporada fila = filaConRevision(5);
+		conFilaBloqueada(fila);
+		guardadoQueAvanzaLaRevision();
+
+		DeportistaTemporadaRespuesta r = servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, 5L), DATOS);
+
+		assertThat(r.version()).isEqualTo("6");
+		assertThat(r.categoria()).isEqualTo("Sub 14");
+		verify(datos).saveAndFlush(fila);
+		verify(auditoria).registrar(any(EventoAuditoria.class));
+	}
+
+	@Test
+	void unaRevisionObsoletaDa409AunqueLosValoresEnviadosCoincidanConLosGuardadosYNoGuardaNiAudita() {
+		conFilaBloqueada(filaConRevision(5));
+
+		// Los mismos valores que ya tiene la fila (categoria Sub 12, numero 007, ACTIVO) pero con la revision VIEJA.
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "007", EstadoDeportivo.ACTIVO, 4L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void unaRevisionAdelantadaTampocoEsLaVigente() {
+		conFilaBloqueada(filaConRevision(5));
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, 6L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void sinCambiosEfectivosYConLaRevisionVigenteNoGuardaNiAudita_yLaRevisionNoSeMueve() {
+		conFilaBloqueada(filaConRevision(5));
+		guardadoQueAvanzaLaRevision();
+
+		DeportistaTemporadaRespuesta r = servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "007", EstadoDeportivo.ACTIVO, 5L), DATOS);
+
+		assertThat(r.version()).isEqualTo("5");
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void laRevisionSeComparaDespuesDelBloqueoYAntesDeLaUnicidadDelNumero() {
+		conFilaBloqueada(filaConRevision(5));
+		when(datos.existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(any(), any(), any(), any())).thenReturn(true);
+
+		// Obsoleta Y con un numero ya tomado: manda la revision (el administrador debe releer antes de decidir nada mas).
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 12", "008", EstadoDeportivo.ACTIVO, 4L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		org.mockito.InOrder orden = org.mockito.Mockito.inOrder(lockTimeout, datos);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(datos).bloquear(escuelaId, deportistaId, temporadaId);
+		orden.verify(datos).findByEscuelaIdAndDeportistaIdAndTemporadaId(escuelaId, deportistaId, temporadaId);
+		verify(datos, never()).existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(any(), any(), any(), any());
+		verify(datos, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void unaFilaInexistenteDa404AunqueLaRevisionEnviadaSeaObsoleta() {
+		when(datos.bloquear(escuelaId, deportistaId, temporadaId)).thenReturn(Optional.empty());
+		when(deportistas.findByIdAndEscuelaId(deportistaId, escuelaId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, 99L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void unaRevisionAusenteDa400SaneadoSinGuardarNiAuditar() {
+		conFilaBloqueada(filaConRevision(5));
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, null), DATOS)).satisfies(e -> {
+					assertError(e, HttpStatus.BAD_REQUEST, "VALIDACION");
+					assertThat(e.getMessage()).doesNotContain("5", "Sub 14", "007");
+				});
+		verify(datos, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void unaViolacionDeLaRevisionDetectadaPorLaBaseSePropagaSinAuditarNiTraducirla() {
+		conFilaBloqueada(filaConRevision(5));
+		when(datos.saveAndFlush(any(DeportistaTemporada.class)))
+				.thenThrow(new ObjectOptimisticLockingFailureException(DeportistaTemporada.class, UUID.randomUUID()));
+
+		// El predicado WHERE version = ? del UPDATE (red de seguridad): el manejador global la responde 409 EDICION_DESACTUALIZADA.
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, 5L), DATOS))
+				.isInstanceOf(ObjectOptimisticLockingFailureException.class);
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void unBloqueoQueVenceSigueDandoConflictoDeConcurrenciaYNoEdicionDesactualizada() {
+		when(datos.bloquear(escuelaId, deportistaId, temporadaId)).thenThrow(new org.springframework.dao.CannotAcquireLockException("l"));
+
+		assertThatThrownBy(() -> servicio.actualizar(admin, deportistaId, temporadaId,
+				cambio("Sub 14", "007", EstadoDeportivo.ACTIVO, 0L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "CONFLICTO_CONCURRENCIA"));
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void elAltaDevuelveLaRevisionInicialYLaConsultaYElHistorialLaRevisionDeCadaFila() {
+		conDeportistaYTemporada(true);
+		when(datos.existsByEscuelaIdAndDeportistaIdAndTemporadaId(any(), any(), any())).thenReturn(false);
+		when(datos.saveAndFlush(any(DeportistaTemporada.class))).thenAnswer(i -> i.getArgument(0));
+		DeportistaTemporadaRespuesta alta = servicio.crear(admin, deportistaId,
+				new DeportistaTemporadaSolicitud(temporadaId, "Sub 12", null, null, null, null), DATOS);
+		assertThat(alta.version()).isEqualTo("0");
+
+		FilaDeportistaTemporada f = fila(2027);
+		when(datos.fila(escuelaId, deportistaId, f.temporadaId())).thenReturn(Optional.of(f));
+		when(datos.historial(escuelaId, deportistaId)).thenReturn(List.of(f));
+		assertThat(servicio.obtener(admin, deportistaId, f.temporadaId()).version()).isEqualTo("4");
+		assertThat(servicio.historial(admin, deportistaId)).extracting(DeportistaTemporadaRespuesta::version).containsExactly("4");
+	}
+}

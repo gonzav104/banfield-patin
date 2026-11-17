@@ -1,6 +1,7 @@
 package com.banfieldpatin.backend.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.UUID;
@@ -76,8 +77,18 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		return dts.crear(admin, deportista, new DeportistaTemporadaSolicitud(temporada, "Sub 12", null, null, numero, null), DATOS);
 	}
 
-	private DeportistaTemporadaActualizacion cambio(String categoria, String numero) {
-		return new DeportistaTemporadaActualizacion(categoria, null, null, numero, EstadoDeportivo.ACTIVO);
+	/** La revision que el administrador acaba de leer de ESA fila (la vigente en el momento de armar el PUT). */
+	private long versionActual(UUID deportista, UUID temporada) {
+		return jdbc.sql("SELECT version FROM gestion_patin.deportista_temporada WHERE deportista_id = :d AND temporada_id = :t")
+				.param("d", deportista).param("t", temporada).query(Long.class).single();
+	}
+
+	private DeportistaTemporadaActualizacion cambio(UUID deportista, UUID temporada, String categoria, String numero) {
+		return cambioDesde(categoria, numero, versionActual(deportista, temporada));
+	}
+
+	private DeportistaTemporadaActualizacion cambioDesde(String categoria, String numero, long revision) {
+		return new DeportistaTemporadaActualizacion(categoria, null, null, numero, EstadoDeportivo.ACTIVO, revision);
 	}
 
 	private static void assertError(Object resultado, HttpStatus estado, String codigo) {
@@ -161,13 +172,15 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 	// ---------- edicion concurrente de la misma fila ----------
 
 	@Test
-	void dosEdicionesDeLaMismaFilaSeSerializanYLaSegundaCalculaSusCambiosContraLoYaConfirmado() throws Exception {
+	void dosEdicionesDesdeLaMismaRevisionSeSerializanYLaSegundaRecibe409PorqueYaNoEsLaVigente() throws Exception {
 		UUID d = deportista(escuelaA, "Ana", "Perez", true);
 		UUID t = datos.temporada(escuelaA, 2027, false);
 		alta(d, t, null);
+		DeportistaTemporadaActualizacion desdeLaRevisionCero = cambioDesde("Sub 14", null, 0L);
+		DeportistaTemporadaActualizacion tambienDesdeLaCero = cambioDesde("Sub 16", null, 0L);
 
-		Retencion a = new Retencion(() -> dts.actualizar(admin, d, t, cambio("Sub 14", null), DATOS));
-		Future<Object> b = enOtroHilo(() -> dts.actualizar(admin, d, t, cambio("Sub 14", null), DATOS));
+		Retencion a = new Retencion(() -> dts.actualizar(admin, d, t, desdeLaRevisionCero, DATOS));
+		Future<Object> b = enOtroHilo(() -> dts.actualizar(admin, d, t, tambienDesdeLaCero, DATOS));
 		String sentencia;
 		try {
 			sentencia = assertBloqueada(b);
@@ -175,53 +188,71 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 			a.close();
 		}
 
-		assertThat(((DeportistaTemporadaRespuesta) a.confirmar()).categoria()).isEqualTo("Sub 14");
-		assertThat(((DeportistaTemporadaRespuesta) b.get(15, TimeUnit.SECONDS)).categoria()).isEqualTo("Sub 14");
+		DeportistaTemporadaRespuesta ganadora = (DeportistaTemporadaRespuesta) a.confirmar();
+		assertThat(ganadora.categoria()).isEqualTo("Sub 14");
+		assertThat(ganadora.version()).isEqualTo("1");
+		// B esperaba el bloqueo de la fila; al obtenerlo releyo lo que A confirmo y su revision (0) ya no es la vigente.
+		assertError(b.get(15, TimeUnit.SECONDS), HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA");
 		// SQL efectivo que recibio el servidor: bloqueo de ESA fila con FOR NO KEY UPDATE, no FOR UPDATE.
 		assertThat(sentencia.toLowerCase()).contains("gestion_patin.deportista_temporada").contains("for no key update");
-		// B releyo la fila con el bloqueo tomado: ya estaba en "Sub 14", no hubo cambio real y no hay segundo evento.
-		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).isEqualTo(1);
+		DeportistaTemporadaRespuesta final_ = dts.obtener(admin, d, t);
+		assertThat(final_.categoria()).as("la edicion rechazada no piso a la ganadora").isEqualTo("Sub 14");
+		assertThat(final_.version()).isEqualTo("1");
+		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).as("sin evento de exito para la rechazada").isEqualTo(1);
 		sinErrores();
 	}
 
 	@Test
-	void rondasDeEdicionesLibresDejanUnaFilaCoherenteYTantosEventosComoCambiosReales() throws Exception {
+	void rondasDeEdicionesLibresDesdeLaMismaRevisionDejanUnUnicoGanadorYAvanzanLaRevisionDeAUno() throws Exception {
 		UUID d = deportista(escuelaA, "Ana", "Perez", true);
 		UUID t = datos.temporada(escuelaA, 2027, false);
 		alta(d, t, null);
 		for (int ronda = 0; ronda < RONDAS; ronda++) {
+			final long revision = versionActual(d, t);
 			String uno = "Cat " + ronda + "-1";
 			String otro = "Cat " + ronda + "-2";
 
-			List<Object> resultados = enParalelo(() -> dts.actualizar(admin, d, t, cambio(uno, null), DATOS),
-					() -> dts.actualizar(admin, d, t, cambio(otro, null), DATOS));
+			List<Object> resultados = enParalelo(() -> dts.actualizar(admin, d, t, cambioDesde(uno, null, revision), DATOS),
+					() -> dts.actualizar(admin, d, t, cambioDesde(otro, null, revision), DATOS));
 
-			assertThat(resultados).allSatisfy(r -> assertThat(r).isInstanceOf(DeportistaTemporadaRespuesta.class));
-			assertThat(dts.obtener(admin, d, t).categoria()).isIn(uno, otro);
+			assertThat(resultados).as("ronda " + ronda).filteredOn(DeportistaTemporadaRespuesta.class::isInstance).hasSize(1);
+			assertThat(resultados).filteredOn(ExcepcionNegocio.class::isInstance).hasSize(1)
+					.allSatisfy(r -> assertError(r, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+			DeportistaTemporadaRespuesta actual = dts.obtener(admin, d, t);
+			assertThat(actual.categoria()).isIn(uno, otro);
+			assertThat(actual.version()).as("una sola escritura por ronda").isEqualTo(Long.toString(revision + 1));
 		}
-		// Cada ronda cambia la categoria dos veces: ambas ediciones son cambios reales (la segunda difiere de la primera).
-		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).isEqualTo(RONDAS * 2L);
+		// Un unico ganador por ronda: ni se pierde una actualizacion ni se audita una escritura rechazada.
+		assertThat(contarAuditoria(escuelaA, "DEPORTISTA_TEMPORADA_ACTUALIZADA")).isEqualTo((long) RONDAS);
 		sinErrores();
 	}
 
 	/**
-	 * LIMITACION ACEPTADA (D6): el bloqueo serializa las escrituras pero NO evita que un PUT armado con datos viejos pise un
-	 * cambio posterior. No hay columna de version y agregarla exigiria una migracion: gana la ultima escritura.
+	 * U9 cierra la limitacion D6: un PUT armado con una lectura vieja YA NO pisa un cambio posterior. El administrador que
+	 * reenvia el numero "7" que veia con la revision vieja recibe 409; al releer (revision 1) y reenviar, la ultima decision
+	 * queda explicita y nada se pierde en silencio.
 	 */
 	@Test
-	void unPutArmadoConDatosViejosPisaElCambioPosteriorPorqueGanaLaUltimaEscritura() {
+	void unPutArmadoConDatosViejosYaNoPisaElCambioPosteriorYRecibe409() {
 		UUID d = deportista(escuelaA, "Ana", "Perez", true);
 		UUID t = datos.temporada(escuelaA, 2027, false);
 		alta(d, t, "7");
 
 		// Un administrador cambia el numero a "9"...
-		dts.actualizar(admin, d, t, cambio("Sub 12", "9"), DATOS);
-		// ...y otro, con la pantalla vieja (numero "7"), solo quiere cambiar la categoria y reenvia el numero que veia.
-		dts.actualizar(admin, d, t, cambio("Sub 14", "7"), DATOS);
+		dts.actualizar(admin, d, t, cambioDesde("Sub 12", "9", 0L), DATOS);
+		// ...y otro, con la pantalla vieja (revision 0, numero "7"), solo quiere cambiar la categoria.
+		assertThatThrownBy(() -> dts.actualizar(admin, d, t, cambioDesde("Sub 14", "7", 0L), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
 
-		DeportistaTemporadaRespuesta final_ = dts.obtener(admin, d, t);
-		assertThat(final_.categoria()).isEqualTo("Sub 14");
-		assertThat(final_.numeroCorredor()).as("el cambio a 9 se perdio: ultima escritura gana").isEqualTo("7");
+		DeportistaTemporadaRespuesta tras = dts.obtener(admin, d, t);
+		assertThat(tras.numeroCorredor()).as("el cambio a 9 NO se perdio").isEqualTo("9");
+		assertThat(tras.categoria()).isEqualTo("Sub 12");
+		assertThat(tras.version()).isEqualTo("1");
+
+		// Releyendo (revision 1) puede reenviar su cambio sobre lo vigente.
+		DeportistaTemporadaRespuesta reenviada = dts.actualizar(admin, d, t, cambioDesde("Sub 14", "9", 1L), DATOS);
+		assertThat(reenviada.version()).isEqualTo("2");
+		assertThat(dts.obtener(admin, d, t).categoria()).isEqualTo("Sub 14");
 	}
 
 	// ---------- que el bloqueo sea solo el de esa fila ----------
@@ -234,8 +265,8 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		alta(d1, t, null);
 		alta(d2, t, null);
 
-		try (Retencion a = new Retencion(() -> dts.actualizar(admin, d1, t, cambio("Sub 14", null), DATOS))) {
-			Object b = enOtroHilo(() -> dts.actualizar(admin, d2, t, cambio("Sub 16", null), DATOS)).get(SIN_ESPERA_SEGUNDOS,
+		try (Retencion a = new Retencion(() -> dts.actualizar(admin, d1, t, cambio(d1, t, "Sub 14", null), DATOS))) {
+			Object b = enOtroHilo(() -> dts.actualizar(admin, d2, t, cambio(d2, t, "Sub 16", null), DATOS)).get(SIN_ESPERA_SEGUNDOS,
 					TimeUnit.SECONDS);
 
 			assertThat(((DeportistaTemporadaRespuesta) b).categoria()).isEqualTo("Sub 16");
@@ -254,7 +285,7 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 
 		try (Retencion a = new Retencion(() -> temporadasAdmin.activar(admin, aActivar, DATOS))) {
 			Future<Object> altaNueva = enOtroHilo(() -> alta(d2, otra, "5"));
-			Future<Object> edicion = enOtroHilo(() -> dts.actualizar(admin, d1, otra, cambio("Sub 16", null), DATOS));
+			Future<Object> edicion = enOtroHilo(() -> dts.actualizar(admin, d1, otra, cambio(d1, otra, "Sub 16", null), DATOS));
 
 			assertThat(altaNueva.get(SIN_ESPERA_SEGUNDOS, TimeUnit.SECONDS)).isInstanceOf(DeportistaTemporadaRespuesta.class);
 			assertThat(edicion.get(SIN_ESPERA_SEGUNDOS, TimeUnit.SECONDS)).isInstanceOf(DeportistaTemporadaRespuesta.class);

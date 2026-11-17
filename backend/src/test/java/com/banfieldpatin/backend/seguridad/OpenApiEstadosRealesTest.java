@@ -93,7 +93,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	@Test
 	void postDeportistaTemporadaResponde201ConLocationDelPar() throws Exception {
 		when(deportistaTemporadaAdminService.crear(any(), any(), any(), any())).thenReturn(
-				new DeportistaTemporadaRespuesta(ID, ID, ID, 2027, null, null, null, null, EstadoDeportivo.ACTIVO));
+				new DeportistaTemporadaRespuesta(ID, ID, ID, 2027, null, null, null, null, EstadoDeportivo.ACTIVO, "0"));
 
 		mvc.perform(conCsrf(json(post("/api/admin/deportistas/" + ID + "/temporadas"), "{\"temporadaId\":\"" + ID + "\"}"),
 				sesion(Rol.ADMIN))).andExpect(status().isCreated())

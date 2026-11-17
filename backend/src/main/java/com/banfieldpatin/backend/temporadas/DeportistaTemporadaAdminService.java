@@ -24,6 +24,7 @@ import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.deportistas.Deportista;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
 import com.banfieldpatin.backend.deportistas.DeportistaRepository;
+import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaActualizacion;
 import com.banfieldpatin.backend.temporadas.dto.DeportistaTemporadaRespuesta;
@@ -129,11 +130,15 @@ public class DeportistaTemporadaAdminService {
 	}
 
 	/**
-	 * Reemplazo completo. Orden: lock_timeout acotado, bloqueo de ESA fila ({@code FOR NO KEY UPDATE}) y relectura DENTRO de
-	 * la transaccion, asi que la lista de campos modificados de la auditoria se calcula contra el estado confirmado mas
-	 * reciente. El bloqueo serializa las escrituras sobre la fila, pero NO evita que un PUT armado con datos viejos pise un
-	 * cambio posterior: no hay version por fila (agregarla exigiria una migracion) y la ultima escritura gana. Si el bloqueo
-	 * no se obtiene a tiempo o hay un deadlock, 409 CONFLICTO_CONCURRENCIA sin escribir ni auditar.
+	 * Reemplazo completo protegido por la revision de ESA fila (U9). Orden: lock_timeout acotado, bloqueo de la fila
+	 * ({@code FOR NO KEY UPDATE}), relectura DENTRO de la transaccion, y recien entonces: 404 (otra escuela = mismo 404) ->
+	 * revision (409 EDICION_DESACTUALIZADA, incluso si los valores ya coinciden y aunque no haya cambio efectivo) -> unicidad ->
+	 * escritura. Dos mecanismos que se complementan: el bloqueo SERIALIZA las escrituras sobre la fila (el perdedor espera,
+	 * y al obtener el bloqueo relee lo que el ganador confirmo), y la comparacion de revisiones, hecha con el bloqueo ya en
+	 * mano, rechaza un PUT armado con una lectura vieja: sin ella la ultima escritura ganaba aunque pisara un cambio
+	 * confirmado. {@code @Version} agrega el predicado atomico {@code WHERE version = ?} al UPDATE como red de seguridad ante
+	 * una escritura que no tome el bloqueo. Si el bloqueo no se obtiene a tiempo o hay un deadlock, 409
+	 * CONFLICTO_CONCURRENCIA (nada se aplico); cualquier rechazo revierte tambien la auditoria, que va en la misma transaccion.
 	 */
 	@Transactional
 	public DeportistaTemporadaRespuesta actualizar(UsuarioAutenticado admin, UUID deportistaId, UUID temporadaId,
@@ -156,6 +161,7 @@ public class DeportistaTemporadaAdminService {
 		// Primera carga de la entidad: ocurre DESPUES del bloqueo, asi que ve lo que otra edicion confirmo mientras se esperaba.
 		DeportistaTemporada fila = datos.findByEscuelaIdAndDeportistaIdAndTemporadaId(escuelaId, deportistaId, temporadaId)
 				.orElseThrow(DeportistaTemporadaAdminService::filaNoEncontrada);
+		exigirRevision(fila, a.versionEsperada());
 		if (a.numeroCorredor() != null && !a.numeroCorredor().equals(fila.getNumeroCorredor())
 				&& datos.existsByEscuelaIdAndTemporadaIdAndNumeroCorredorAndIdNot(escuelaId, temporadaId,
 						a.numeroCorredor(), fila.getId())) {
@@ -203,6 +209,20 @@ public class DeportistaTemporadaAdminService {
 		throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "La solicitud no es válida.");
 	}
 
+	/**
+	 * La revision observada debe ser la de la fila CONFIRMADA ahora (con el bloqueo ya obtenido): distinta = 409
+	 * EDICION_DESACTUALIZADA, aunque los valores enviados coincidan con los guardados. Una revision ausente o negativa es un
+	 * 400 (el DTO ya lo exige; esto cubre a quien llame al servicio sin pasar por el, y no da eco del valor).
+	 */
+	private static void exigirRevision(DeportistaTemporada fila, Long versionEsperada) {
+		if (versionEsperada == null || versionEsperada < 0) {
+			throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "VALIDACION", "La revisión es obligatoria y no negativa.");
+		}
+		if (fila.getVersion() != versionEsperada) {
+			throw FamiliaAdminService.edicionDesactualizada();
+		}
+	}
+
 	private Deportista cargarDeportista(UUID escuelaId, UUID deportistaId) {
 		return deportistas.findByIdAndEscuelaId(deportistaId, escuelaId)
 				.orElseThrow(DeportistaAdminService::deportistaNoEncontrado);
@@ -242,7 +262,7 @@ public class DeportistaTemporadaAdminService {
 
 	private static DeportistaTemporadaRespuesta respuesta(DeportistaTemporada f, Short anio) {
 		return new DeportistaTemporadaRespuesta(f.getId(), f.getDeportistaId(), f.getTemporadaId(), anio, f.getCategoria(),
-				f.getRama(), f.getDivisional(), f.getNumeroCorredor(), f.getEstadoDeportivo());
+				f.getRama(), f.getDivisional(), f.getNumeroCorredor(), f.getEstadoDeportivo(), Long.toString(f.getVersion()));
 	}
 
 	private void registrar(UsuarioAutenticado admin, AccionAuditoria accion, UUID recursoId, Map<String, Object> detalle,

@@ -27,7 +27,8 @@ public interface DeportistaTemporadaRepository extends JpaRepository<DeportistaT
 	/** Historial de un deportista, del anio mas nuevo al mas viejo, en UNA consulta (el anio sale del join). */
 	@Query("""
 			select new com.banfieldpatin.backend.temporadas.FilaDeportistaTemporada(dt.id, dt.deportistaId,
-			    dt.temporadaId, t.anio, dt.categoria, dt.rama, dt.divisional, dt.numeroCorredor, dt.estadoDeportivo)
+			    dt.temporadaId, t.anio, dt.categoria, dt.rama, dt.divisional, dt.numeroCorredor, dt.estadoDeportivo,
+			    dt.version)
 			from DeportistaTemporada dt join Temporada t on t.id = dt.temporadaId
 			where dt.escuelaId = :escuelaId and dt.deportistaId = :deportistaId
 			order by t.anio desc, dt.id
@@ -36,7 +37,8 @@ public interface DeportistaTemporadaRepository extends JpaRepository<DeportistaT
 
 	@Query("""
 			select new com.banfieldpatin.backend.temporadas.FilaDeportistaTemporada(dt.id, dt.deportistaId,
-			    dt.temporadaId, t.anio, dt.categoria, dt.rama, dt.divisional, dt.numeroCorredor, dt.estadoDeportivo)
+			    dt.temporadaId, t.anio, dt.categoria, dt.rama, dt.divisional, dt.numeroCorredor, dt.estadoDeportivo,
+			    dt.version)
 			from DeportistaTemporada dt join Temporada t on t.id = dt.temporadaId
 			where dt.escuelaId = :escuelaId and dt.deportistaId = :deportistaId and dt.temporadaId = :temporadaId
 			""")
