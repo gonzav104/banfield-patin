@@ -1,11 +1,12 @@
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
+import { Alert } from '@/components/ui/alert';
 import { AthleteNotFound } from '@/features/admin-deportistas/AthleteNotFound';
 import { useSession } from '@/features/auth/session';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
 import { isSafeId } from './api';
 import { useSportsRow } from './hooks';
-import { classifyRowAbsence, LOADING_TEXT, NO_ROW_TEXT, NO_ROW_TITLE, SECTION_TITLE, SEASON_NOT_FOUND_TEXT, SEASON_NOT_FOUND_TITLE } from './messages';
+import { classifyRowAbsence, LOADED_NOTICE, LOADING_TEXT, NO_ROW_TEXT, NO_ROW_TITLE, SECTION_TITLE, SEASON_NOT_FOUND_TEXT, SEASON_NOT_FOUND_TITLE } from './messages';
 import { sportsHistoryPath } from './navigation';
 import type { SportsRow } from './schemas';
 import { Notice, ReadError, Row, SportsLink, SportsStatusBadge, textOrNotInformed } from './SportsUi';
@@ -25,10 +26,11 @@ function Absent({ athleteId, title, children }: { athleteId: string; title: stri
 }
 
 /** The revision (`version`) is part of the contract and is deliberately not read here: it is not a business datum. */
-function RowView({ athleteId, row }: { athleteId: string; row: SportsRow }) {
+function RowView({ athleteId, row, notice }: { athleteId: string; row: SportsRow; notice: string | null }) {
   return (
     <div className="max-w-3xl space-y-6">
       <BackToHistory athleteId={athleteId} />
+      {notice ? <Alert tone="success">{notice}</Alert> : null}
       <header className="space-y-2">
         <p className="text-sm font-semibold text-brand-700">{SECTION_TITLE}</p>
         <h1 className="text-3xl font-extrabold tracking-tight">Temporada {row.anio}</h1>
@@ -50,6 +52,7 @@ function RowView({ athleteId, row }: { athleteId: string; row: SportsRow }) {
 
 function RowScreen() {
   const { id, temporadaId } = useParams();
+  const location = useLocation();
   const validAthlete = isSafeId(id);
   const validSeason = isSafeId(temporadaId);
   const enabled = validAthlete && validSeason;
@@ -84,7 +87,9 @@ function RowScreen() {
       </div>
     );
   }
-  return <RowView athleteId={id} row={row.data} />;
+  // The notice after a load travels in the navigation state as a FLAG, never as data; a detail opened directly never shows it.
+  const state = location.state as { sportsRowCreated?: unknown } | null;
+  return <RowView athleteId={id} row={row.data} notice={state?.sportsRowCreated === true ? LOADED_NOTICE : null} />;
 }
 
 /**

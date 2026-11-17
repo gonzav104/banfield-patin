@@ -124,7 +124,9 @@ test.describe('sports history (real backend)', () => {
     await expect(page.getByRole('heading', { name: 'Este deportista todavía no tiene datos deportivos' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Todavía no hay temporadas' })).toHaveCount(0);
     await expect(page.getByRole('main').getByRole('button')).toHaveCount(0);
-    await expect(page.getByRole('main').getByRole('link', { name: /crear|nueva|cargar|agregar|activar/i })).toHaveCount(0);
+    // U10-B: the way to load data exists, and nothing to create or activate seasons or to edit anything.
+    await expect(page.getByRole('main').getByRole('link', { name: 'Cargar datos de una temporada' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: /crear|agregar|activar|editar/i })).toHaveCount(0);
   });
 
   test('simulated: a school without any season gets its own message and no way to create one', async () => {

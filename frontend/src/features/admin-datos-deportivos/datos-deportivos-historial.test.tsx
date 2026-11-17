@@ -117,7 +117,7 @@ describe('sports history: what the administrator sees', () => {
     expect(location()).toBe(`/admin/deportistas/${athlete.id}`);
   });
 
-  it('offers no way to create or edit sports data and sends only reads', async () => {
+  it('offers the way to LOAD data (U10-B) but no way to edit it, and sends only reads', async () => {
     const athlete = seedAthlete();
     const t27 = backend.addSeason(2027);
     backend.addSportsRow(athlete.id, t27.id, {});
@@ -126,7 +126,8 @@ describe('sports history: what the administrator sees', () => {
     await screen.findByRole('list', { name: 'Historial deportivo' });
     const main = within(screen.getByRole('main'));
     expect(main.queryByRole('button')).not.toBeInTheDocument();
-    expect(main.queryByRole('link', { name: /agregar|cargar|nueva|crear|editar|activar/i })).not.toBeInTheDocument();
+    expect(main.getByRole('link', { name: 'Cargar datos de una temporada' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/temporadas/nueva`);
+    expect(main.queryByRole('link', { name: /agregar|crear|editar|activar/i })).not.toBeInTheDocument();
     expect(nonGets()).toEqual([]);
   });
 });
@@ -263,5 +264,52 @@ describe('sports history: an athlete that cannot be shown, and routes that are n
 
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Datos deportivos' })).not.toBeInTheDocument());
     expect(historyGets()).toHaveLength(0);
+  });
+});
+
+describe('sports history: the link to load data', () => {
+  it('is offered next to the empty state when the school has seasons but the athlete has no data', async () => {
+    const athlete = seedAthlete();
+    backend.addSeason(2027);
+    open(`/admin/deportistas/${athlete.id}/temporadas`);
+
+    await screen.findByRole('heading', { name: 'Este deportista todavía no tiene datos deportivos' });
+    expect(screen.getByRole('link', { name: 'Cargar datos de una temporada' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/temporadas/nueva`);
+  });
+
+  it('is NOT offered when the school has no seasons at all: there is nowhere to load them', async () => {
+    const athlete = seedAthlete();
+    open(`/admin/deportistas/${athlete.id}/temporadas`);
+
+    await screen.findByRole('heading', { name: 'Todavía no hay temporadas' });
+    expect(screen.queryByRole('link', { name: 'Cargar datos de una temporada' })).not.toBeInTheDocument();
+  });
+
+  it('is replaced by an explanation for an inactive athlete, because the backend would refuse the load', async () => {
+    const athlete = seedAthlete({ activo: false });
+    const t27 = backend.addSeason(2027);
+    backend.addSportsRow(athlete.id, t27.id, {});
+    open(`/admin/deportistas/${athlete.id}/temporadas`);
+
+    await screen.findByRole('list', { name: 'Historial deportivo' });
+    expect(screen.queryByRole('link', { name: 'Cargar datos de una temporada' })).not.toBeInTheDocument();
+    expect(screen.getByText('Un deportista inactivo no admite datos deportivos nuevos. Reactivalo desde su detalle.')).toBeInTheDocument();
+  });
+
+  it('keeps the list filter and page on the way in and out of the load screen', async () => {
+    const athlete = seedAthlete();
+    backend.addSeason(2027);
+    open('/admin/deportistas?estado=TODOS&pagina=1');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('link', { name: 'Sintética, Lucía' }));
+    await user.click(await screen.findByRole('link', { name: 'Ver datos deportivos' }));
+    await user.click(await screen.findByRole('link', { name: 'Cargar datos de una temporada' }));
+    await screen.findByRole('heading', { level: 1, name: 'Cargar datos deportivos' });
+    expect(location()).toBe(`/admin/deportistas/${athlete.id}/temporadas/nueva`);
+    await user.click(screen.getByRole('link', { name: 'Volver al historial deportivo' }));
+    await screen.findByRole('heading', { level: 1, name: 'Datos deportivos' });
+    await user.click(screen.getByRole('link', { name: 'Volver al detalle del deportista' }));
+    expect(await screen.findByRole('link', { name: 'Volver al listado' })).toHaveAttribute('href', '/admin/deportistas?estado=TODOS&pagina=1');
   });
 });

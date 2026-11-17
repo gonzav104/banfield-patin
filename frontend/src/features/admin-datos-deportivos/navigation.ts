@@ -12,3 +12,4 @@ export function forwardedListState(state: unknown): { listSearch: string } | und
 export const athleteDetailPath = (athleteId: string) => `/admin/deportistas/${encodeURIComponent(athleteId)}`;
 export const sportsHistoryPath = (athleteId: string) => `${athleteDetailPath(athleteId)}/temporadas`;
 export const sportsRowPath = (athleteId: string, seasonId: string) => `${sportsHistoryPath(athleteId)}/${encodeURIComponent(seasonId)}`;
+export const sportsLoadPath = (athleteId: string) => `${sportsHistoryPath(athleteId)}/nueva`;

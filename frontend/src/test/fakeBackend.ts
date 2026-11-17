@@ -598,13 +598,60 @@ export class FakeBackend {
     return { contenido: all.slice(page * size, page * size + size), pagina: page, tamanio: size, totalElementos: all.length };
   }
 
+  /** What the server really has for one athlete (read by the tests, never by the screens). */
+  sportsRowsOf(athleteId: string): FakeSportsRow[] {
+    return this.sportsRows.filter((r) => r.deportistaId === athleteId);
+  }
+
   /**
-   * Mirrors GET /admin/deportistas/{id}/temporadas[/{temporadaId}] (U9). The history is an UNPAGED array, newest year first; the
-   * single row answers 404 in the backend's order: athlete, then season, then the row (another school's athlete is just «not found»).
+   * Mirrors POST /admin/deportistas/{id}/temporadas (DeportistaTemporadaSolicitud, U9). A property that is not part of the request ->
+   * 400 SOLICITUD_INVALIDA (also an unknown sports status); bean validation (a season id, the lengths of the NORMALISED values, no control
+   * characters) -> 400 VALIDACION. Then, in the backend's order: 404 athlete, 404 season, 409 inactive athlete, 409 pair already there,
+   * 409 runner number already taken in that season (by anybody). Blank optionals become null; the status defaults to ACTIVO; the
+   * runner number is only trimmed (leading zeros are kept), the other texts also collapse their inner spaces.
    */
-  private sportsRoute(method: string, path: string): { status: number; body?: unknown } | null {
+  private createSportsRow(athleteId: string, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = ['temporadaId', 'categoria', 'rama', 'divisional', 'numeroCorredor', 'estadoDeportivo'];
+    const invalidRequest = () => this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (Object.keys(input).some((k) => !allowed.includes(k))) return invalidRequest();
+    if (input.estadoDeportivo !== undefined && input.estadoDeportivo !== null && (typeof input.estadoDeportivo !== 'string' || !['ACTIVO', 'INACTIVO', 'SUSPENDIDO'].includes(input.estadoDeportivo))) return invalidRequest();
+    const text = (value: unknown): string | null => (typeof value === 'string' ? (value.trim().replace(/\s+/g, ' ') || null) : null);
+    const code = (value: unknown): string | null => (typeof value === 'string' ? (value.trim() || null) : null);
+    const values = { categoria: text(input.categoria), rama: text(input.rama), divisional: text(input.divisional), numeroCorredor: code(input.numeroCorredor) };
+    const limits: [keyof typeof values, number][] = [['categoria', 80], ['rama', 40], ['divisional', 80], ['numeroCorredor', 30]];
+    const noControl = (value: string | null) => value === null || ![...value].some((character) => (character.codePointAt(0) ?? 0) < 32 || character === '\u007f');
+    const textFields = [input.categoria, input.rama, input.divisional, input.numeroCorredor];
+    if (
+      typeof input.temporadaId !== 'string' ||
+      textFields.some((value) => value !== undefined && value !== null && typeof value !== 'string') ||
+      limits.some(([field, max]) => (values[field]?.length ?? 0) > max) ||
+      !Object.values(values).every(noControl)
+    ) {
+      return this.error(400, 'VALIDACION', 'Hay datos inválidos en la solicitud.');
+    }
+    const athlete = this.adminAthletes.find((a) => a.id === athleteId);
+    if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    const season = this.seasons.find((t) => t.id === input.temporadaId);
+    if (!season) return this.error(404, 'TEMPORADA_NO_ENCONTRADA', 'La temporada no existe.');
+    if (!athlete.activo) return this.error(409, 'DEPORTISTA_INACTIVO', 'El deportista está inactivo.');
+    if (this.sportsRows.some((r) => r.deportistaId === athleteId && r.temporadaId === season.id)) return this.error(409, 'DEPORTISTA_TEMPORADA_DUPLICADA', 'Ya tiene datos en esa temporada.');
+    if (values.numeroCorredor !== null && this.sportsRows.some((r) => r.temporadaId === season.id && r.numeroCorredor === values.numeroCorredor)) {
+      return this.error(409, 'NUMERO_CORREDOR_DUPLICADO', 'El número de corredor ya está en uso en esa temporada.');
+    }
+    const row = this.addSportsRow(athleteId, season.id, { ...values, estadoDeportivo: (input.estadoDeportivo as FakeSportsStatus | null | undefined) ?? 'ACTIVO' });
+    return { status: 201, body: this.sportsRowView(row) };
+  }
+
+  /**
+   * Mirrors GET /admin/deportistas/{id}/temporadas[/{temporadaId}] (U9) and the POST of the history path. The history is an UNPAGED
+   * array, newest year first; the single row answers 404 in the backend's order: athlete, then season, then the row (another school's
+   * athlete is just «not found»).
+   */
+  private sportsRoute(method: string, path: string, body?: unknown): { status: number; body?: unknown } | null {
     const history = /^\/admin\/deportistas\/([^/]+)\/temporadas$/.exec(path);
     const one = /^\/admin\/deportistas\/([^/]+)\/temporadas\/([^/]+)$/.exec(path);
+    if (method === 'post' && history) return this.createSportsRow(history[1]!, body);
     if (method !== 'get' || (!history && !one)) return null;
     const athleteId = (history ?? one)![1]!;
     if (!this.adminAthletes.some((a) => a.id === athleteId)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
@@ -819,7 +866,7 @@ export class FakeBackend {
       return { status: 200, body: this.athleteDetail(athlete) };
     }
     if (method === 'get' && path === '/admin/temporadas') return { status: 200, body: this.seasonPage(params) };
-    const sports = this.sportsRoute(method, path);
+    const sports = this.sportsRoute(method, path, body);
     if (sports) return sports;
     const athleteWrite = /^\/admin\/deportistas\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
     if (method === 'put' && athleteWrite && !athleteWrite[2]) return this.updateAthlete(athleteWrite[1]!, body);

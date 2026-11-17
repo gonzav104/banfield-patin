@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import { AthleteNotFound } from '@/features/admin-deportistas/AthleteNotFound';
 import { AthleteStatusBadge } from '@/features/admin-deportistas/AthleteStatusBadge';
 import { useSession } from '@/features/auth/session';
@@ -7,7 +8,9 @@ import { ApiError } from '@/lib/api-error';
 import { isSafeId } from './api';
 import { useAthleteHeader, useSeasonCount, useSportsHistory } from './hooks';
 import {
+  INACTIVE_NOTE,
   isAthleteAbsent,
+  LOAD_LINK,
   LOADING_TEXT,
   NO_ROWS_TEXT,
   NO_ROWS_TITLE,
@@ -16,7 +19,7 @@ import {
   SCHOOL_STATE_NOTE,
   SECTION_TITLE,
 } from './messages';
-import { athleteDetailPath, sportsRowPath } from './navigation';
+import { athleteDetailPath, sportsLoadPath, sportsRowPath } from './navigation';
 import type { AthleteHeader, SportsRow } from './schemas';
 import { Notice, ReadError, Row, SportsLink, SportsStatusBadge, textOrNotInformed } from './SportsUi';
 
@@ -43,12 +46,29 @@ function SeasonItem({ athleteId, row }: { athleteId: string; row: SportsRow }) {
   );
 }
 
+/** The way into the load form (U10-B): an outline button that is really a link, so it keeps the list the administrator came from. */
+function LoadLink({ athleteId }: { athleteId: string }) {
+  return (
+    <Button asChild variant="outline">
+      <SportsLink to={sportsLoadPath(athleteId)} className="">
+        {LOAD_LINK}
+      </SportsLink>
+    </Button>
+  );
+}
+
 /** An empty history: the school has no season at all, or it has some and this athlete has no data in any of them. */
-function EmptyHistory() {
+function EmptyHistory({ athlete }: { athlete: AthleteHeader }) {
   const seasons = useSeasonCount(true);
   if (seasons.isError) return <ReadError error={ApiError.from(seasons.error)} onRetry={() => void seasons.refetch()} />;
   if (seasons.data === undefined) return <LoadingBlock label={LOADING_TEXT} />;
-  return seasons.data === 0 ? <Notice title={NO_SEASONS_TITLE}>{NO_SEASONS_TEXT}</Notice> : <Notice title={NO_ROWS_TITLE}>{NO_ROWS_TEXT}</Notice>;
+  if (seasons.data === 0) return <Notice title={NO_SEASONS_TITLE}>{NO_SEASONS_TEXT}</Notice>;
+  return (
+    <div className="space-y-4">
+      <Notice title={NO_ROWS_TITLE}>{NO_ROWS_TEXT}</Notice>
+      {athlete.activo ? <LoadLink athleteId={athlete.id} /> : null}
+    </div>
+  );
 }
 
 function History({ athlete, rows }: { athlete: AthleteHeader; rows: SportsRow[] }) {
@@ -66,9 +86,11 @@ function History({ athlete, rows }: { athlete: AthleteHeader; rows: SportsRow[] 
           </Row>
         </dl>
         <p className="text-sm text-muted">{SCHOOL_STATE_NOTE}</p>
+        {athlete.activo ? null : <p className="text-sm font-semibold">{INACTIVE_NOTE}</p>}
+        {athlete.activo && rows.length > 0 ? <LoadLink athleteId={athlete.id} /> : null}
       </header>
       {rows.length === 0 ? (
-        <EmptyHistory />
+        <EmptyHistory athlete={athlete} />
       ) : (
         <ul aria-label="Historial deportivo" className="space-y-4">
           {newestFirst(rows).map((row) => (
