@@ -250,3 +250,41 @@ describe('athlete detail: privacy and identity (mock backend)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Lucía Sintética' })).toBeInTheDocument();
   });
 });
+
+describe('athlete detail: the «Datos deportivos» access (U10-A)', () => {
+  it('adds one clearly identified section with a link to the sports history', async () => {
+    const athlete = seedFull();
+    open(`/admin/deportistas/${athlete.id}`);
+
+    const section = await screen.findByRole('region', { name: 'Datos deportivos' });
+    expect(within(section).getByRole('heading', { level: 2, name: 'Datos deportivos' })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: 'Ver datos deportivos' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/temporadas`);
+    expect(within(section).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('leaves the personal sections, the edit link and the global status control as they were', async () => {
+    const athlete = seedFull();
+    open(`/admin/deportistas/${athlete.id}`);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Lucía Sintética' })).toBeInTheDocument();
+    for (const name of ['Identificación', 'Contacto', 'Domicilio']) expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Editar deportista' })).toHaveAttribute('href', `/admin/deportistas/${athlete.id}/editar`);
+    expect(screen.getByRole('button', { name: 'Desactivar deportista' })).toBeInTheDocument();
+    expect(detailGets()).toHaveLength(1);
+    expect(writes()).toEqual([]);
+  });
+
+  it('keeps the list filter and page when going to the history and back, and never carries the search term', async () => {
+    const athlete = seedFull();
+    open('/admin/deportistas?estado=TODOS&pagina=1');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('link', { name: 'Sintética, Lucía' }));
+    await user.click(await screen.findByRole('link', { name: 'Ver datos deportivos' }));
+    await screen.findByRole('heading', { level: 1, name: 'Datos deportivos' });
+    expect(location()).toBe(`/admin/deportistas/${athlete.id}/temporadas`);
+    await user.click(screen.getByRole('link', { name: 'Volver al detalle del deportista' }));
+    const back = await screen.findByRole('link', { name: 'Volver al listado' });
+    expect(back).toHaveAttribute('href', '/admin/deportistas?estado=TODOS&pagina=1');
+  });
+});

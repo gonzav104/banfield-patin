@@ -87,6 +87,28 @@ export interface FakeAdminAthlete {
   version: number;
 }
 
+/** A season of the school (GET /admin/temporadas: TemporadaRespuesta). */
+export interface FakeSeason {
+  id: string;
+  anio: number;
+  activa: boolean;
+}
+
+export type FakeSportsStatus = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
+
+/** The sports data of ONE athlete in ONE season (deportista_temporada). `version` is the per-row revision (a decimal string on the wire). */
+export interface FakeSportsRow {
+  id: string;
+  deportistaId: string;
+  temporadaId: string;
+  categoria: string | null;
+  rama: string | null;
+  divisional: string | null;
+  numeroCorredor: string | null;
+  estadoDeportivo: FakeSportsStatus;
+  version: number;
+}
+
 const ATHLETE_FIELDS = ['dni', 'nombre', 'apellido', 'cuil', 'fechaNacimiento', 'nacionalidad', 'domicilio', 'otrosDatosDomicilio', 'localidad', 'partido', 'codigoPostal', 'telefonoContacto', 'emailFederativo'];
 
 /** The backend's EnmascaradoDni: only the last three digits are shown. */
@@ -161,6 +183,8 @@ export class FakeBackend {
   private enrolledInFlight = new Set<string>();
   private families: FakeFamily[] = [];
   private adminAthletes: FakeAdminAthlete[] = [];
+  private seasons: FakeSeason[] = [];
+  private sportsRows: FakeSportsRow[] = [];
   private invitations: FakeInvitation[] = [];
   private counter = 0;
   private portalFamilies = new Map<string, PortalFamily>();
@@ -535,6 +559,66 @@ export class FakeBackend {
     return this.adminAthletes.find((a) => a.id === id);
   }
 
+  /** A season of the school. They are created here, as in the real system they are created by a different unit (U14). */
+  addSeason(anio: number, activa = false): FakeSeason {
+    const season: FakeSeason = { id: `temp-${++this.counter}`, anio, activa };
+    this.seasons.push(season);
+    return season;
+  }
+
+  /** The sports data an athlete already has in a season. */
+  addSportsRow(athleteId: string, seasonId: string, data: Partial<Omit<FakeSportsRow, 'id' | 'deportistaId' | 'temporadaId'>> = {}): FakeSportsRow {
+    const row: FakeSportsRow = {
+      id: `dt-${++this.counter}`,
+      deportistaId: athleteId,
+      temporadaId: seasonId,
+      categoria: null,
+      rama: null,
+      divisional: null,
+      numeroCorredor: null,
+      estadoDeportivo: 'ACTIVO',
+      version: 0,
+      ...data,
+    };
+    this.sportsRows.push(row);
+    return row;
+  }
+
+  private sportsRowView(row: FakeSportsRow) {
+    const { version, ...rest } = row;
+    const season = this.seasons.find((t) => t.id === row.temporadaId);
+    return { ...rest, anio: season?.anio ?? 0, version: String(version) };
+  }
+
+  /** Mirrors Pagina.pedir: a negative page is 0 and the size is cut to [1, 100]. Newest year first. */
+  private seasonPage(params: URLSearchParams) {
+    const page = Math.max(Number(params.get('page') ?? 0), 0);
+    const size = Math.min(Math.max(Number(params.get('size') ?? 20), 1), 100);
+    const all = [...this.seasons].sort((a, b) => b.anio - a.anio);
+    return { contenido: all.slice(page * size, page * size + size), pagina: page, tamanio: size, totalElementos: all.length };
+  }
+
+  /**
+   * Mirrors GET /admin/deportistas/{id}/temporadas[/{temporadaId}] (U9). The history is an UNPAGED array, newest year first; the
+   * single row answers 404 in the backend's order: athlete, then season, then the row (another school's athlete is just «not found»).
+   */
+  private sportsRoute(method: string, path: string): { status: number; body?: unknown } | null {
+    const history = /^\/admin\/deportistas\/([^/]+)\/temporadas$/.exec(path);
+    const one = /^\/admin\/deportistas\/([^/]+)\/temporadas\/([^/]+)$/.exec(path);
+    if (method !== 'get' || (!history && !one)) return null;
+    const athleteId = (history ?? one)![1]!;
+    if (!this.adminAthletes.some((a) => a.id === athleteId)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    if (history) {
+      const rows = this.sportsRows.filter((r) => r.deportistaId === athleteId).map((r) => this.sportsRowView(r));
+      return { status: 200, body: rows.sort((a, b) => b.anio - a.anio) };
+    }
+    const seasonId = one![2]!;
+    if (!this.seasons.some((t) => t.id === seasonId)) return this.error(404, 'TEMPORADA_NO_ENCONTRADA', 'La temporada no existe.');
+    const row = this.sportsRows.find((r) => r.deportistaId === athleteId && r.temporadaId === seasonId);
+    if (!row) return this.error(404, 'DEPORTISTA_TEMPORADA_NO_ENCONTRADA', 'El deportista no tiene datos deportivos en esa temporada.');
+    return { status: 200, body: this.sportsRowView(row) };
+  }
+
   /**
    * Mirrors PUT /admin/deportistas/{id} (DeportistaActualizacion, a COMPLETE replacement): any other property -> 400
    * SOLICITUD_INVALIDA, bean validation (400 VALIDACION, the revision is required), 404, the revision (409 EDICION_DESACTUALIZADA,
@@ -734,6 +818,9 @@ export class FakeBackend {
       if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
       return { status: 200, body: this.athleteDetail(athlete) };
     }
+    if (method === 'get' && path === '/admin/temporadas') return { status: 200, body: this.seasonPage(params) };
+    const sports = this.sportsRoute(method, path);
+    if (sports) return sports;
     const athleteWrite = /^\/admin\/deportistas\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
     if (method === 'put' && athleteWrite && !athleteWrite[2]) return this.updateAthlete(athleteWrite[1]!, body);
     if (method === 'post' && athleteWrite?.[2]) return this.writeAthleteStatus(athleteWrite[1]!, athleteWrite[2] as 'activar' | 'desactivar', body);
