@@ -12,6 +12,7 @@
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",
+      "deportistas-datos-deportivos.real.spec.ts",
       "familias-detalle-alta.real.spec.ts",
       "familias-listado.real.spec.ts",
       "familias-tutores.real.spec.ts"
