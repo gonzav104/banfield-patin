@@ -42,3 +42,79 @@ export function classifyRowAbsence(error: ApiError): RowAbsence | null {
 export function isAthleteAbsent(error: ApiError): boolean {
   return error.status === 404 || error.status === 400;
 }
+
+/* ---- Loading sports data (U10-B). Fixed texts: the backend message is never echoed. ---- */
+
+export const LOAD_LINK = 'Cargar datos de una temporada';
+export const LOAD_TITLE = 'Cargar datos deportivos';
+export const LOAD_INTRO = 'Elegí una temporada en la que este deportista todavía no tenga datos. Solo se muestran las que se pueden cargar.';
+export const LOAD_SUBMIT = 'Cargar datos';
+export const LOAD_SUBMITTING = 'Cargando…';
+export const LOADED_NOTICE = 'Datos deportivos cargados.';
+
+export const INACTIVE_NOTE = 'Un deportista inactivo no admite datos deportivos nuevos. Reactivalo desde su detalle.';
+export const INACTIVE_TITLE = 'Este deportista está inactivo';
+export const INACTIVE_TEXT = 'No se le pueden cargar datos deportivos nuevos mientras esté inactivo. Reactivalo desde su detalle.';
+export const INACTIVE_LINK = 'Ir al detalle del deportista';
+
+export const NO_SEASONS_TO_LOAD_TEXT = 'La escuela todavía no tiene temporadas, así que no hay dónde cargar datos deportivos.';
+export const ALL_USED_TITLE = 'Ya hay datos en todas las temporadas';
+export const ALL_USED_TEXT = 'Este deportista ya tiene datos deportivos cargados en cada temporada de la escuela. Volvé al historial para consultarlos.';
+
+export const NUMBER_TAKEN_TEXT = 'Ese número de corredor ya lo tiene otro deportista en esa temporada. Elegí otro o dejalo vacío.';
+export const DUPLICATE_TEXT = 'Este deportista ya tiene datos deportivos en esa temporada. Ya no figura entre las que se pueden cargar.';
+export const SEASON_GONE_TEXT = 'Esa temporada ya no existe. Elegí otra.';
+export const BUSY_TEXT = 'Otra operación está en curso sobre este deportista. Esperá unos segundos y volvé a intentarlo.';
+export const INACTIVE_ATHLETE_TEXT = 'Este deportista está inactivo, así que no se le pueden cargar datos deportivos. Reactivalo desde su detalle.';
+export const INVALID_DATA_TEXT = 'Revisá los datos: la temporada es obligatoria y el resto debe respetar los formatos y límites.';
+export const LOAD_FORBIDDEN_TEXT = 'No tenés permiso para cargar datos deportivos.';
+export const UNCERTAIN_LOAD_TEXT = 'No pudimos confirmar si los datos se cargaron. Tus datos siguen acá. Antes de volver a intentar, verificá si la temporada ya los tiene.';
+/** Added to a duplicate answer that follows an attempt whose result could not be confirmed. */
+export const DUPLICATE_AFTER_UNCERTAIN_TEXT = 'Como el intento anterior no se pudo confirmar, es posible que esos datos sean los que intentaste cargar: no podemos saberlo.';
+
+export const VERIFY_BUTTON = 'Verificar la temporada';
+export const VERIFYING = 'Verificando…';
+export const VERIFY_ERROR_TEXT = 'No pudimos verificar la temporada ahora. Intentá de nuevo en unos instantes.';
+export const VERIFY_FOUND_TEXT = 'La temporada ya tiene estos datos cargados:';
+export const VERIFY_SAME_TEXT = 'Coinciden con lo que enviaste, pero no podemos saber si los cargó este envío u otro.';
+export const VERIFY_DIFFERENT_TEXT = 'Difieren de lo que enviaste: otra persona u otro envío pudo cargarlos.';
+export const VERIFY_ABSENT_TEXT = 'No encontramos datos cargados en esa temporada en este momento. Esa lectura no descarta que el envío anterior se confirme más tarde.';
+export const VERIFY_RETRY_TEXT = 'Si volvés a intentar y el primer envío sí se había aplicado, el sistema lo rechazará por duplicado: no se carga dos veces.';
+
+/** How a failed load must be told to the administrator. */
+export type LoadFailure = 'numberTaken' | 'duplicate' | 'inactive' | 'busy' | 'seasonGone' | 'athleteGone' | 'uncertain' | 'validation' | 'forbidden' | 'other';
+
+export function classifyLoadFailure(error: ApiError): LoadFailure {
+  if (error.status === 409) {
+    if (error.code === 'NUMERO_CORREDOR_DUPLICADO') return 'numberTaken';
+    if (error.code === 'DEPORTISTA_TEMPORADA_DUPLICADA') return 'duplicate';
+    if (error.code === 'DEPORTISTA_INACTIVO') return 'inactive';
+    return 'busy'; // any other conflict (a database contention): nothing was applied
+  }
+  if (error.status === 404) return error.code === 'TEMPORADA_NO_ENCONTRADA' ? 'seasonGone' : 'athleteGone';
+  // A network failure, a timeout, any 5xx and an unreadable 2xx may have been applied: never assume it was not.
+  if (error.kind === 'network' || error.kind === 'unavailable' || error.kind === 'server') return 'uncertain';
+  if (error.kind === 'validation') return 'validation';
+  if (error.kind === 'forbidden') return 'forbidden';
+  return 'other';
+}
+
+/** The alert of a failure (the ones that have a field or a screen of their own are not here). */
+export function loadErrorMessage(failure: LoadFailure, error: ApiError): string {
+  switch (failure) {
+    case 'busy':
+      return BUSY_TEXT;
+    case 'inactive':
+      return INACTIVE_ATHLETE_TEXT;
+    case 'seasonGone':
+      return SEASON_GONE_TEXT;
+    case 'validation':
+      return INVALID_DATA_TEXT;
+    case 'forbidden':
+      return LOAD_FORBIDDEN_TEXT;
+    case 'uncertain':
+      return UNCERTAIN_LOAD_TEXT;
+    default:
+      return commonErrorMessage(error) ?? 'No pudimos cargar los datos deportivos. Intentá de nuevo.';
+  }
+}

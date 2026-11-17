@@ -37,6 +37,8 @@ export const athleteHeaderSchema = z.object({
 });
 export type AthleteHeader = z.infer<typeof athleteHeaderSchema>;
 
-/** GET /api/admin/temporadas (Pagina<TemporadaRespuesta>). Only the total matters here: whether the school has any season at all. */
-export const seasonPageSchema = pageSchema(z.object({ id: z.string(), anio: z.number().int(), activa: z.boolean() }));
+/** GET /api/admin/temporadas (Pagina<TemporadaRespuesta>): the history only needs the total; the load form reads every page. */
+export const seasonSchema = z.object({ id: z.string(), anio: z.number().int(), activa: z.boolean() });
+export type Season = z.infer<typeof seasonSchema>;
+export const seasonPageSchema = pageSchema(seasonSchema);
 export type SeasonPage = z.infer<typeof seasonPageSchema>;
