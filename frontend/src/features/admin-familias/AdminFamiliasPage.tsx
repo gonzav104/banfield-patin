@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
+import { useSession } from '@/features/auth/session';
 import { Pagination } from '@/features/familia/Pagination';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { useDebouncedValue } from '@/features/invitations/useDebouncedValue';
@@ -57,7 +58,7 @@ function FamilyRow({ family }: { family: FamilyAdminSummary }) {
   );
 }
 
-export function AdminFamiliasPage() {
+function FamilyList() {
   const [params, setParams] = useSearchParams();
   const estado = readStatus(params.get('estado'));
   const page = readPage(params.get('pagina'));
@@ -184,4 +185,17 @@ export function AdminFamiliasPage() {
       </section>
     </div>
   );
+}
+
+/**
+ * The list holds, in this component's memory, a search term that can be a family surname, and what the query returned. Keyed by
+ * identity, a session that now belongs to someone else starts from nothing (no term, no rows, a new query) instead of keeping what
+ * the previous administrator typed. The session code also removes the previous identity's private queries; the HTTP client does not
+ * forward an abort signal, so a response still in flight is not cancelled, but it settles on the removed query and never reaches the
+ * new screen (the new mount creates its own query).
+ */
+export function AdminFamiliasPage() {
+  const session = useSession();
+  const identity = session.status === 'authenticated' ? session.user.id : '';
+  return <FamilyList key={identity} />;
 }
