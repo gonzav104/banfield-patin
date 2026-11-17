@@ -1,0 +1,12 @@
+{
+  "excepciones": [
+    {
+      "ghsa": "GHSA-fc5q-39xc-vjpf",
+      "paquete": "picomatch",
+      "rango": "<=4.0.7",
+      "vence": "2026-12-17",
+      "motivo": "ReDoS de picomatch (CVE-2026-112366) sin versión corregida publicada (la última es la 4.0.7 y los PR de corrección de micromatch/picomatch siguen abiertos). Solo se explota si un atacante controla el PATRÓN glob (por ejemplo +(*a)); aquí los patrones los escribe el equipo en la configuración (vite, vitest, eslint y playwright) y ninguno usa extglobs. picomatch es solo de desarrollo y CI (npm audit --omit=dev da 0 avisos) y no llega al bundle de producción. Revisar el 2026-12-17 como máximo o apenas exista una versión corregida (el gate falla solo si el rango afectado cambia).",
+      "enlace": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf"
+    }
+  ]
+}
