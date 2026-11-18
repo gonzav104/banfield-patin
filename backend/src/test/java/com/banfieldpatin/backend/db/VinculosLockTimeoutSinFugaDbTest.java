@@ -72,9 +72,9 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		assertThat(lockTimeout()).as("tras vincular").isEqualTo("0");
 		servicio.vincular(admin, f2, List.of(d), DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		assertThat(lockTimeout()).as("tras cambiar principal").isEqualTo("0");
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 		assertThat(lockTimeout()).as("tras revocar").isEqualTo("0");
 		assertThat(pid()).isEqualTo(pidAntes);
 	}

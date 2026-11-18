@@ -159,8 +159,9 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		UUID vinculoF2 = (UUID) fila(f2, d).orElseThrow().get("id");
 
 		long inicial = revision(d);
-		Par par = bBloqueadaDetrasDeA(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS),
-				() -> servicio.cambiarPrincipal(admin, f3, d, DATOS));
+		// B envia la revision posterior a A: la compara despues de esperar el bloqueo (U11-A).
+		Par par = bBloqueadaDetrasDeA(() -> vigente.cambiarPrincipal(admin, f2, d, DATOS),
+				() -> servicio.cambiarPrincipal(admin, f3, d, inicial + 1, DATOS));
 
 		assertThat(vinculo(par.a()).esPrincipal()).isTrue();
 		assertThat(vinculo(par.b()).esPrincipal()).isTrue();
@@ -205,8 +206,9 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			for (int ronda = 0; ronda < RONDAS; ronda++) {
 				// Rondas pares: dos destinos distintos; impares: el MISMO destino (uno cambia y el otro es idempotente).
 				UUID destinoB = ronda % 2 == 0 ? f3 : f2;
-				List<Object> resultados = enParalelo(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS),
-						() -> servicio.cambiarPrincipal(admin, destinoB, d, DATOS));
+				List<Object> resultados = enParalelo(
+						() -> reintentandoSiEsObsoleta(() -> vigente.cambiarPrincipal(admin, f2, d, DATOS)),
+						() -> reintentandoSiEsObsoleta(() -> vigente.cambiarPrincipal(admin, destinoB, d, DATOS)));
 
 				assertThat(resultados).as("ronda %d", ronda).allMatch(r -> r instanceof VinculoRespuesta);
 				assertThat(principalesActivos(d)).as("ronda %d", ronda).isEqualTo(1);
@@ -235,7 +237,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		servicio.vincular(admin, f2, List.of(d), DATOS);
 		UUID vinculoF1 = (UUID) fila(f1, d).orElseThrow().get("id");
 
-		VinculoRespuesta r = servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		VinculoRespuesta r = vigente.cambiarPrincipal(admin, f2, d, DATOS);
 
 		assertThat(r.esPrincipal()).isTrue();
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", false).containsEntry("estado", "ACTIVO");
@@ -243,7 +245,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		assertThat(jdbc.sql("SELECT detalle->>'anteriorVinculoId' FROM gestion_patin.auditoria WHERE accion = 'VINCULO_PRINCIPAL_CAMBIADO' AND escuela_id = :e")
 				.param("e", escuelaA).query(String.class).single()).isEqualTo(vinculoF1.toString());
 		// Repetir es idempotente: 200 sin escribir ni auditar.
-		assertThat(servicio.cambiarPrincipal(admin, f2, d, DATOS).esPrincipal()).isTrue();
+		assertThat(vigente.cambiarPrincipal(admin, f2, d, DATOS).esPrincipal()).isTrue();
 		assertThat(contarAuditoria("VINCULO_PRINCIPAL_CAMBIADO")).isEqualTo(1);
 		verificarInvariantes();
 	}
@@ -264,7 +266,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		})).hasMessageContaining("uq_fd_principal_activo");
 
 		// El servicio hace el orden correcto y no falla.
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		assertThat(principalesActivos(d)).isEqualTo(1);
 	}
 
@@ -278,19 +280,19 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		datos.desactivarFamilia(f2);
 		long auditorias = contar("auditoria", escuelaA);
 
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS))
+		assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, f2, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", true);
 		assertThat(fila(f2, d).orElseThrow()).containsEntry("es_principal", false);
 		assertThat(contar("auditoria", escuelaA)).isEqualTo(auditorias);
 		// La familia se comprueba primero, aun con un vinculo no ACTIVO.
-		servicio.revocar(admin, f2, d, DATOS);
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS))
+		vigente.revocar(admin, f2, d, DATOS);
+		assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, f2, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 		// Al reactivar la familia el mismo pedido ya recibe su respuesta de vinculo (REVOCADO -> VINCULO_NO_ACTIVO).
 		datos.reactivarFamilia(f2);
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS))
+		assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, f2, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_NO_ACTIVO"));
 	}
 
@@ -303,7 +305,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		servicio.vincular(admin, f2, List.of(d), DATOS);
 		datos.desactivarFamilia(f1); // la familia del principal actual esta inactiva
 
-		VinculoRespuesta r = servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		VinculoRespuesta r = vigente.cambiarPrincipal(admin, f2, d, DATOS);
 
 		assertThat(r.esPrincipal()).isTrue();
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", false).containsEntry("estado", "ACTIVO");
@@ -321,16 +323,16 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		servicio.vincular(admin, fRevocada, List.of(d), DATOS);
-		servicio.revocar(admin, fRevocada, d, DATOS);
+		vigente.revocar(admin, fRevocada, d, DATOS);
 		datos.vinculo(escuelaA, fPendiente, d, "PENDIENTE", false, null);
 		datos.vinculo(escuelaA, fRechazada, d, "RECHAZADO", false, null);
 		long auditorias = contar("auditoria", escuelaA);
 
 		for (UUID f : List.of(fRevocada, fPendiente, fRechazada)) {
-			assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, f, d, DATOS))
+			assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, f, d, DATOS))
 					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_NO_ACTIVO"));
 		}
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, fSin, d, DATOS))
+		assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, fSin, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", true);
@@ -349,7 +351,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		servicio.vincular(admin, f2, List.of(d), DATOS);
 
-		VinculoRespuesta revocado = servicio.revocar(admin, f1, d, DATOS);
+		VinculoRespuesta revocado = vigente.revocar(admin, f1, d, DATOS);
 
 		assertThat(revocado.estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(revocado.esPrincipal()).isFalse();
@@ -360,7 +362,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 				.param("e", escuelaA).query(String.class).single()).isEqualTo("true");
 
 		// Repetir la revocacion es idempotente (200, una sola auditoria).
-		assertThat(servicio.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+		assertThat(vigente.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(contarAuditoria("VINCULO_REVOCADO")).isEqualTo(1);
 
 		// Un vinculo nuevo a una tercera familia se hace principal porque no hay ningun ACTIVO principal.
@@ -377,10 +379,10 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		datos.vinculo(escuelaA, fPendiente, d, "PENDIENTE", false, null);
 		datos.desactivarFamilia(f1);
 
-		assertThat(servicio.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
-		assertThatThrownBy(() -> servicio.revocar(admin, fPendiente, d, DATOS))
+		assertThat(vigente.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+		assertThatThrownBy(() -> vigente.revocar(admin, fPendiente, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_NO_ACTIVO"));
-		assertThatThrownBy(() -> servicio.revocar(admin, UUID.randomUUID(), d, DATOS))
+		assertThatThrownBy(() -> vigente.revocar(admin, UUID.randomUUID(), d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 	}
 
@@ -390,7 +392,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 		UUID d2 = deportista("Dos");
 		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 		datos.desactivarFamilia(f1);
 		long auditorias = contar("auditoria", escuelaA);
 
@@ -485,12 +487,12 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
 		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 
 		// A vuelve a vincular sin confirmar; B revoca detras: ve el ACTIVO de A y lo revoca. Final REVOCADO.
 		long antesDeReactivar = revision(d);
 		Par vinculaYRevoca = bBloqueadaDetrasDeA(() -> servicio.vincular(admin, f1, List.of(d), DATOS),
-				() -> servicio.revocar(admin, f1, d, DATOS));
+				() -> servicio.revocar(admin, f1, d, antesDeReactivar + 1, DATOS));
 		assertThat(resultadoDe(vinculaYRevoca.a(), f1)).isEqualTo(ResultadoVinculacion.REACTIVADO);
 		assertThat(vinculo(vinculaYRevoca.b()).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("estado", "REVOCADO").containsEntry("es_principal", false);
@@ -499,7 +501,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		// A revoca (sobre un ACTIVO) sin confirmar; B vincula detras: ve el REVOCADO de A y lo reutiliza. Final ACTIVO principal.
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		long antesDeRevocar = revision(d);
-		Par revocaYVincula = bBloqueadaDetrasDeA(() -> servicio.revocar(admin, f1, d, DATOS),
+		Par revocaYVincula = bBloqueadaDetrasDeA(() -> vigente.revocar(admin, f1, d, DATOS),
 				() -> servicio.vincular(admin, f1, List.of(d), DATOS));
 		assertThat(vinculo(revocaYVincula.a()).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(resultadoDe(revocaYVincula.b(), f1)).isEqualTo(ResultadoVinculacion.REACTIVADO);
@@ -517,8 +519,9 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			UUID d = deportista("R" + ronda);
 			servicio.vincular(admin, f1, List.of(d), DATOS);
 
-			List<Object> resultados = enParalelo(() -> servicio.vincular(admin, f1, List.of(d), DATOS),
-					() -> servicio.revocar(admin, f1, d, DATOS));
+			List<Object> resultados = enParalelo(
+					() -> servicio.vincular(admin, f1, List.of(d), DATOS),
+					() -> reintentandoSiEsObsoleta(() -> vigente.revocar(admin, f1, d, DATOS)));
 
 			ResultadoVinculacion vincular = resultadoDe(resultados.get(0), f1);
 			assertThat(vinculo(resultados.get(1)).estado()).isEqualTo(EstadoVinculo.REVOCADO);
@@ -614,9 +617,9 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("estado", "ACTIVO");
 		assertThat(servicio.listarDeFamilia(admin, f1)).singleElement().satisfies(v -> assertThat(v.estado()).isEqualTo(EstadoVinculo.ACTIVO));
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, f1, d, DATOS))
+		assertThatThrownBy(() -> vigente.cambiarPrincipal(admin, f1, d, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
-		assertThat(servicio.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+		assertThat(vigente.revocar(admin, f1, d, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		verificarInvariantes();
 	}
 }

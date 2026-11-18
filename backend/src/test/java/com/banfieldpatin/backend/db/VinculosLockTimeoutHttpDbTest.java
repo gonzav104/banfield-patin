@@ -118,13 +118,13 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 	}
 
 	private MockHttpServletResponse revocar(UUID familia) throws Exception {
-		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/revocar"), null))
-				.andReturn().getResponse();
+		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/revocar"),
+				"{\"versionEsperada\":\"" + revision() + "\"}")).andReturn().getResponse();
 	}
 
 	private MockHttpServletResponse principal(UUID familia) throws Exception {
-		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/principal"), null))
-				.andReturn().getResponse();
+		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/principal"),
+				"{\"versionEsperada\":\"" + revision() + "\"}")).andReturn().getResponse();
 	}
 
 	@FunctionalInterface

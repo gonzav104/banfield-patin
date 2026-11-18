@@ -403,7 +403,7 @@ class VinculoAdminServiceTest {
 		FamiliaDeportista fd = vinculoParaRevocar(EstadoVinculo.ACTIVO, true);
 		when(vinculos.revocarSiActivo(escuelaId, familiaId, d1)).thenReturn(1);
 
-		VinculoRespuesta respuesta = servicio.revocar(admin, familiaId, d1, DATOS);
+		VinculoRespuesta respuesta = servicio.revocar(admin, familiaId, d1, 0L, DATOS);
 
 		assertThat(respuesta.vinculoId()).isEqualTo(fd.getId());
 		InOrder orden = inOrder(deportistas, vinculos, auditoria);
@@ -423,7 +423,7 @@ class VinculoAdminServiceTest {
 		vinculoParaRevocar(EstadoVinculo.ACTIVO, true);
 		when(vinculos.revocarSiActivo(escuelaId, familiaId, d1)).thenReturn(1);
 
-		servicio.revocar(admin, familiaId, d1, DATOS);
+		servicio.revocar(admin, familiaId, d1, 0L, DATOS);
 
 		verify(vinculos, never()).principalActivo(any(), any());
 		verify(vinculos, never()).saveAndFlush(any());
@@ -433,7 +433,7 @@ class VinculoAdminServiceTest {
 	void revocarDeNuevoEsIdempotenteSinActualizarNiAuditar() {
 		vinculoParaRevocar(EstadoVinculo.REVOCADO, false);
 
-		assertThat(servicio.revocar(admin, familiaId, d1, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+		assertThat(servicio.revocar(admin, familiaId, d1, 0L, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 
 		verify(vinculos, never()).revocarSiActivo(any(), any(), any());
 		verifyNoInteractions(auditoria);
@@ -444,7 +444,7 @@ class VinculoAdminServiceTest {
 		vinculoParaRevocar(EstadoVinculo.ACTIVO, false);
 		when(vinculos.revocarSiActivo(escuelaId, familiaId, d1)).thenReturn(0);
 
-		servicio.revocar(admin, familiaId, d1, DATOS);
+		servicio.revocar(admin, familiaId, d1, 0L, DATOS);
 
 		verifyNoInteractions(auditoria);
 	}
@@ -453,7 +453,7 @@ class VinculoAdminServiceTest {
 	void revocarPendienteORechazadoDa409VinculoNoActivo() {
 		for (EstadoVinculo estado : new EstadoVinculo[] { EstadoVinculo.PENDIENTE, EstadoVinculo.RECHAZADO }) {
 			vinculoParaRevocar(estado, true);
-			assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, DATOS))
+			assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, 0L, DATOS))
 					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_NO_ACTIVO"));
 		}
 		verify(vinculos, never()).revocarSiActivo(any(), any(), any());
@@ -465,7 +465,7 @@ class VinculoAdminServiceTest {
 		bloqueables();
 		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 
 		// Revocar siempre se permite: no depende de que la familia exista ni este activa.
@@ -489,7 +489,7 @@ class VinculoAdminServiceTest {
 				EstadoVinculo.ACTIVO, true);
 		when(vinculos.principalActivo(escuelaId, d1)).thenReturn(Optional.of(actual));
 
-		VinculoRespuesta respuesta = servicio.cambiarPrincipal(admin, familiaId, d1, DATOS);
+		VinculoRespuesta respuesta = servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS);
 
 		assertThat(respuesta.vinculoId()).isEqualTo(destino.getId());
 		assertThat(respuesta.esPrincipal()).isTrue();
@@ -516,7 +516,7 @@ class VinculoAdminServiceTest {
 		destinoPrincipal(EstadoVinculo.ACTIVO, false);
 		when(vinculos.principalActivo(escuelaId, d1)).thenReturn(Optional.empty());
 
-		servicio.cambiarPrincipal(admin, familiaId, d1, DATOS);
+		servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS);
 
 		assertThat(escrituras).containsExactly(d1 + ":ACTIVO:true");
 		assertThat(eventos(1).get(0).detalle()).containsEntry("anteriorVinculoId", null);
@@ -528,7 +528,7 @@ class VinculoAdminServiceTest {
 		bloqueables(deportista(d1, true));
 		destinoPrincipal(EstadoVinculo.ACTIVO, true);
 
-		assertThat(servicio.cambiarPrincipal(admin, familiaId, d1, DATOS).esPrincipal()).isTrue();
+		assertThat(servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS).esPrincipal()).isTrue();
 
 		assertThat(escrituras).isEmpty();
 		verify(vinculos, never()).principalActivo(any(), any());
@@ -538,13 +538,13 @@ class VinculoAdminServiceTest {
 	@Test
 	void unaFamiliaInexistenteDa404YUnaInactivaDa409AntesDeBloquearOMirarElVinculo() {
 		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.empty());
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "FAMILIA_NO_ENCONTRADA"));
 
 		familia(false);
 		// Incluso con un vinculo no ACTIVO: la familia se comprueba primero.
 		destinoPrincipal(EstadoVinculo.REVOCADO, false);
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
 
 		verifyNoInteractions(deportistas, auditoria);
@@ -556,13 +556,13 @@ class VinculoAdminServiceTest {
 		familia(true);
 		bloqueables(deportista(d1, true));
 		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 
 		for (EstadoVinculo estado : new EstadoVinculo[] { EstadoVinculo.REVOCADO, EstadoVinculo.PENDIENTE,
 				EstadoVinculo.RECHAZADO }) {
 			destinoPrincipal(estado, false);
-			assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+			assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 					.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_NO_ACTIVO"));
 		}
 		assertThat(escrituras).isEmpty();
@@ -574,7 +574,7 @@ class VinculoAdminServiceTest {
 		familia(true);
 		bloqueables();
 
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 
 		verify(vinculos, never()).buscarVinculo(any(), any(), any());
@@ -588,7 +588,7 @@ class VinculoAdminServiceTest {
 		when(vinculos.principalActivo(escuelaId, d1)).thenReturn(Optional.empty());
 		when(vinculos.saveAndFlush(any(FamiliaDeportista.class))).thenThrow(violacion("uq_fd_principal_activo"));
 
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS))
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "VINCULO_PRINCIPAL_EN_CONFLICTO"));
 
 		verifyNoInteractions(auditoria);
@@ -641,7 +641,7 @@ class VinculoAdminServiceTest {
 	void revocarAplicaElLockTimeoutAntesDelBloqueo() {
 		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, 0L, DATOS)).isInstanceOf(ExcepcionNegocio.class);
 
 		InOrder orden = inOrder(lockTimeout, deportistas);
 		orden.verify(lockTimeout).aplicar();
@@ -653,7 +653,7 @@ class VinculoAdminServiceTest {
 		familia(true);
 		when(deportistas.bloquearParaVincular(eq(escuelaId), any())).thenReturn(List.of());
 
-		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, DATOS)).isInstanceOf(ExcepcionNegocio.class);
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 0L, DATOS)).isInstanceOf(ExcepcionNegocio.class);
 
 		InOrder orden = inOrder(lockTimeout, familias, deportistas);
 		orden.verify(lockTimeout).aplicar();
@@ -688,6 +688,11 @@ class VinculoAdminServiceTest {
 	}
 
 	// ---------- revision agregada de los vinculos (U11-A) ----------
+
+	private static void assertDesactualizada(Throwable e) {
+		assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA");
+		assertThat(e.getMessage()).isEqualTo("El registro fue modificado. Es necesario volver a cargarlo antes de guardar.");
+	}
 
 	private void sinEscriturasNiRevision() {
 		verify(vinculos, never()).saveAndFlush(any());
@@ -735,15 +740,17 @@ class VinculoAdminServiceTest {
 	}
 
 	@Test
-	void revocarUnActivoAuditaEIncrementaUnaVezDespuesDeLaActualizacion() {
+	void revocarConLaRevisionVigenteRevocaAuditaEIncrementaUnaVezDespuesDeLaActualizacion() {
 		vinculoParaRevocar(EstadoVinculo.ACTIVO, true);
+		revisiones(new RevisionVinculos(d1, 6L));
 		when(vinculos.revocarSiActivo(escuelaId, familiaId, d1)).thenReturn(1);
 
-		servicio.revocar(admin, familiaId, d1, DATOS);
+		servicio.revocar(admin, familiaId, d1, 6L, DATOS);
 
 		InOrder orden = inOrder(deportistas, vinculos, auditoria);
 		orden.verify(deportistas).bloquearParaVincular(escuelaId, List.of(d1));
 		orden.verify(vinculos).buscarVinculo(escuelaId, familiaId, d1);
+		orden.verify(vinculos).revisionesVinculos(escuelaId, List.of(d1));
 		orden.verify(vinculos).revocarSiActivo(escuelaId, familiaId, d1);
 		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
 		orden.verify(vinculos).incrementarRevisionVinculos(escuelaId, List.of(d1));
@@ -751,16 +758,39 @@ class VinculoAdminServiceTest {
 	}
 
 	@Test
-	void revocarUnVinculoYaRevocadoEs200SinIncrementar() {
-		vinculoParaRevocar(EstadoVinculo.REVOCADO, false);
+	void revocarConRevisionObsoletaDa409SinEscribirAunqueYaEsteRevocadoOSeaPendiente() {
+		for (EstadoVinculo estado : EstadoVinculo.values()) {
+			vinculoParaRevocar(estado, false);
+			revisiones(new RevisionVinculos(d1, 6L));
+			assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, 5L, DATOS)).as(estado.name())
+					.satisfies(VinculoAdminServiceTest::assertDesactualizada);
+		}
+		sinEscriturasNiRevision();
+	}
 
-		assertThat(servicio.revocar(admin, familiaId, d1, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+	@Test
+	void revocarUnVinculoYaRevocadoConLaRevisionVigenteEs200SinIncrementar() {
+		vinculoParaRevocar(EstadoVinculo.REVOCADO, false);
+		revisiones(new RevisionVinculos(d1, 6L));
+
+		assertThat(servicio.revocar(admin, familiaId, d1, 6L, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 
 		sinEscriturasNiRevision();
 	}
 
 	@Test
-	void cambiarPrincipalIncrementaUnaSolaVezYDevuelveLaPosterior() {
+	void revocarSinVinculoDa404AunqueLaRevisionSeaObsoleta() {
+		bloqueables(deportista(d1, true));
+		revisiones(new RevisionVinculos(d1, 6L));
+		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> servicio.revocar(admin, familiaId, d1, 1L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
+		sinEscriturasNiRevision();
+	}
+
+	@Test
+	void cambiarPrincipalConLaRevisionVigenteIncrementaUnaSolaVezYDevuelveLaPosterior() {
 		familia(true);
 		bloqueables(deportista(d1, true));
 		revisiones(new RevisionVinculos(d1, 10L));
@@ -769,7 +799,7 @@ class VinculoAdminServiceTest {
 				EstadoVinculo.ACTIVO, true);
 		when(vinculos.principalActivo(escuelaId, d1)).thenReturn(Optional.of(actual));
 
-		VinculoRespuesta respuesta = servicio.cambiarPrincipal(admin, familiaId, d1, DATOS);
+		VinculoRespuesta respuesta = servicio.cambiarPrincipal(admin, familiaId, d1, 10L, DATOS);
 
 		assertThat(respuesta.versionVinculos()).isEqualTo("11");
 		InOrder orden = inOrder(deportistas, vinculos, auditoria);
@@ -784,14 +814,43 @@ class VinculoAdminServiceTest {
 	}
 
 	@Test
-	void cambiarPrincipalYaPrincipalEs200SinEscribirNiIncrementar() {
+	void cambiarPrincipalConRevisionObsoletaDa409AntesDeVinculoNoActivoYAunqueYaSeaPrincipal() {
+		familia(true);
+		bloqueables(deportista(d1, true));
+		revisiones(new RevisionVinculos(d1, 10L));
+		for (EstadoVinculo estado : EstadoVinculo.values()) {
+			destinoPrincipal(estado, estado == EstadoVinculo.ACTIVO);
+			assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 9L, DATOS)).as(estado.name())
+					.satisfies(VinculoAdminServiceTest::assertDesactualizada);
+		}
+		sinEscriturasNiRevision();
+	}
+
+	@Test
+	void cambiarPrincipalYaPrincipalConLaRevisionVigenteEs200SinEscribirNiIncrementar() {
 		familia(true);
 		bloqueables(deportista(d1, true));
 		revisiones(new RevisionVinculos(d1, 10L));
 		destinoPrincipal(EstadoVinculo.ACTIVO, true);
 
-		assertThat(servicio.cambiarPrincipal(admin, familiaId, d1, DATOS).versionVinculos()).isEqualTo("10");
+		assertThat(servicio.cambiarPrincipal(admin, familiaId, d1, 10L, DATOS).versionVinculos()).isEqualTo("10");
 
+		sinEscriturasNiRevision();
+	}
+
+	@Test
+	void cambiarPrincipalComprueba404YFamiliaInactivaYVinculo404AntesDeLaRevision() {
+		when(familias.findByIdAndEscuelaId(familiaId, escuelaId)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 77L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "FAMILIA_NO_ENCONTRADA"));
+		familia(false);
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 77L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "FAMILIA_INACTIVA"));
+		familia(true);
+		bloqueables(deportista(d1, true));
+		when(vinculos.buscarVinculo(escuelaId, familiaId, d1)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.cambiarPrincipal(admin, familiaId, d1, 77L, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "VINCULO_NO_ENCONTRADO"));
 		sinEscriturasNiRevision();
 	}
 

@@ -17,6 +17,7 @@ import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VincularSolicitud;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculosDeDeportista;
+import com.banfieldpatin.backend.familias.vinculos.dto.VinculosVersionEsperada;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -61,14 +62,17 @@ public class VinculoAdminController {
 
 	@PostMapping("/familias/{familiaId}/deportistas/{deportistaId}/revocar")
 	public VinculoRespuesta revocar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID familiaId,
-			@PathVariable UUID deportistaId, HttpServletRequest request) {
-		return servicio.revocar(UsuarioAutenticado.desde(jwt), familiaId, deportistaId, DatosSolicitud.de(request));
+			@PathVariable UUID deportistaId, @Valid @RequestBody VinculosVersionEsperada solicitud,
+			HttpServletRequest request) {
+		return servicio.revocar(UsuarioAutenticado.desde(jwt), familiaId, deportistaId, solicitud.versionEsperada(),
+				DatosSolicitud.de(request));
 	}
 
 	@PostMapping("/familias/{familiaId}/deportistas/{deportistaId}/principal")
 	public VinculoRespuesta principal(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID familiaId,
-			@PathVariable UUID deportistaId, HttpServletRequest request) {
+			@PathVariable UUID deportistaId, @Valid @RequestBody VinculosVersionEsperada solicitud,
+			HttpServletRequest request) {
 		return servicio.cambiarPrincipal(UsuarioAutenticado.desde(jwt), familiaId, deportistaId,
-				DatosSolicitud.de(request));
+				solicitud.versionEsperada(), DatosSolicitud.de(request));
 	}
 }

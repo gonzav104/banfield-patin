@@ -129,6 +129,11 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 
 		assertThat(descripcion(documento, "POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal", "409"))
 				.contains("FAMILIA_INACTIVA", "VINCULO_NO_ACTIVO", "VINCULO_PRINCIPAL_EN_CONFLICTO", "CONFLICTO_CONCURRENCIA");
+		for (String escritura : new String[] { "POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal" }) {
+			assertThat(descripcion(documento, escritura, "409")).as(escritura).contains("EDICION_DESACTUALIZADA",
+					"CONFLICTO_CONCURRENCIA");
+		}
 		assertThat(descripcion(documento, "GET /api/admin/deportistas/{deportistaId}/vinculos", "404"))
 				.contains("DEPORTISTA_NO_ENCONTRADO");
 		assertThat(descripcion(documento, "POST /api/admin/deportistas", "409")).contains("DNI_DUPLICADO",

@@ -92,10 +92,10 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		UUID vinculoF1 = servicio.vincular(admin, f1, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
 		servicio.vincular(admin, f1, List.of(d), DATOS); // SIN_CAMBIOS: sin auditoria
 		servicio.vincular(admin, f2, List.of(d), DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS); // ya es principal: sin auditoria
-		servicio.revocar(admin, f1, d, DATOS);
-		servicio.revocar(admin, f1, d, DATOS); // repetida: sin auditoria
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS); // ya es principal: sin auditoria
+		vigente.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS); // repetida: sin auditoria
 		servicio.vincular(admin, f1, List.of(d), DATOS); // reutiliza la fila
 
 		List<Map<String, Object>> eventos = jdbc.sql("""
@@ -127,12 +127,12 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
 		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		// Se baja el principal por fuera para simular "no hay principal previo" y se vuelve a promover.
 		jdbc.sql("UPDATE gestion_patin.familia_deportista SET es_principal = false WHERE familia_id = :f").param("f", f1).update();
 
-		servicio.cambiarPrincipal(admin, f1, d, DATOS);
+		vigente.cambiarPrincipal(admin, f1, d, DATOS);
 
 		assertThat(jdbc.sql("""
 				SELECT detalle->'anteriorVinculoId' IS NOT NULL AS clave, detalle->>'anteriorVinculoId' IS NULL AS nulo
@@ -280,8 +280,8 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 
 		servicio.vincular(admin, f1, List.of(d), DATOS);
 		servicio.vincular(admin, f2, List.of(d), DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 		catchThrowable(() -> servicio.vincular(admin, f1, List.of(UUID.randomUUID()), DATOS));
 
 		sinDatosSensiblesEnLogs(f1, f2, d);

@@ -230,18 +230,20 @@ public class VinculoAdminService {
 	// ---------- revocar ----------
 
 	/**
-	 * Siempre permitido (tambien con familia o deportista inactivos). Bajo el bloqueo del deportista, una actualizacion
-	 * CONDICIONAL ACTIVO -> REVOCADO decide si hubo cambio real: solo entonces se audita y la revision de los vinculos
-	 * avanza. Repetir es un 200 idempotente sin auditoria ni incremento; PENDIENTE/RECHAZADO -> 409 VINCULO_NO_ACTIVO; sin
-	 * vinculo -> 404. No promueve a otro vinculo.
+	 * Siempre permitido (tambien con familia o deportista inactivos). Orden: bloqueo del deportista -> sin vinculo 404 ->
+	 * revision obsoleta 409 EDICION_DESACTUALIZADA -> PENDIENTE/RECHAZADO 409 VINCULO_NO_ACTIVO -> REVOCADO: 200 idempotente
+	 * sin escribir, auditar ni mover la revision -> ACTIVO: una actualizacion CONDICIONAL ACTIVO -> REVOCADO decide si hubo
+	 * cambio real; solo entonces se audita y la revision avanza. No promueve a otro vinculo ni lee la familia.
 	 */
 	@Transactional
-	public VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, DatosSolicitud datos) {
+	public VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, long versionEsperada,
+			DatosSolicitud datos) {
 		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		deportistas.bloquearParaVincular(escuelaId, List.of(deportistaId));
 		FamiliaDeportista vinculo = vinculos.buscarVinculo(escuelaId, familiaId, deportistaId)
 				.orElseThrow(VinculoAdminService::vinculoNoEncontrado);
+		exigirRevisionVigente(escuelaId, deportistaId, versionEsperada);
 		if (vinculo.getEstado() == EstadoVinculo.PENDIENTE || vinculo.getEstado() == EstadoVinculo.RECHAZADO) {
 			throw vinculoNoActivo();
 		}
@@ -262,15 +264,15 @@ public class VinculoAdminService {
 
 	/**
 	 * Unico camino para cambiar el principal (nunca revocar y recrear), solo entre vinculos ACTIVOS y con la familia
-	 * activa. Orden: familia 404 -> familia inactiva 409 -> bloqueo del deportista -> vinculo 404 -> no ACTIVO 409 ->
-	 * ya es principal: 200 sin escribir, auditar ni mover la revision -> bajar al principal actual (aunque su familia este
-	 * inactiva: solo se valida la familia destino) y subir el elegido, cada uno con {@code saveAndFlush} y en ESE orden para
-	 * que {@code uq_fd_principal_activo} no se viole nunca a mitad de la transaccion -> auditoria -> revision +1 (una sola
-	 * vez, aunque se escriban dos filas).
+	 * activa. Orden: familia 404 -> familia inactiva 409 -> bloqueo del deportista -> vinculo 404 -> revision obsoleta 409
+	 * EDICION_DESACTUALIZADA -> no ACTIVO 409 -> ya es principal: 200 sin escribir, auditar ni mover la revision -> bajar al
+	 * principal actual (aunque su familia este inactiva: solo se valida la familia destino) y subir el elegido, cada uno con
+	 * {@code saveAndFlush} y en ESE orden para que {@code uq_fd_principal_activo} no se viole nunca a mitad de la
+	 * transaccion -> auditoria -> revision +1 (una sola vez, aunque se escriban dos filas).
 	 */
 	@Transactional
 	public VinculoRespuesta cambiarPrincipal(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId,
-			DatosSolicitud datos) {
+			long versionEsperada, DatosSolicitud datos) {
 		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		Familia familia = cargarFamilia(admin, familiaId);
@@ -281,7 +283,7 @@ public class VinculoAdminService {
 				.orElseThrow(VinculoAdminService::vinculoNoEncontrado);
 		FamiliaDeportista vinculo = vinculos.buscarVinculo(escuelaId, familiaId, deportistaId)
 				.orElseThrow(VinculoAdminService::vinculoNoEncontrado);
-		long revision = revisionesBloqueadas(escuelaId, List.of(deportistaId)).get(deportistaId);
+		long revision = exigirRevisionVigente(escuelaId, deportistaId, versionEsperada);
 		if (vinculo.getEstado() != EstadoVinculo.ACTIVO) {
 			throw vinculoNoActivo();
 		}
@@ -321,6 +323,19 @@ public class VinculoAdminService {
 			revisiones.put(r.deportistaId(), r.versionVinculos());
 		}
 		return revisiones;
+	}
+
+	/** Devuelve la revision vigente (leida bajo el bloqueo) o 409 EDICION_DESACTUALIZADA, sin ids ni revisiones. */
+	private long exigirRevisionVigente(UUID escuelaId, UUID deportistaId, long versionEsperada) {
+		Long vigente = revisionesBloqueadas(escuelaId, List.of(deportistaId)).get(deportistaId);
+		if (vigente == null) {
+			// El vinculo existe con la escuela del actor, de modo que su deportista tambien: no deberia ocurrir.
+			throw vinculoNoEncontrado();
+		}
+		if (vigente != versionEsperada) {
+			throw FamiliaAdminService.edicionDesactualizada();
+		}
+		return vigente;
 	}
 
 	/**

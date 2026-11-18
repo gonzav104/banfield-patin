@@ -82,7 +82,7 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID admin2 = datos.admin(escuelaA, "otro@a.example", true);
 		UUID primero = servicio.vincular(admin, familia, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
 		Map<String, Object> antes = fila(familia, d).orElseThrow();
-		servicio.revocar(admin, familia, d, DATOS);
+		vigente.revocar(admin, familia, d, DATOS);
 		Thread.sleep(20);
 
 		var relink = servicio.vincular(new com.banfieldpatin.backend.seguridad.UsuarioAutenticado(admin2, escuelaA, null,
@@ -109,7 +109,7 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID d2 = deportista("Dos");
 		servicio.vincular(admin, f1, List.of(d1, d2), DATOS);
 		servicio.vincular(admin, f2, List.of(d1), DATOS);
-		servicio.revocar(admin, f1, d2, DATOS);
+		vigente.revocar(admin, f1, d2, DATOS);
 		servicio.vincular(admin, f1, List.of(d2), DATOS);
 
 		assertThat(jdbc.sql("""

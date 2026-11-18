@@ -152,7 +152,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 			servicio.vincular(admin, f, List.of(d), DATOS);
 		}
 
-		long sentencias = sentencias(() -> servicio.cambiarPrincipal(admin, familias.get(5), d, DATOS));
+		long sentencias = sentencias(() -> vigente.cambiarPrincipal(admin, familias.get(5), d, DATOS));
 
 		// familia + bloqueo + vinculo objetivo + revision + principal actual + bajar + subir + incremento = 8 (mas la
 		// auditoria por JDBC).
@@ -161,15 +161,15 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 	}
 
 	@Test
-	void revocarUsaComoMaximoSeisSentencias() {
+	void revocarUsaComoMaximoSieteSentencias() {
 		UUID f = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
 		servicio.vincular(admin, f, List.of(d), DATOS);
 
-		long sentencias = sentencias(() -> servicio.revocar(admin, f, d, DATOS));
+		long sentencias = sentencias(() -> vigente.revocar(admin, f, d, DATOS));
 
-		// Las cinco de antes + el incremento de la revision (U11-A).
-		assertThat(sentencias).isLessThanOrEqualTo(6);
+		// Las cinco de antes + la lectura de la revision bajo el bloqueo + su incremento (U11-A).
+		assertThat(sentencias).isLessThanOrEqualTo(7);
 	}
 
 	@Test
@@ -232,7 +232,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 		jdbc.sql("UPDATE gestion_patin.deportista SET activo = false WHERE id = :id").param("id", b).update();
 		assertThat(cantidades()).containsEntry(f1, 1L);
 		assertThat(filaEstado(f1, b)).isEqualTo("ACTIVO");
-		servicio.revocar(admin, f1, a, DATOS);
+		vigente.revocar(admin, f1, a, DATOS);
 		assertThat(cantidades()).containsEntry(f1, 0L).containsEntry(f2, 1L);
 	}
 
