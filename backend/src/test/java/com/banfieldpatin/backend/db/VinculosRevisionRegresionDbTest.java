@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
@@ -35,6 +36,9 @@ import jakarta.persistence.EntityManager;
 @TestPropertySource(properties = { "spring.datasource.hikari.maximum-pool-size=3",
 		"spring.datasource.hikari.minimum-idle=1", "spring.jpa.properties.hibernate.generate_statistics=true" })
 class VinculosRevisionRegresionDbTest extends BaseVinculosDb {
+
+	/** Tiempo maximo que el bucle de lecturas espera al escritor de la prueba de instantanea coherente. */
+	private static final int LIMITE_DEL_ESCRITOR_SEGUNDOS = 30;
 
 	@Autowired
 	EntityManager em;
@@ -252,6 +256,9 @@ class VinculosRevisionRegresionDbTest extends BaseVinculosDb {
 	 * filas traen la revision de la cabecera y el estado corresponde a la paridad de la revision).
 	 */
 	@Test
+	// Respaldo de JUnit: interrumpe la prueba si algo bloquea al propio hilo de la prueba. El limite que falla con un mensaje claro es
+	// el del bucle de lecturas (LIMITE_DEL_ESCRITOR_SEGUNDOS), que es menor.
+	@Timeout(value = 90, unit = TimeUnit.SECONDS)
 	void lecturasLibresDuranteEscriturasDevuelvenSiempreUnaInstantaneaCoherente() throws Exception {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
@@ -267,17 +274,27 @@ class VinculosRevisionRegresionDbTest extends BaseVinculosDb {
 			return null;
 		});
 		int lecturas = 0;
-		while (!escritor.isDone() || lecturas < 20) {
-			VinculosDeDeportista v = servicio.revisionYVinculos(admin, d);
-			long rev = Long.parseLong(v.versionVinculos());
-			assertThat(v.vinculos()).singleElement().satisfies(x -> {
-				assertThat(x.versionVinculos()).isEqualTo(v.versionVinculos());
-				assertThat(x.estado()).isEqualTo(rev % 2 == 1 ? EstadoVinculo.ACTIVO : EstadoVinculo.REVOCADO);
-			});
-			lecturas++;
+		long inicio = System.nanoTime();
+		try {
+			while (!escritor.isDone() || lecturas < 20) {
+				// El bucle solo termina cuando el escritor termina: si el escritor se bloquea, el limite lo hace fallar en lugar de girar sin fin.
+				assertThat(System.nanoTime() - inicio)
+						.as("el escritor no termino en %d s (%d lecturas hechas): esta bloqueado", LIMITE_DEL_ESCRITOR_SEGUNDOS, lecturas)
+						.isLessThan(TimeUnit.SECONDS.toNanos(LIMITE_DEL_ESCRITOR_SEGUNDOS));
+				VinculosDeDeportista v = servicio.revisionYVinculos(admin, d);
+				long rev = Long.parseLong(v.versionVinculos());
+				assertThat(v.vinculos()).singleElement().satisfies(x -> {
+					assertThat(x.versionVinculos()).isEqualTo(v.versionVinculos());
+					assertThat(x.estado()).isEqualTo(rev % 2 == 1 ? EstadoVinculo.ACTIVO : EstadoVinculo.REVOCADO);
+				});
+				lecturas++;
+			}
+			escritor.get(30, TimeUnit.SECONDS);
+			assertThat(revision(d)).isEqualTo(41);
+		} finally {
+			// Si la prueba falla con el escritor todavia en marcha, no lo dejamos corriendo en el ejecutor compartido.
+			escritor.cancel(true);
 		}
-		escritor.get(30, TimeUnit.SECONDS);
-		assertThat(revision(d)).isEqualTo(41);
 	}
 
 	/** Revisiones fuera de la cache de Long (-128..127): la comparacion del lote es por valor, no por identidad. */
