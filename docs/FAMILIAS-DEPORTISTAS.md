@@ -423,7 +423,7 @@ Orden: aplicar V11 antes de iniciar la versión nueva, luego el backend nuevo y 
 rechazan (propiedad no admitida); contra el nuevo, un cliente anterior recibe `400`. **No mezclar** instancias viejas (que escriben vínculos sin incrementar la revisión) con las nuevas:
 una escritura de una instancia vieja no movería la revisión y un formulario viejo podría confirmarse. No existe un modo de compatibilidad sin revisión. El único consumidor conocido de
 estas escrituras fuera del backend es la semilla de los E2E (`frontend/e2e/support/seed.ts`), adaptada para leer la revisión con la ruta nueva; ninguna pantalla del frontend usa estas
-rutas. El paso de vínculos de `backend/scripts/smoke-familias.sh` usa el cuerpo anterior y **no** se adaptó en esta unidad (igual que su paso de desactivación desde U6). Las escrituras
+rutas. El smoke manual `backend/scripts/smoke-familias.sh` se adaptó en un commit posterior de la unidad: sus pasos de vínculos (lote, cambio de principal y revocación) leen la revisión con `GET /api/admin/deportistas/{id}/vinculos` justo antes de cada escritura y no reutilizan una anterior. Su paso de desactivación de deportistas sigue con el cuerpo anterior desde U6 (rotura histórica, fuera de esta unidad). Las escrituras
 SQL manuales sobre `familia_deportista` no mueven la revisión: no son un canal administrativo soportado.
 
 Pruebas focales: `VinculoAdminServiceTest`, `VinculoAdminControllerWebMvcTest`, `OpenApiRutasTest`, `V11VersionVinculosDbTest`, `VinculosRevisionDbTest`,
