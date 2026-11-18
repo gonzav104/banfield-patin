@@ -29,7 +29,7 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	String PROYECCION = """
 			select new com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta(
 			    fd.id, f.id, f.nombreReferencia, d.id, d.nombre, d.apellido, d.activo, fd.estado, fd.esPrincipal,
-			    fd.autorizadoEn)
+			    fd.autorizadoEn, d.versionVinculos)
 			from FamiliaDeportista fd
 			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
 			join Deportista d on d.id = fd.deportistaId and d.escuelaId = fd.escuelaId
@@ -120,6 +120,36 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			""")
 	int revocarSiActivo(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId,
 			@Param("deportistaId") UUID deportistaId);
+
+	// ---------- revision agregada de los vinculos por deportista (V11) ----------
+
+	/**
+	 * Revision de los vinculos de esos deportistas de la escuela, con una proyeccion ESCALAR: siempre es una sentencia
+	 * contra la base y nunca devuelve el valor de una entidad {@code Deportista} ya cargada en el contexto de persistencia.
+	 * Las escrituras la llaman despues de {@code DeportistaRepository#bloquearParaVincular}: con la fila bloqueada
+	 * {@code FOR UPDATE} por esta transaccion, el valor leido es el vigente y nadie puede cambiarlo hasta el commit.
+	 */
+	@Query("""
+			select new com.banfieldpatin.backend.familias.vinculos.RevisionVinculos(d.id, d.versionVinculos)
+			from Deportista d
+			where d.escuelaId = :escuelaId and d.id in :deportistaIds
+			""")
+	List<RevisionVinculos> revisionesVinculos(@Param("escuelaId") UUID escuelaId,
+			@Param("deportistaIds") Collection<UUID> deportistaIds);
+
+	/**
+	 * Avanza en uno la revision de los vinculos de esos deportistas de la escuela (los que tuvieron un cambio efectivo).
+	 * Actualizacion masiva: no pasa por {@code @Version}, de modo que la revision de datos permanentes ({@code version}) no
+	 * se mueve. Devuelve las filas cambiadas. No limpia el contexto: la entidad {@code Deportista} no se usa para leer la
+	 * revision (ver {@link #revisionesVinculos}).
+	 */
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			update Deportista d set d.versionVinculos = d.versionVinculos + 1
+			where d.escuelaId = :escuelaId and d.id in :deportistaIds
+			""")
+	int incrementarRevisionVinculos(@Param("escuelaId") UUID escuelaId,
+			@Param("deportistaIds") Collection<UUID> deportistaIds);
 
 	// ---------- portal de FAMILIA (solo lectura) ----------
 

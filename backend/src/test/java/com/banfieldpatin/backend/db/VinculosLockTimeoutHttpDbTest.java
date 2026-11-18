@@ -106,19 +106,26 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		return json == null ? r : r.contentType("application/json").content(json);
 	}
 
+	/** Revision vigente de los vinculos del deportista (U11-A): cada solicitud la lee y la envia, como un cliente real. */
+	private long revision() {
+		return jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id = :d").param("d", d)
+				.query(Long.class).single();
+	}
+
 	private MockHttpServletResponse vincular(UUID familia) throws Exception {
 		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas"),
-				"{\"deportistaIds\":[\"" + d + "\"]}")).andReturn().getResponse();
+				"{\"deportistas\":[{\"deportistaId\":\"" + d + "\",\"versionEsperada\":\"" + revision() + "\"}]}"))
+				.andReturn().getResponse();
 	}
 
 	private MockHttpServletResponse revocar(UUID familia) throws Exception {
-		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/revocar"), null))
-				.andReturn().getResponse();
+		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/revocar"),
+				"{\"versionEsperada\":\"" + revision() + "\"}")).andReturn().getResponse();
 	}
 
 	private MockHttpServletResponse principal(UUID familia) throws Exception {
-		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/principal"), null))
-				.andReturn().getResponse();
+		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas/" + d + "/principal"),
+				"{\"versionEsperada\":\"" + revision() + "\"}")).andReturn().getResponse();
 	}
 
 	@FunctionalInterface
@@ -216,12 +223,14 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		cuerpoSaneado(r);
 		assertThat(vinculos()).isZero();
 		assertThat(auditoria()).isZero();
+		assertThat(revision()).as("el plazo vencido no mueve la revision").isZero();
 		soloElConflictoSaneado("POST /api/admin/familias/{familiaId}/deportistas");
 
 		MockHttpServletResponse reintento = vincular(f1);
 		assertThat(reintento.getStatus()).isEqualTo(200);
 		assertThat(vinculos()).isEqualTo(1);
 		assertThat(auditoria()).isEqualTo(1);
+		assertThat(revision()).isEqualTo(1);
 	}
 
 	@Test
@@ -230,9 +239,11 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		logs.list.clear();
 		long auditoriaInicial = auditoria();
 
+		long revisionInicial = revision();
 		MockHttpServletResponse r = conElDeportistaRetenido(() -> revocar(f1));
 
 		cuerpoSaneado(r);
+		assertThat(revision()).as("el plazo vencido no mueve la revision").isEqualTo(revisionInicial);
 		assertThat(contar("SELECT count(*) FROM gestion_patin.familia_deportista WHERE escuela_id = :e AND estado = 'ACTIVO'"))
 				.isEqualTo(1);
 		assertThat(auditoria()).isEqualTo(auditoriaInicial);
@@ -241,6 +252,7 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		assertThat(revocar(f1).getStatus()).isEqualTo(200);
 		assertThat(contar("SELECT count(*) FROM gestion_patin.familia_deportista WHERE escuela_id = :e AND estado = 'REVOCADO'"))
 				.isEqualTo(1);
+		assertThat(revision()).isEqualTo(revisionInicial + 1);
 	}
 
 	@Test
@@ -250,9 +262,11 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		logs.list.clear();
 		long auditoriaInicial = auditoria();
 
+		long revisionInicial = revision();
 		MockHttpServletResponse r = conElDeportistaRetenido(() -> principal(f2));
 
 		cuerpoSaneado(r);
+		assertThat(revision()).as("el plazo vencido no mueve la revision").isEqualTo(revisionInicial);
 		assertThat(contar("SELECT count(*) FROM gestion_patin.familia_deportista WHERE escuela_id = :e AND es_principal"))
 				.isEqualTo(1);
 		assertThat(jdbc.sql("SELECT familia_id FROM gestion_patin.familia_deportista WHERE escuela_id = :e AND es_principal")
@@ -263,6 +277,7 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		assertThat(principal(f2).getStatus()).isEqualTo(200);
 		assertThat(jdbc.sql("SELECT familia_id FROM gestion_patin.familia_deportista WHERE escuela_id = :e AND es_principal")
 				.param("e", escuelaId).query(UUID.class).single()).isEqualTo(f2);
+		assertThat(revision()).isEqualTo(revisionInicial + 1);
 	}
 
 	@Test

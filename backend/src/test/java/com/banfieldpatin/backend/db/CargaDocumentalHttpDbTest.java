@@ -440,20 +440,34 @@ class CargaDocumentalHttpDbTest {
 
   @Test
   void revocacionConfirmadaDuranteTransferenciaImpidePublicar() throws Exception {
-    HOOK_STORAGE.set(
-        () ->
-            jdbc.sql(
-                    "UPDATE gestion_patin.familia_deportista SET estado='REVOCADO' WHERE"
-                        + " deportista_id=:d")
-                .param("d", atleta)
-                .update());
+    // U11-A: la revocacion real del ADMIN, con la revision de vinculos vigente, confirmada durante la transferencia.
+    HOOK_STORAGE.set(this::revocarConRevisionVigente);
     var key = UUID.randomUUID();
     var r = cargar(key, png());
     assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+    assertThat(revisionVinculos()).as("la revocacion se confirmo y avanzo la revision").isEqualTo(1);
     assertThat(documentos()).isZero();
     // U5: sin acceso al publicar es un conflicto permanente; se cierra sin publicar el objeto.
     assertThat(fase(key)).isEqualTo("CERRADA");
     assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  /** Revocacion del ADMIN por el servicio real con la revision vigente (como un cliente que acaba de leerla). */
+  private void revocarConRevisionVigente() {
+    UUID admin = new DatosDb(jdbc).admin(escuela, "admin-revoca@example.invalid", true);
+    vinculosAdmin.revocar(
+        new com.banfieldpatin.backend.seguridad.UsuarioAutenticado(admin, escuela, null, Rol.ADMIN),
+        familia,
+        atleta,
+        revisionVinculos(),
+        com.banfieldpatin.backend.compartido.web.DatosSolicitud.NINGUNA);
+  }
+
+  private long revisionVinculos() {
+    return jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id=:d")
+        .param("d", atleta)
+        .query(Long.class)
+        .single();
   }
 
   @Test
@@ -563,16 +577,12 @@ class CargaDocumentalHttpDbTest {
 
   @Test
   void revocacionDuranteScannerNoIniciaStorageNiRetieneTransaccion() throws Exception {
-    HOOK_SCANNER.set(
-        () ->
-            jdbc.sql(
-                    "UPDATE gestion_patin.familia_deportista SET estado='REVOCADO' WHERE"
-                        + " deportista_id=:d")
-                .param("d", atleta)
-                .update());
+    // U11-A: la revocacion real del ADMIN (con revision) no espera ningun bloqueo de la carga durante el analisis.
+    HOOK_SCANNER.set(this::revocarConRevisionVigente);
     var key = UUID.randomUUID();
     var r = cargar(key, png());
     assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+    assertThat(revisionVinculos()).as("la revocacion se confirmo y avanzo la revision").isEqualTo(1);
     assertThat(fase(key)).isEqualTo("CERRADA");
     assertThat(POSTS.get()).isZero();
     assertThat(documentos()).isZero();
@@ -828,6 +838,7 @@ class CargaDocumentalHttpDbTest {
                       identidad,
                       familia,
                       atleta,
+                      0L,
                       com.banfieldpatin.backend.compartido.web.DatosSolicitud.NINGUNA));
       org.awaitility.Awaitility.await()
           .atMost(java.time.Duration.ofSeconds(1))
@@ -843,7 +854,9 @@ class CargaDocumentalHttpDbTest {
       assertThat(revocacion.isDone()).isFalse();
       liberar.countDown();
       assertThat(carga.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
-      revocacion.get(10, TimeUnit.SECONDS);
+      // La revocacion espero el bloqueo comun de la carga (sin deadlock), comparo la revision bajo el bloqueo y la avanzo.
+      assertThat(revocacion.get(10, TimeUnit.SECONDS).versionVinculos()).isEqualTo("1");
+      assertThat(revisionVinculos()).isEqualTo(1);
       assertThat(documentos()).isEqualTo(1);
       assertThat(cargar(UUID.randomUUID(), file).statusCode()).isEqualTo(404);
     } finally {

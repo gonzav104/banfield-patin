@@ -13,6 +13,9 @@
 # Revisiones optimistas (FE-05/U1 y U4): crear un tutor exige la revision observada de su familia (versionFamiliaEsperada) y activar/desactivar una
 # familia exige la suya (versionEsperada). El script NUNCA las inventa: las LEE de GET /api/admin/familias/{id} justo antes de cada escritura, valida que
 # sean una cadena decimal y las envia sin cambios; no reintenta escrituras.
+# Revision de los vinculos (FE-05/U11-A): vincular por lote, revocar y cambiar el principal exigen la revision de los vinculos de CADA deportista
+# (versionEsperada). Se LEE de GET /api/admin/deportistas/{id}/vinculos justo antes de cada una de esas escrituras (cada escritura efectiva la mueve:
+# una revision leida antes de la operacion anterior ya esta obsoleta) y se envia sin cambios.
 #
 # Variables opcionales:
 #   BASE_URL                    URL base (por defecto http://localhost:8080).
@@ -145,6 +148,29 @@ revision_de_familia() {
   fi
 }
 
+# revision_de_deportista <id-deportista> -> deja REVISION con la revision vigente de los VINCULOS del deportista (cadena decimal de 1 a 19 digitos),
+# LEIDA con la sesion ADMIN de GET /api/admin/deportistas/{id}/vinculos (FE-05/U11-A). No es la revision de los datos del deportista (esa es otra).
+revision_de_deportista() {
+  como admin; get "/api/admin/deportistas/$1/vinculos"
+  esperar 200 "leer la revision de los vinculos del deportista $(corto "$1")"
+  REVISION="$(echo "$CUERPO" | campo versionVinculos)"
+  if ! [[ "$REVISION" =~ ^[0-9]{1,19}$ ]]; then
+    fail "la revision de los vinculos del deportista $(corto "$1") no es una cadena decimal valida"
+    REVISION=""
+  fi
+}
+
+# armar_lote <id-deportista>... -> deja en LOTE el cuerpo {"deportistas":[{"deportistaId","versionEsperada"}]} con la revision vigente de CADA deportista,
+# leida ahora con revision_de_deportista. Deja una variable (no imprime) para no mezclar la salida del [OK] de esas lecturas con el cuerpo.
+armar_lote() {
+  local id partes=()
+  for id in "$@"; do
+    revision_de_deportista "$id"
+    partes+=("$id" "$REVISION")
+  done
+  LOTE="$(python3 -c 'import sys,json;a=sys.argv[1:];print(json.dumps({"deportistas":[{"deportistaId":a[i],"versionEsperada":a[i+1]} for i in range(0,len(a),2)]}))' "${partes[@]}")"
+}
+
 # ---------------------------------------------------------------------------------------------------------------------------
 RUN="SMOKE_$(date +%Y%m%d%H%M%S)_$(aleatorio 4)"
 EMAIL_FAM="smoke_${RUN#SMOKE_}@example.test"
@@ -209,14 +235,16 @@ csrf; post /api/admin/deportistas "$(jobj dni "$DNI_D1" nombre "${RUN}_DUP" apel
 esperar_error 409 DNI_DUPLICADO "control negativo: DNI repetido de un deportista activo"
 unset DNI_D1 DEP_DNI
 
-paso 5 "Vincular D1 y D2 a la familia A en UNA llamada (lote)"
-csrf; post "/api/admin/familias/$FAM_A/deportistas" "{\"deportistaIds\":[\"$D1\",\"$D2\"]}"
+paso 5 "Vincular D1 y D2 a la familia A en UNA llamada (lote, con la revision de los vinculos de cada deportista)"
+armar_lote "$D1" "$D2"
+csrf; post "/api/admin/familias/$FAM_A/deportistas" "$LOTE"
 esperar 200 "POST /api/admin/familias/{A}/deportistas"
 igual "2 resultados" "$(jx 'len(d["resultados"])')" 2
 igual "ambos CREADO" "$(jx 'all(r["resultado"]=="CREADO" for r in d["resultados"])')" true
 igual "orden pedido (D1, D2)" "$(jx '[r["vinculo"]["deportistaId"] for r in d["resultados"]]==[a[0],a[1]]' "$D1" "$D2")" true
 igual "sin otro principal, cada deportista queda con su vinculo principal" "$(jx 'all(r["vinculo"]["esPrincipal"] for r in d["resultados"])')" true
-csrf; post "/api/admin/familias/$FAM_A/deportistas" "{\"deportistaIds\":[\"$D1\"]}"
+armar_lote "$D1"   # revision NUEVA: la del lote anterior ya quedo obsoleta (lo movio)
+csrf; post "/api/admin/familias/$FAM_A/deportistas" "$LOTE"
 esperar 200 "control negativo: vincular de nuevo a D1"
 igual "D1 ya vinculado: SIN_CAMBIOS" "$(jx 'd["resultados"][0]["resultado"]')" SIN_CAMBIOS
 
@@ -237,15 +265,18 @@ csrf; post /api/admin/familias "$(jobj nombreReferencia "${RUN}_B")"
 esperar 201 "crear la familia B"
 FAM_B="$(echo "$CUERPO" | campo id)"
 crear_deportista D3; D3="$DEP_ID"
-csrf; post "/api/admin/familias/$FAM_B/deportistas" "{\"deportistaIds\":[\"$D3\"]}"
+armar_lote "$D3"
+csrf; post "/api/admin/familias/$FAM_B/deportistas" "$LOTE"
 esperar 200 "vincular D3 solo a la familia B (sirve para el paso 13)"
-csrf; post "/api/admin/familias/$FAM_B/deportistas" "{\"deportistaIds\":[\"$D1\"]}"
+armar_lote "$D1"   # D1 ya tiene la revision que dejo el paso 5
+csrf; post "/api/admin/familias/$FAM_B/deportistas" "$LOTE"
 esperar 200 "vincular D1 tambien a la familia B"
 igual "D1 en B: CREADO" "$(jx 'd["resultados"][0]["resultado"]')" CREADO
 igual "D1 en B: no es principal (A ya lo es)" "$(jx 'd["resultados"][0]["vinculo"]["esPrincipal"]')" false
 get "/api/admin/deportistas/$D1/familias"
 igual "D1: un solo principal, sigue siendo A" "$(jx '[v["familiaId"] for v in d if v["estado"]=="ACTIVO" and v["esPrincipal"]]==[a[0]]' "$FAM_A")" true
-csrf; post "/api/admin/familias/$FAM_B/deportistas/$D1/principal"
+revision_de_deportista "$D1"   # la vincular a B de arriba movio la revision de D1
+csrf; post "/api/admin/familias/$FAM_B/deportistas/$D1/principal" "$(jobj versionEsperada "$REVISION")"
 esperar 200 "POST .../familias/{B}/deportistas/{D1}/principal"
 get "/api/admin/deportistas/$D1/familias"
 igual "D1: exactamente un ACTIVO principal" "$(jx 'sum(1 for v in d if v["estado"]=="ACTIVO" and v["esPrincipal"])')" 1
@@ -337,7 +368,8 @@ igual "el listado sigue con 2 deportistas" "$(jx 'd["totalElementos"]')" 2
 get "/api/familia/deportistas/$D2"
 esperar 200 "detalle de D2 inactivo"
 igual "detalle de D2 con activo=false" "$(echo "$CUERPO" | campo activo)" false
-como admin; csrf; post "/api/admin/familias/$FAM_A/deportistas/$D2/revocar"
+revision_de_deportista "$D2"
+csrf; post "/api/admin/familias/$FAM_A/deportistas/$D2/revocar" "$(jobj versionEsperada "$REVISION")"
 esperar 200 "revocar el vinculo de D2 con la familia A"
 igual "vinculo REVOCADO y sin principal" "$(jx 'd["estado"]=="REVOCADO" and d["esPrincipal"]==False')" true
 como familia; get "/api/familia/deportistas/$D2"

@@ -134,8 +134,25 @@ export class AdminSeed {
     return this.post('/api/admin/deportistas', data, `create athlete ${data.nombre ?? ''}`);
   }
 
+  /**
+   * The revision of an athlete's family links as the backend stores it right now (FE-05/U11-A): a decimal string read from
+   * GET /api/admin/deportistas/{id}/vinculos. It is read, never invented: linking, revoking and changing the principal require
+   * the revision the caller observed. It is independent of the athlete revision (`athleteVersion`).
+   */
+  private async linksVersion(athleteId: string): Promise<string> {
+    const links = await expectOk<{ versionVinculos?: unknown }>(await this.admin.get(`/api/admin/deportistas/${athleteId}/vinculos`), `read links of athlete ${athleteId}`);
+    expect(typeof links.versionVinculos === 'string' && /^[0-9]{1,19}$/.test(links.versionVinculos), `athlete ${athleteId}: versionVinculos must be a decimal string`).toBe(true);
+    return links.versionVinculos as string;
+  }
+
+  /** Since FE-05/U11-A each athlete of the batch carries the link revision observed just before (read once per athlete, sent unchanged). */
   async link(familyId: string, athleteIds: string[]): Promise<void> {
-    await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistaIds: athleteIds }, 'link athletes');
+    const versions = new Map<string, string>();
+    for (const id of athleteIds) {
+      if (!versions.has(id)) versions.set(id, await this.linksVersion(id));
+    }
+    const deportistas = athleteIds.map((deportistaId) => ({ deportistaId, versionEsperada: versions.get(deportistaId) }));
+    await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistas }, 'link athletes');
   }
 
   /**
@@ -153,8 +170,9 @@ export class AdminSeed {
     await this.post(`/api/admin/deportistas/${athleteId}/desactivar`, { versionEsperada: await this.athleteVersion(athleteId) }, 'deactivate athlete');
   }
 
+  /** Since FE-05/U11-A the revocation must carry the link revision observed: it is read just before and sent unchanged. */
   async revoke(familyId: string, athleteId: string): Promise<void> {
-    await this.post(`/api/admin/familias/${familyId}/deportistas/${athleteId}/revocar`, {}, 'revoke link');
+    await this.post(`/api/admin/familias/${familyId}/deportistas/${athleteId}/revocar`, { versionEsperada: await this.linksVersion(athleteId) }, 'revoke link');
   }
 
   /** The season of that year (created when missing); it is only created, not activated. */

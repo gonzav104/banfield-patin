@@ -50,6 +50,8 @@ abstract class BaseVinculosDb extends BaseDbTest {
 
 	ExecutorService hilos;
 	DatosDb datos;
+	/** El servicio llamado con la revision vigente de cada deportista (ver {@link VinculosConRevision}). */
+	VinculosConRevision vigente;
 	UUID escuelaA;
 	UUID escuelaB;
 	UUID adminId;
@@ -60,6 +62,7 @@ abstract class BaseVinculosDb extends BaseDbTest {
 	void prepararBase() {
 		hilos = Executors.newFixedThreadPool(3);
 		datos = new DatosDb(jdbc);
+		vigente = new VinculosConRevision(jdbc, servicio);
 		escuelaA = datos.escuela("vinc-a-" + UUID.randomUUID());
 		escuelaB = datos.escuela("vinc-b-" + UUID.randomUUID());
 		adminId = datos.admin(escuelaA, "admin@a.example", true);
@@ -113,6 +116,17 @@ abstract class BaseVinculosDb extends BaseDbTest {
 				.param("d", deportistaId).query().listOfRows();
 	}
 
+	/** Revision de los vinculos del deportista en la base (V11). */
+	long revision(UUID deportistaId) {
+		return vigente.revision(deportistaId);
+	}
+
+	/** Revision de datos permanentes del deportista (V9): las operaciones de vinculos nunca la mueven. */
+	long versionDeDatos(UUID deportistaId) {
+		return jdbc.sql("SELECT version FROM gestion_patin.deportista WHERE id = :d").param("d", deportistaId)
+				.query(Long.class).single();
+	}
+
 	long principalesActivos(UUID deportistaId) {
 		return jdbc.sql("""
 				SELECT count(*) FROM gestion_patin.familia_deportista
@@ -146,6 +160,24 @@ abstract class BaseVinculosDb extends BaseDbTest {
 	}
 
 	// ---------- ayudas de concurrencia ----------
+
+	/**
+	 * Un cliente que, ante 409 EDICION_DESACTUALIZADA, vuelve a leer la revision y reintenta (la operacion la relee en cada
+	 * intento, ver {@link VinculosConRevision}). Las rondas de hilos libres lo usan: con la revision agregada por deportista,
+	 * dos operaciones preparadas a la vez sobre el mismo deportista dejan un unico ganador y la otra debe reintentar.
+	 */
+	static Object reintentandoSiEsObsoleta(Supplier<Object> operacion) {
+		for (int intento = 0; intento < 20; intento++) {
+			try {
+				return operacion.get();
+			} catch (ExcepcionNegocio e) {
+				if (!"EDICION_DESACTUALIZADA".equals(e.getCodigo())) {
+					throw e;
+				}
+			}
+		}
+		throw new AssertionError("la operacion siguio obsoleta tras 20 intentos");
+	}
 
 	record Par(Object a, Object b) {
 	}

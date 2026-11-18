@@ -53,7 +53,7 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		assertThat(lockTimeout()).isEqualTo("0");
 
 		String dentro = transaccion.execute(estado -> {
-			servicio.vincular(admin, f1, List.of(d), DATOS); // se une a la transaccion externa (REQUIRED)
+			vigente.vincular(admin, f1, List.of(d), DATOS); // se une a la transaccion externa (REQUIRED)
 			return lockTimeout();
 		});
 
@@ -69,12 +69,12 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 		int pidAntes = pid();
 
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 		assertThat(lockTimeout()).as("tras vincular").isEqualTo("0");
-		servicio.vincular(admin, f2, List.of(d), DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.vincular(admin, f2, List.of(d), DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		assertThat(lockTimeout()).as("tras cambiar principal").isEqualTo("0");
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 		assertThat(lockTimeout()).as("tras revocar").isEqualTo("0");
 		assertThat(pid()).isEqualTo(pidAntes);
 	}
@@ -84,7 +84,7 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		UUID inexistente = UUID.randomUUID();
 		int pidAntes = pid();
 
-		Throwable e = catchThrowable(() -> servicio.vincular(admin, inexistente, List.of(UUID.randomUUID()), DATOS));
+		Throwable e = catchThrowable(() -> vigente.vincular(admin, inexistente, List.of(UUID.randomUUID()), DATOS));
 
 		assertThat(e).isInstanceOf(ExcepcionNegocio.class);
 		assertThat(lockTimeout()).isEqualTo("0");
@@ -97,7 +97,7 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 
 		Throwable e = catchThrowable(() -> transaccion.execute(estado -> {
-			servicio.vincular(admin, f1, List.of(d), DATOS);
+			vigente.vincular(admin, f1, List.of(d), DATOS);
 			throw new IllegalStateException("revierte la transaccion externa");
 		}));
 
@@ -111,7 +111,7 @@ class VinculosLockTimeoutSinFugaDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
 		int pidAntes = pid();
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 
 		String generica = transaccion.execute(estado -> {
 			servicio.listarDeFamilia(admin, f1);

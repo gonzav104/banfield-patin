@@ -32,7 +32,7 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 		UUID d = deportista("Uno");
 
-		var respuesta = servicio.vincular(admin, familia, List.of(d), DATOS);
+		var respuesta = vigente.vincular(admin, familia, List.of(d), DATOS);
 
 		Map<String, Object> fila = fila(familia, d).orElseThrow();
 		assertThat(fila.get("id")).isEqualTo(respuesta.resultados().get(0).vinculo().vinculoId());
@@ -52,8 +52,8 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 
 		// Por la API: el segundo vinculo del mismo deportista no es principal.
-		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.vincular(admin, f2, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f2, List.of(d), DATOS);
 		// Directo por el repositorio: el booleano obligatorio del factory se escribe tal cual (INSERT con es_principal).
 		UUID f3 = datos.familia(escuelaA, "Tres", true);
 		repositorio.saveAndFlush(FamiliaDeportista.activo(escuelaA, f3, d, adminId, java.time.Instant.now(), false));
@@ -80,12 +80,12 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 		UUID d = deportista("Uno");
 		UUID admin2 = datos.admin(escuelaA, "otro@a.example", true);
-		UUID primero = servicio.vincular(admin, familia, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
+		UUID primero = vigente.vincular(admin, familia, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
 		Map<String, Object> antes = fila(familia, d).orElseThrow();
-		servicio.revocar(admin, familia, d, DATOS);
+		vigente.revocar(admin, familia, d, DATOS);
 		Thread.sleep(20);
 
-		var relink = servicio.vincular(new com.banfieldpatin.backend.seguridad.UsuarioAutenticado(admin2, escuelaA, null,
+		var relink = vigente.vincular(new com.banfieldpatin.backend.seguridad.UsuarioAutenticado(admin2, escuelaA, null,
 				com.banfieldpatin.backend.usuarios.Rol.ADMIN), familia, List.of(d), DATOS);
 
 		assertThat(relink.resultados().get(0).resultado()).isEqualTo(ResultadoVinculacion.REACTIVADO);
@@ -107,10 +107,10 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID f2 = datos.familia(escuelaA, "Dos", true);
 		UUID d1 = deportista("Uno");
 		UUID d2 = deportista("Dos");
-		servicio.vincular(admin, f1, List.of(d1, d2), DATOS);
-		servicio.vincular(admin, f2, List.of(d1), DATOS);
-		servicio.revocar(admin, f1, d2, DATOS);
-		servicio.vincular(admin, f1, List.of(d2), DATOS);
+		vigente.vincular(admin, f1, List.of(d1, d2), DATOS);
+		vigente.vincular(admin, f2, List.of(d1), DATOS);
+		vigente.revocar(admin, f1, d2, DATOS);
+		vigente.vincular(admin, f1, List.of(d2), DATOS);
 
 		assertThat(jdbc.sql("""
 				SELECT count(*) FROM gestion_patin.familia_deportista
@@ -124,12 +124,12 @@ class MapeoVinculosDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID f2 = datos.familia(escuelaA, "Dos", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 		// Fila PENDIENTE con es_principal=true (lo que dejaria el DEFAULT de V1): no es un principal activo.
 		datos.vinculo(escuelaA, f2, d, "PENDIENTE", true, null);
 		assertThat(repositorio.principalesActivos(escuelaA, List.of(d))).containsExactly(d);
 
-		var r = servicio.vincular(admin, f2, List.of(d), DATOS);
+		var r = vigente.vincular(admin, f2, List.of(d), DATOS);
 
 		assertThat(r.resultados().get(0).resultado()).isEqualTo(ResultadoVinculacion.REACTIVADO);
 		assertThat(r.resultados().get(0).vinculo().esPrincipal()).isFalse();

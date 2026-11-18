@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * Mapeo de los datos PERMANENTES de gestion_patin.deportista (V1): sin datos de temporada, sin asociaciones (UUID
- * planos) y sin setters. {@code version} es la revision optimista (U6): la gestiona JPA. La escuela es inmutable ({@code updatable = false}). Los datos personales se cambian solo con
+ * planos) y sin setters. {@code version} es la revision optimista (U6): la gestiona JPA; {@code versionVinculos} es la de los vinculos (U11-A) y la entidad solo la lee. La escuela es inmutable ({@code updatable = false}). Los datos personales se cambian solo con
  * {@link #actualizar}, que informa los NOMBRES de los campos modificados (nunca sus valores); el estado, solo con
  * {@link #activar()} y {@link #desactivar()}. Los DNI y CUIL llegan ya normalizados (solo digitos).
  */
@@ -77,6 +77,15 @@ public class Deportista {
 	@Version
 	@Column(nullable = false)
 	private long version;
+
+	/**
+	 * Revision agregada de los VINCULOS del deportista (V11), independiente de {@link #version}: la avanzan solo las
+	 * operaciones de vinculos con una sentencia condicionada por escuela ({@code FamiliaDeportistaRepository}). No es
+	 * {@code @Version}, y no se inserta ni se actualiza desde la entidad: un alta toma el valor por defecto de la base y una
+	 * edicion o un cambio de estado nunca la reescriben con un valor leido antes (no pisan un incremento concurrente).
+	 */
+	@Column(name = "version_vinculos", nullable = false, insertable = false, updatable = false)
+	private long versionVinculos;
 
 	/** Alta de un deportista activo de la escuela, sin ningun vinculo con familias. */
 	public static Deportista crear(UUID escuelaId, String nombre, String apellido, String dni, String cuil,

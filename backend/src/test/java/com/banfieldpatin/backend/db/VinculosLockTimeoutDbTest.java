@@ -100,14 +100,14 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
 
-		Intento b = conElDeportistaRetenido(d, () -> servicio.vincular(admin, f1, List.of(d), DATOS));
+		Intento b = conElDeportistaRetenido(d, () -> vigente.vincular(admin, f1, List.of(d), DATOS));
 
 		aTiempoDeTimeout(b);
 		assertThat(fila(f1, d)).as("nada escrito").isEmpty();
 		assertThat(contarAuditoria("VINCULO_ACTIVADO")).isZero();
 		verificarInvariantes();
 		// Con A ya confirmado (sin retener nada), la misma llamada funciona: el limite no dejo estado raro.
-		VinculacionRespuesta ok = servicio.vincular(admin, f1, List.of(d), DATOS);
+		VinculacionRespuesta ok = vigente.vincular(admin, f1, List.of(d), DATOS);
 		assertThat(ok.resultados()).singleElement().satisfies(r -> assertThat(r.vinculo().esPrincipal()).isTrue());
 		assertThat(contarAuditoria("VINCULO_ACTIVADO")).isEqualTo(1);
 		verificarInvariantes();
@@ -117,15 +117,15 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 	void revocarConElDeportistaRetenidoVenceElPlazoDejaElVinculoIntactoYAlLiberarloTieneExito() throws Exception {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 
-		Intento b = conElDeportistaRetenido(d, () -> servicio.revocar(admin, f1, d, DATOS));
+		Intento b = conElDeportistaRetenido(d, () -> vigente.revocar(admin, f1, d, DATOS));
 
 		aTiempoDeTimeout(b);
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("estado", "ACTIVO").containsEntry("es_principal", true);
 		assertThat(contarAuditoria("VINCULO_REVOCADO")).isZero();
 		verificarInvariantes();
-		VinculoRespuesta ok = servicio.revocar(admin, f1, d, DATOS);
+		VinculoRespuesta ok = vigente.revocar(admin, f1, d, DATOS);
 		assertThat(ok.estado().name()).isEqualTo("REVOCADO");
 		assertThat(contarAuditoria("VINCULO_REVOCADO")).isEqualTo(1);
 		verificarInvariantes();
@@ -137,17 +137,17 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID f2 = datos.familia(escuelaA, "Dos", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.vincular(admin, f2, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f2, List.of(d), DATOS);
 
-		Intento b = conElDeportistaRetenido(d, () -> servicio.cambiarPrincipal(admin, f2, d, DATOS));
+		Intento b = conElDeportistaRetenido(d, () -> vigente.cambiarPrincipal(admin, f2, d, DATOS));
 
 		aTiempoDeTimeout(b);
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", true);
 		assertThat(fila(f2, d).orElseThrow()).containsEntry("es_principal", false);
 		assertThat(contarAuditoria("VINCULO_PRINCIPAL_CAMBIADO")).isZero();
 		verificarInvariantes();
-		VinculoRespuesta ok = servicio.cambiarPrincipal(admin, f2, d, DATOS);
+		VinculoRespuesta ok = vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		assertThat(ok.esPrincipal()).isTrue();
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", false);
 		assertThat(principalesActivos(d)).isEqualTo(1);
@@ -161,7 +161,7 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 		UUID libre = deportista("Libre");
 		UUID retenido = deportista("Retenido");
 
-		Intento b = conElDeportistaRetenido(retenido, () -> servicio.vincular(admin, f1, List.of(libre, retenido), DATOS));
+		Intento b = conElDeportistaRetenido(retenido, () -> vigente.vincular(admin, f1, List.of(libre, retenido), DATOS));
 
 		aTiempoDeTimeout(b);
 		assertThat(contar("familia_deportista", escuelaA)).as("todo o nada").isZero();
@@ -176,10 +176,10 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 		UUID d = deportista("Uno");
 
 		long inicio = System.nanoTime();
-		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.vincular(admin, f2, List.of(d), DATOS);
-		servicio.cambiarPrincipal(admin, f2, d, DATOS);
-		servicio.revocar(admin, f1, d, DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f2, List.of(d), DATOS);
+		vigente.cambiarPrincipal(admin, f2, d, DATOS);
+		vigente.revocar(admin, f1, d, DATOS);
 
 		assertThat((System.nanoTime() - inicio) / 1_000_000).as("sin esperas").isLessThan(5_000);
 		assertThat(principalesActivos(d)).isEqualTo(1);
@@ -207,7 +207,7 @@ class VinculosLockTimeoutDbTest extends BaseVinculosDb {
 	void lasTransaccionesQueNoSonDeVinculosNoTienenLockTimeout() {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 
 		// Una transaccion cualquiera (incluida una lectura del propio servicio de vinculos) NO lo tiene, ni siquiera
 		// justo despues de una transaccion de vinculos.
