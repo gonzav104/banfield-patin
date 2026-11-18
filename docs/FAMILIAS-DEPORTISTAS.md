@@ -53,8 +53,8 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `POST /api/admin/deportistas/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/familias/{familiaId}/deportistas` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 FAMILIA_NO_ENCONTRADA` |
 | `GET /api/admin/deportistas/{deportistaId}/familias` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 DEPORTISTA_NO_ENCONTRADO` |
-| `GET /api/admin/deportistas/{deportistaId}/vinculos` | ADMIN | — | `200` `{deportistaId, versionVinculos, vinculos: [VinculoRespuesta]}` (todos los estados, mismo orden que `.../familias`; también sin vínculos o con el deportista inactivo) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
-| `POST /api/admin/familias/{familiaId}/deportistas` | ADMIN | `{deportistas: [{deportistaId, versionEsperada}]}` (1..50, se quitan repetidos; todo o nada) | `200` `{resultados: [{vinculo, resultado: CREADO\|REACTIVADO\|SIN_CAMBIOS}]}` en el orden pedido | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` y `409 DEPORTISTA_INACTIVO` (con `detalles` `deportistas[i]`), `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
+| `GET /api/admin/deportistas/{deportistaId}/vinculos` | ADMIN | — | `200` `{deportistaId, versionVinculos, vinculos: [VinculoRespuesta]}` (todos los estados, mismo orden que `.../familias`; también sin vínculos o con el deportista inactivo; sección 14) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
+| `POST /api/admin/familias/{familiaId}/deportistas` | ADMIN | `{deportistas: [{deportistaId, versionEsperada}]}` (1..50, se quitan repetidos; todo o nada; sección 14) | `200` `{resultados: [{vinculo, resultado: CREADO\|REACTIVADO\|SIN_CAMBIOS}]}` en el orden pedido | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` y `409 DEPORTISTA_INACTIVO` (con `detalles` `deportistas[i]`), `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar` | ADMIN | `{versionEsperada}` | `200` `VinculoRespuesta` (idempotente; permitido con familia inactiva) | `400`, `404 VINCULO_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA`, `409 VINCULO_NO_ACTIVO` (PENDIENTE o RECHAZADO), `409 CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal` | ADMIN | `{versionEsperada}` | `200` `VinculoRespuesta` (idempotente) | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 VINCULO_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA`, `409 VINCULO_NO_ACTIVO`, `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
 | `GET /api/familia/mi-familia` | FAMILIA | — | `200` `{id, nombreReferencia, tutores: [{id, nombre, apellido, parentesco, telefono, email}]}` (solo tutores activos) | `404 FAMILIA_NO_ENCONTRADA` |
@@ -67,7 +67,7 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 `DELETE` y `PATCH` no existen en ninguna ruta de este módulo (`405 METODO_NO_PERMITIDO`): una familia, un deportista o un vínculo se desactivan o revocan, nunca se
 borran. `VinculoRespuesta` es `{vinculoId, familiaId, familiaNombre, deportistaId, deportistaNombre, deportistaApellido, deportistaActivo, estado, esPrincipal,
 autorizadoEn, versionVinculos}`; no incluye quién autorizó ni el DNI. `versionVinculos` (cadena decimal) es la revisión de los vínculos del deportista de esa fila;
-en las respuestas de las escrituras es la revisión posterior a la operación.
+en las respuestas de las escrituras es la revisión posterior a la operación (sección 14).
 
 ### Códigos de error propios del módulo
 
@@ -81,9 +81,10 @@ en las respuestas de las escrituras es la revisión posterior a la operación.
 | `DEPORTISTA_INACTIVO` | 409 | Vincular un deportista inactivo |
 | `VINCULO_NO_ACTIVO` | 409 | Revocar o marcar principal un vínculo PENDIENTE/RECHAZADO (o principal sobre uno REVOCADO) |
 | `VINCULO_PRINCIPAL_EN_CONFLICTO` | 409 | La base arbitró una carrera de principal o de par (red de seguridad de V4); la transacción se revirtió. Reintentar |
+| `EDICION_DESACTUALIZADA` | 409 | Vincular, revocar o cambiar el principal con una `versionEsperada` que no es la revisión vigente de los vínculos del deportista, aunque la operación fuera idempotente (sección 14). Mensaje fijo, sin ids, revisiones ni datos personales; en el lote, `detalles` lista las posiciones `deportistas[i]` |
 | `CONFLICTO_CONCURRENCIA` | 409 | Otra transacción retuvo el deportista más tiempo que `banfield.vinculos.lock-timeout` (o PostgreSQL eligió esta transacción como víctima de un *deadlock*). No se escribió ni auditó nada. Mensaje fijo: «Otro cambio sobre el mismo deportista esta en curso. Reintentá en unos segundos.»; sin SQL, ids ni trazas. Solo las rutas de vínculos que bloquean (vincular, revocar, principal) pueden devolverlo |
 
-Los `409` de DNI y CUIL, `VINCULO_PRINCIPAL_EN_CONFLICTO` y `CONFLICTO_CONCURRENCIA` nunca incluyen el nombre de la restricción, el id en conflicto ni el valor.
+Los `409` de DNI y CUIL, `EDICION_DESACTUALIZADA`, `VINCULO_PRINCIPAL_EN_CONFLICTO` y `CONFLICTO_CONCURRENCIA` nunca incluyen el nombre de la restricción, el id en conflicto ni el valor.
 
 ## 3. Decisiones del módulo
 
@@ -130,8 +131,11 @@ Reglas del principal:
 
 1. Al vincular o reactivar, `es_principal = true` si y solo si el deportista no tiene otro vínculo ACTIVO principal (decidido con el deportista bloqueado).
 2. Revocar pone `es_principal = false` y **no** promueve a otro vínculo.
-3. Cambiar el principal (`POST .../principal`) es la única vía: familia `404` → familia inactiva `409` → bloqueo → vínculo `404`/`409 VINCULO_NO_ACTIVO` → si ya es el
-   principal, `200` sin escribir → se baja el principal actual y se sube el elegido (en ese orden, cada uno con `flush`) → auditoría.
+3. Cambiar el principal (`POST .../principal`) es la única vía: familia `404` → familia inactiva `409` → bloqueo → vínculo `404` → revisión `409 EDICION_DESACTUALIZADA`
+   → `409 VINCULO_NO_ACTIVO` → si ya es el principal, `200` sin escribir → se baja el principal actual y se sube el elegido (en ese orden, cada uno con `flush`) →
+   auditoría → revisión +1 (una sola vez).
+4. Revocar (`POST .../revocar`): bloqueo → vínculo `404` → revisión `409 EDICION_DESACTUALIZADA` → PENDIENTE/RECHAZADO `409 VINCULO_NO_ACTIVO` → REVOCADO `200` sin
+   escribir, auditar ni mover la revisión → ACTIVO: revoca (deja de ser principal, sin promover a otro), auditoría y revisión +1. No lee la familia.
 
 | Estado actual \ acción | Vincular (ADMIN) | Revocar | Marcar principal |
 |---|---|---|---|
@@ -141,13 +145,16 @@ Reglas del principal:
 | PENDIENTE / RECHAZADO (esta API no los produce) | reutiliza la fila → ACTIVO (`REACTIVADO`) | `409 VINCULO_NO_ACTIVO` | `409 VINCULO_NO_ACTIVO` |
 
 Orden de verificación al vincular: familia `404` → familia inactiva `409 FAMILIA_INACTIVA` (primero, incluso si el lote sería todo `SIN_CAMBIOS`) → bloqueo de las filas de
-los deportistas → algún id inexistente o de otra escuela `404` → algún deportista inactivo `409` → escritura. Cualquier fallo no deja nada escrito ni auditado.
+los deportistas → algún id inexistente o de otra escuela `404` → alguna revisión obsoleta `409 EDICION_DESACTUALIZADA` (aunque ese deportista diera `SIN_CAMBIOS`) →
+algún deportista inactivo `409` → escritura → revisión +1 de cada deportista `CREADO` o `REACTIVADO`. Cualquier fallo no deja nada escrito, auditado ni ninguna revisión movida.
+Todas las verificaciones de revisión usan la sección 14.
 
 **Concurrencia:** todas las operaciones que cambian vínculos toman primero el bloqueo de fila del deportista (`FOR UPDATE`, en orden de id, de modo que lotes
 superpuestos en orden inverso no se bloquean entre sí). Esa espera está acotada: las tres transacciones ejecutan `SET LOCAL lock_timeout` (propiedad
 `banfield.vinculos.lock-timeout`, por defecto `PT3S`, válida entre 100 ms y 30 s; fuera de rango la aplicación no arranca) y, si vence, responden `409 CONFLICTO_CONCURRENCIA`.
 `SET LOCAL` vale solo hasta el fin de esa transacción: no cambia nada del pool, de la sesión ni de otros servicios. El índice parcial único `uq_fd_principal_activo`
-(V4) es la última red de seguridad.
+(V4) es la última red de seguridad. Desde U11-A la revisión de vínculos se compara **bajo ese mismo bloqueo** y se incrementa en la misma transacción (sección 14); no
+hay bloqueos nuevos ni cambia el orden. Si el plazo vence, el `409 CONFLICTO_CONCURRENCIA` no mueve la revisión ni deja auditoría.
 
 ## 6. Portal de FAMILIA (solo lectura) y resumen de N1
 
@@ -230,7 +237,7 @@ en 32 rutas). RNF-14 pide documentación OpenAPI coherente con los endpoints y u
 
 ## 9. Límites abiertos conocidos
 
-- **Sin bloqueo optimista:** una edición (`PUT`) concurrente sobre el mismo registro gana la última escritura. Los vínculos sí se serializan por el bloqueo del deportista; los datos deportivos anuales, por el bloqueo de su fila (con la misma limitación: un `PUT` con datos viejos pisa un cambio posterior, ver TEMPORADAS.md sección 8).
+- **Sin bloqueo optimista (histórico):** una edición (`PUT`) concurrente sobre el mismo registro gana la última escritura. Familia, tutor y deportista ya tienen revisión (sección 13) y, desde U11-A, los vínculos tienen la revisión agregada por deportista (sección 14). Los vínculos además se serializan por el bloqueo del deportista; los datos deportivos anuales, por el bloqueo de su fila (con la misma limitación: un `PUT` con datos viejos pisa un cambio posterior, ver TEMPORADAS.md sección 8).
 - **Sin `unaccent`:** la búsqueda distingue acentos (no mayúsculas).
 - **Datos de temporada fuera de este documento:** este documento cubre los datos permanentes del deportista, las familias, los tutores y los vínculos. Las temporadas, los datos deportivos anuales (`deportista_temporada`) y su lectura por FAMILIA se documentan en [TEMPORADAS.md](TEMPORADAS.md) (Fase 1, implementada); las licencias llegan en la Fase 5.
 - **RF-06 (completitud de los datos del deportista) diferido:** el alta exige solo DNI, nombre y apellido; la validación de completitud para federar queda para el módulo de exportación.
@@ -343,7 +350,7 @@ vincular, revocar o cargar documentos no la mueven.
 - Orden de comprobaciones: `400` → `404` (otra escuela = mismo `404`, con cualquier revisión) → revisión (`409 EDICION_DESACTUALIZADA`, incluso si los datos o el estado ya coinciden; mensaje fijo, sin ids ni datos personales) → unicidad de DNI/CUIL (`409 DNI_DUPLICADO`, `DNI_RESERVADO_POR_INACTIVO`, `CUIL_DUPLICADO`) → escritura. La revisión va antes que la unicidad para que un formulario viejo no aprenda, por un `DNI_DUPLICADO`, que otro deportista tiene ese DNI.
 - Revisión vigente y sin cambios: `200`, misma revisión, sin `UPDATE` ni auditoría.
 - Concurrencia: `@Version` condiciona el `UPDATE` (dos escrituras sobre la misma revisión dejan un único ganador, también una edición contra una activación o desactivación) y `LockModeType.OPTIMISTIC` hace que un «sin cambios» también falle si el deportista cambió antes del commit. Un conflicto de JPA revierte datos, versión y auditoría de la transacción. La contención de base conserva `409 CONFLICTO_CONCURRENCIA`. Deportista no tiene un recurso padre que condicione sus escrituras: no hay bloqueo de otra fila ni revisión adicional. No se agrega `lock_timeout` (riesgo residual, igual que en Familia y Tutor).
-- Interacción con vincular y la carga de documentos: esos flujos bloquean la fila del deportista `FOR UPDATE` y la leen sin modificarla; una desactivación concurrente espera a que terminen y se aplica con la misma revisión.
+- Interacción con vincular y la carga de documentos: esos flujos bloquean la fila del deportista `FOR UPDATE`; la carga la lee sin modificarla y, desde U11-A, una operación de vínculos con cambio efectivo solo actualiza `version_vinculos` (sección 14), nunca `version`. Una desactivación concurrente espera a que terminen y se aplica con la misma revisión, sin reescribir `version_vinculos`.
 
 La migración V9 agrega `version BIGINT NOT NULL DEFAULT 0` y un CHECK no negativo a `deportista`, sin cambiar datos ni relaciones. V1–V8 permanecen intactas. `Deportista` solo se escribe a través de `DeportistaAdminService` (no hay otros escritores ni SQL nativo).
 
@@ -373,3 +380,51 @@ recargar explicitamente y revisar los cambios; no sustituir automaticamente la r
 Pruebas focales: `FamiliaGestionAdminControllerWebMvcTest`, `FamiliaAdminServiceTest`, `OpenApiVersionFamiliaTest`,
 `FamiliaConcurrenciaDbTest` y `V7VersionFamiliaDbTest`. Las pruebas concurrentes retienen una transaccion y comprueban
 el bloqueo real en `pg_stat_activity` antes de liberar el commit; no dependen solo de temporizadores.
+
+## 14. Revisión de los vínculos (FE-05 / U11-A)
+
+`deportista.version_vinculos` es una revisión optimista **agregada por deportista**: cubre **todos** sus vínculos familia-deportista (con cualquier familia), no una fila.
+Protege vincular, revocar y cambiar el principal contra operaciones preparadas sobre información desactualizada. Es independiente de `version` (datos permanentes y estado,
+sección 13): una operación de vínculos **nunca** mueve `version`, y editar, activar o desactivar el deportista **nunca** mueve `version_vinculos` (F4: no tocan vínculos).
+El principal sigue siendo una propiedad del vínculo; no existe un tutor principal.
+
+- **Lectura:** `GET /api/admin/deportistas/{deportistaId}/vinculos` devuelve `{deportistaId, versionVinculos, vinculos}` con todos los estados, en el orden de
+  `.../familias`. Funciona sin vínculos (`vinculos: []`) y con un deportista inactivo. Revisión y lista salen de la **misma instantánea**: dos sentencias dentro de una
+  transacción de solo lectura `REPEATABLE_READ`. Otra escuela o inexistente: `404 DEPORTISTA_NO_ENCONTRADO` uniforme. Además, cada `VinculoRespuesta` (en los dos listados y
+  en las respuestas de las escrituras) trae `versionVinculos`; en las escrituras es la revisión **posterior** a la operación.
+- **Escrituras:** revocar y principal exigen `{versionEsperada}`; el lote exige `{deportistas: [{deportistaId, versionEsperada}]}` (1..50 elementos, contados antes de quitar
+  repetidos). `deportistaIds` ya no se acepta (`400 SOLICITUD_INVALIDA`, propiedad desconocida). Un deportista repetido con la misma `versionEsperada` se deduplica (queda la
+  primera posición); con revisiones distintas la solicitud es ambigua: `400 SOLICITUD_INVALIDA`, sin eco de valores.
+- **Validación:** `versionEsperada` es una cadena de 1 a 19 dígitos ASCII dentro de 0..9223372036854775807, como en Familia, Tutor y Deportista. Ausente o nula: `400 VALIDACION`
+  (en el lote, el campo es `deportistas[i].versionEsperada`); formato, tipo o rango inválido, o sin cuerpo en revocar o principal: `400 SOLICITUD_INVALIDA`. Sin propiedades adicionales.
+- **Comparación bajo el bloqueo:** la revisión esperada se compara con la leída **después** de tomar el bloqueo de fila del deportista (`FOR UPDATE`, orden de id,
+  `lock_timeout`), con una consulta escalar que va siempre a la base (nunca el valor de una entidad `Deportista` del contexto de persistencia). Con la fila bloqueada nadie puede
+  cambiarla hasta el commit. La entidad mapea la columna como de solo lectura (`insertable = false, updatable = false`): un alta toma el valor por defecto y una edición o un cambio
+  de estado no la reescriben con un valor viejo.
+- **Obsoleta:** una revisión distinta de la vigente es `409 EDICION_DESACTUALIZADA` **aunque la operación sea idempotente** (revocar un REVOCADO, marcar al que ya es principal,
+  un lote todo `SIN_CAMBIOS`). Mensaje fijo, sin ids, revisiones ni datos personales. Si el bloqueo no se obtiene a tiempo, el código sigue siendo `409 CONFLICTO_CONCURRENCIA`.
+- **Incremento:** solo con un cambio efectivo, **+1 por deportista y por operación**, en la misma transacción, después de las escrituras y con el predicado de escuela: revocar un
+  ACTIVO, cambiar el principal (una vez, aunque se escriban dos filas) y cada deportista `CREADO` o `REACTIVADO` del lote (una reactivación restaura el acceso de la familia).
+  `SIN_CAMBIOS` y las repeticiones idempotentes con la revisión vigente responden `200` sin escribir, sin auditoría y sin mover la revisión. Cualquier error revierte vínculos,
+  revisiones y auditoría.
+- **Consecuencia esperada:** como la revisión es del deportista, dos operaciones preparadas a la vez sobre el mismo deportista (aunque toquen familias distintas) dejan un único
+  ganador; la otra recibe `409 EDICION_DESACTUALIZADA` y el cliente debe volver a leer la revisión (`GET .../vinculos`) y decidir de nuevo. No hay reintento ni guardado forzado.
+- **Documentos:** la carga de la FAMILIA no lee ni cambia la revisión. Una revocación con su revisión, confirmada durante la transferencia o el análisis de una carga, sigue
+  impidiendo la publicación; los bloqueos y su orden no cambiaron.
+- **Desbordamiento:** el contador no se trata especialmente en el máximo de BIGINT; es inalcanzable en la práctica (riesgo aceptado). Si se alcanzara, el CHECK y el tipo harían fallar
+  la escritura sin dejar cambios.
+
+**Migración V11** (`V11__versionar_vinculos_deportista.sql`): agrega `version_vinculos BIGINT NOT NULL DEFAULT 0` y el CHECK `ck_deportista_version_vinculos_no_negativa`
+(`>= 0`). Los deportistas existentes quedan con `0`; no cambia datos, `version`, estados ni vínculos. V1–V10 permanecen intactas. Probada solo con PostgreSQL descartable
+(Testcontainers); **no se ejecutó sobre Supabase ni sobre bases reales**.
+
+**Compatibilidad y despliegue:** el contrato de escritura de los vínculos cambia de forma intencional; la lectura nueva y `versionVinculos` en `VinculoRespuesta` son aditivos.
+Orden: aplicar V11 antes de iniciar la versión nueva, luego el backend nuevo y recién después cualquier cliente que escriba vínculos. Contra un backend anterior, los cuerpos nuevos se
+rechazan (propiedad no admitida); contra el nuevo, un cliente anterior recibe `400`. **No mezclar** instancias viejas (que escriben vínculos sin incrementar la revisión) con las nuevas:
+una escritura de una instancia vieja no movería la revisión y un formulario viejo podría confirmarse. No existe un modo de compatibilidad sin revisión. El único consumidor conocido de
+estas escrituras fuera del backend es la semilla de los E2E (`frontend/e2e/support/seed.ts`), adaptada para leer la revisión con la ruta nueva; ninguna pantalla del frontend usa estas
+rutas. El paso de vínculos de `backend/scripts/smoke-familias.sh` usa el cuerpo anterior y **no** se adaptó en esta unidad (igual que su paso de desactivación desde U6). Las escrituras
+SQL manuales sobre `familia_deportista` no mueven la revisión: no son un canal administrativo soportado.
+
+Pruebas focales: `VinculoAdminServiceTest`, `VinculoAdminControllerWebMvcTest`, `OpenApiRutasTest`, `V11VersionVinculosDbTest`, `VinculosRevisionDbTest`,
+`VinculosRevisionConcurrenciaDbTest` y las de concurrencia, bloqueo y carga documental existentes adaptadas al contrato.
