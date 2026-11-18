@@ -177,7 +177,8 @@ class InventarioRutasTest {
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas", "POST /api/admin/deportistas",
 				"GET /api/admin/deportistas/{id}",
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
-				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias", "GET /api/admin/deportistas/{id}/documentos");
+				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias",
+				"GET /api/admin/deportistas/{deportistaId}/vinculos", "GET /api/admin/deportistas/{id}/documentos");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -193,6 +194,9 @@ class InventarioRutasTest {
 				&& (r.contains("/familias/{familiaId}/") || r.endsWith("/familias"))))
 				.containsExactlyInAnyOrder("GET /api/admin/familias/{familiaId}/deportistas",
 						"GET /api/admin/deportistas/{deportistaId}/familias");
+		// U11-A: la revision de los vinculos de un deportista se lee por una ruta GET propia (sin escritura).
+		assertThat(rutas(false).stream().filter(r -> r.endsWith("/vinculos")))
+				.containsExactly("GET /api/admin/deportistas/{deportistaId}/vinculos");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 

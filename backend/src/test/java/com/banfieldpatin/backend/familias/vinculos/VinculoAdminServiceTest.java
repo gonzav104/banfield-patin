@@ -98,8 +98,15 @@ class VinculoAdminServiceTest {
 				activo);
 	}
 
+	/** Bloquea los deportistas encontrados; la revision de sus vinculos es 0 salvo que {@link #revisiones} diga otra. */
 	private void bloqueables(Deportista... encontrados) {
 		when(deportistas.bloquearParaVincular(eq(escuelaId), any())).thenReturn(List.of(encontrados));
+		revisiones(java.util.Arrays.stream(encontrados).map(d -> new RevisionVinculos(d.getId(), 0L))
+				.toArray(RevisionVinculos[]::new));
+	}
+
+	private void revisiones(RevisionVinculos... leidas) {
+		when(vinculos.revisionesVinculos(eq(escuelaId), any())).thenReturn(List.of(leidas));
 	}
 
 	private FamiliaDeportista vinculo(UUID deportistaId, EstadoVinculo estado, boolean principal) {
@@ -386,7 +393,7 @@ class VinculoAdminServiceTest {
 
 	private VinculoRespuesta respuesta(FamiliaDeportista fd) {
 		return new VinculoRespuesta(fd.getId(), familiaId, "Familia", d1, "N", "A", true, EstadoVinculo.REVOCADO, false,
-				AHORA);
+				AHORA, "1");
 	}
 
 	@Test
@@ -676,5 +683,47 @@ class VinculoAdminServiceTest {
 
 		verify(vinculos, never()).saveAndFlush(any(FamiliaDeportista.class));
 		verifyNoInteractions(auditoria);
+	}
+
+	// ---------- lectura de la revision ----------
+
+	@Test
+	void laLecturaDeLaRevisionDevuelveLaRevisionYLosVinculosAunSinVinculos() {
+		revisiones(new RevisionVinculos(d1, 12L));
+		VinculoRespuesta fila = respuesta(vinculo(d1, EstadoVinculo.REVOCADO, false));
+		when(vinculos.deDeportista(escuelaId, d1)).thenReturn(List.of(fila));
+
+		var conVinculos = servicio.revisionYVinculos(admin, d1);
+
+		assertThat(conVinculos.deportistaId()).isEqualTo(d1);
+		assertThat(conVinculos.versionVinculos()).isEqualTo("12");
+		assertThat(conVinculos.vinculos()).containsExactly(fila);
+
+		when(vinculos.deDeportista(escuelaId, d1)).thenReturn(List.of());
+		assertThat(servicio.revisionYVinculos(admin, d1).vinculos()).isEmpty();
+		InOrder orden = inOrder(vinculos);
+		orden.verify(vinculos).revisionesVinculos(escuelaId, List.of(d1));
+		orden.verify(vinculos).deDeportista(escuelaId, d1);
+		verifyNoInteractions(lockTimeout, auditoria);
+	}
+
+	@Test
+	void laLecturaDeLaRevisionDeUnDeportistaAjenoOInexistenteDa404UniformeSinListar() {
+		revisiones();
+
+		assertThatThrownBy(() -> servicio.revisionYVinculos(admin, d1))
+				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO"));
+
+		verify(vinculos, never()).deDeportista(any(), any());
+	}
+
+	@Test
+	void laLecturaDeLaRevisionEsUnaTransaccionDeSoloLecturaRepeatableRead() throws Exception {
+		var transaccion = VinculoAdminService.class.getMethod("revisionYVinculos", UsuarioAutenticado.class, UUID.class)
+				.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+
+		assertThat(transaccion).isNotNull();
+		assertThat(transaccion.readOnly()).isTrue();
+		assertThat(transaccion.isolation()).isEqualTo(org.springframework.transaction.annotation.Isolation.REPEATABLE_READ);
 	}
 }

@@ -122,6 +122,6 @@ class DeportistaTest {
 		assertThat(Arrays.stream(Deportista.class.getDeclaredFields()).filter(f -> !Modifier.isStatic(f.getModifiers()))
 				.map(Field::getName)).containsExactlyInAnyOrder("id", "escuelaId", "nombre", "apellido", "dni", "cuil",
 						"fechaNacimiento", "nacionalidad", "domicilio", "otrosDatosDomicilio", "localidad", "partido",
-						"codigoPostal", "telefonoContacto", "emailFederativo", "activo", "version");
+						"codigoPostal", "telefonoContacto", "emailFederativo", "activo", "version", "versionVinculos");
 	}
 }

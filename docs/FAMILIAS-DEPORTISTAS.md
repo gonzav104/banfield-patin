@@ -53,6 +53,7 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `POST /api/admin/deportistas/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `DeportistaDetalle` (idempotente; no toca vínculos) | `400`, `404 DEPORTISTA_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/familias/{familiaId}/deportistas` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 FAMILIA_NO_ENCONTRADA` |
 | `GET /api/admin/deportistas/{deportistaId}/familias` | ADMIN | — | `200` `List<VinculoRespuesta>` (todos los estados) | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/admin/deportistas/{deportistaId}/vinculos` | ADMIN | — | `200` `{deportistaId, versionVinculos, vinculos: [VinculoRespuesta]}` (todos los estados, mismo orden que `.../familias`; también sin vínculos o con el deportista inactivo) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` (uniforme) |
 | `POST /api/admin/familias/{familiaId}/deportistas` | ADMIN | `{deportistaIds: [uuid]}` (1..50, se quitan repetidos; todo o nada) | `200` `{resultados: [{vinculo, resultado: CREADO\|REACTIVADO\|SIN_CAMBIOS}]}` en el orden pedido | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 DEPORTISTA_NO_ENCONTRADO` y `409 DEPORTISTA_INACTIVO` (con `detalles` `deportistaIds[i]`), `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar` | ADMIN | — | `200` `VinculoRespuesta` (idempotente; permitido con familia inactiva) | `404 VINCULO_NO_ENCONTRADO`, `409 VINCULO_NO_ACTIVO` (PENDIENTE o RECHAZADO), `409 CONFLICTO_CONCURRENCIA` |
 | `POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal` | ADMIN | — | `200` `VinculoRespuesta` (idempotente) | `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `404 VINCULO_NO_ENCONTRADO`, `409 VINCULO_NO_ACTIVO`, `409 VINCULO_PRINCIPAL_EN_CONFLICTO`, `409 CONFLICTO_CONCURRENCIA` |
@@ -65,7 +66,8 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 
 `DELETE` y `PATCH` no existen en ninguna ruta de este módulo (`405 METODO_NO_PERMITIDO`): una familia, un deportista o un vínculo se desactivan o revocan, nunca se
 borran. `VinculoRespuesta` es `{vinculoId, familiaId, familiaNombre, deportistaId, deportistaNombre, deportistaApellido, deportistaActivo, estado, esPrincipal,
-autorizadoEn}`; no incluye quién autorizó ni el DNI.
+autorizadoEn, versionVinculos}`; no incluye quién autorizó ni el DNI. `versionVinculos` (cadena decimal) es la revisión de los vínculos del deportista de esa fila;
+en las respuestas de las escrituras es la revisión posterior a la operación.
 
 ### Códigos de error propios del módulo
 

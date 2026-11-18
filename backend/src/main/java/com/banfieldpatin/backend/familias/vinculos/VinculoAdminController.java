@@ -16,6 +16,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VincularSolicitud;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
+import com.banfieldpatin.backend.familias.vinculos.dto.VinculosDeDeportista;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +45,11 @@ public class VinculoAdminController {
 	@GetMapping("/deportistas/{deportistaId}/familias")
 	public List<VinculoRespuesta> deDeportista(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID deportistaId) {
 		return servicio.listarDeDeportista(UsuarioAutenticado.desde(jwt), deportistaId);
+	}
+
+	@GetMapping("/deportistas/{deportistaId}/vinculos")
+	public VinculosDeDeportista vinculosDeDeportista(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID deportistaId) {
+		return servicio.revisionYVinculos(UsuarioAutenticado.desde(jwt), deportistaId);
 	}
 
 	@PostMapping("/familias/{familiaId}/deportistas")

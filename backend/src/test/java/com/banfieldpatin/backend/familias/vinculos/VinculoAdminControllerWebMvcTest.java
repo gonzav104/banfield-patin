@@ -42,6 +42,7 @@ import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.vinculos.dto.ResultadoVinculacion;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
+import com.banfieldpatin.backend.familias.vinculos.dto.VinculosDeDeportista;
 import com.banfieldpatin.backend.seguridad.CookieBearerTokenResolver;
 import com.banfieldpatin.backend.seguridad.CookieSesion;
 import com.banfieldpatin.backend.seguridad.JwtConfig;
@@ -78,6 +79,7 @@ class VinculoAdminControllerWebMvcTest {
 	private final UUID d2 = UUID.randomUUID();
 	private final String listaDeFamilia = "/api/admin/familias/" + familiaId + "/deportistas";
 	private final String listaDeDeportista = "/api/admin/deportistas/" + d1 + "/familias";
+	private final String revisionDeDeportista = "/api/admin/deportistas/" + d1 + "/vinculos";
 
 	private Cookie admin() {
 		return new Cookie("BP_SESION", tokens.emitir(adminId, Rol.ADMIN, escuelaId, null));
@@ -100,7 +102,7 @@ class VinculoAdminControllerWebMvcTest {
 
 	private VinculoRespuesta vinculo(UUID deportistaId, EstadoVinculo estado, boolean principal) {
 		return new VinculoRespuesta(UUID.randomUUID(), familiaId, "Familia Perez", deportistaId, "Juan", "Perez", true,
-				estado, principal, Instant.parse("2026-05-05T12:00:00Z"));
+				estado, principal, Instant.parse("2026-05-05T12:00:00Z"), "3");
 	}
 
 	private static String ids(UUID... ids) {
@@ -269,6 +271,8 @@ class VinculoAdminControllerWebMvcTest {
 		mvc.perform(conCsrf(post(listaDeFamilia + "/no-uuid/revocar")).cookie(admin()))
 				.andExpect(status().isBadRequest());
 		mvc.perform(get("/api/admin/deportistas/no-uuid/familias").cookie(admin())).andExpect(status().isBadRequest());
+		mvc.perform(get("/api/admin/deportistas/no-uuid/vinculos").cookie(admin())).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
 		verifyNoInteractions(servicio);
 	}
 
@@ -324,7 +328,7 @@ class VinculoAdminControllerWebMvcTest {
 		String revocar = listaDeFamilia + "/" + d1 + "/revocar";
 		String principal = listaDeFamilia + "/" + d1 + "/principal";
 
-		for (String ruta : new String[] { listaDeFamilia, revocar, principal, listaDeDeportista }) {
+		for (String ruta : new String[] { listaDeFamilia, revocar, principal, listaDeDeportista, revisionDeDeportista }) {
 			mvc.perform(conCsrf(delete(ruta)).cookie(admin())).andExpect(status().isMethodNotAllowed())
 					.andExpect(jsonPath("$.codigo").value("METODO_NO_PERMITIDO"));
 			mvc.perform(cuerpo(patch(ruta), admin(), "{}")).andExpect(status().isMethodNotAllowed());
@@ -332,6 +336,8 @@ class VinculoAdminControllerWebMvcTest {
 		// GET sobre las rutas que solo aceptan POST, y PUT sobre las demas.
 		mvc.perform(get(revocar).cookie(admin())).andExpect(status().isMethodNotAllowed());
 		mvc.perform(cuerpo(put(principal), admin(), "{}")).andExpect(status().isMethodNotAllowed());
+		mvc.perform(cuerpo(post(revisionDeDeportista), admin(), "{}")).andExpect(status().isMethodNotAllowed());
+		mvc.perform(cuerpo(put(revisionDeDeportista), admin(), "{}")).andExpect(status().isMethodNotAllowed());
 		verifyNoInteractions(servicio);
 	}
 
@@ -346,6 +352,7 @@ class VinculoAdminControllerWebMvcTest {
 				.andExpect(status().isUnauthorized());
 		mvc.perform(conCsrf(post(listaDeFamilia + "/" + d1 + "/revocar"))).andExpect(status().isUnauthorized());
 		mvc.perform(conCsrf(post(listaDeFamilia + "/" + d1 + "/principal"))).andExpect(status().isUnauthorized());
+		mvc.perform(get(revisionDeDeportista)).andExpect(status().isUnauthorized());
 		verifyNoInteractions(servicio);
 	}
 
@@ -360,6 +367,8 @@ class VinculoAdminControllerWebMvcTest {
 				.andExpect(status().isForbidden());
 		mvc.perform(conCsrf(post(listaDeFamilia + "/" + d1 + "/principal")).cookie(familia))
 				.andExpect(status().isForbidden());
+		mvc.perform(get(revisionDeDeportista).cookie(familia)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
 		verifyNoInteractions(servicio);
 	}
 
@@ -386,9 +395,45 @@ class VinculoAdminControllerWebMvcTest {
 					.andExpect(status().isUnauthorized());
 			mvc.perform(conCsrf(post(listaDeFamilia + "/" + d1 + "/principal")).cookie(admin()))
 					.andExpect(status().isUnauthorized());
+			mvc.perform(get(revisionDeDeportista).cookie(admin())).andExpect(status().isUnauthorized());
 			verifyNoInteractions(servicio);
 		} finally {
 			verificador.reiniciar();
 		}
 	}
+
+	// ---------- revision de los vinculos (U11-A) ----------
+
+	@Test
+	void laLecturaDeLaRevisionDevuelveLaRevisionComoCadenaYLosVinculosConLaSuya() throws Exception {
+		when(servicio.revisionYVinculos(any(), eq(d1))).thenReturn(new VinculosDeDeportista(d1, "3",
+				List.of(vinculo(d1, EstadoVinculo.ACTIVO, true), vinculo(d1, EstadoVinculo.REVOCADO, false))));
+
+		mvc.perform(get(revisionDeDeportista).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.deportistaId").value(d1.toString()))
+				.andExpect(jsonPath("$.versionVinculos").value("3"))
+				.andExpect(jsonPath("$.vinculos.length()").value(2))
+				.andExpect(jsonPath("$.vinculos[0].versionVinculos").value("3"))
+				.andExpect(jsonPath("$.vinculos[1].estado").value("REVOCADO"))
+				.andExpect(jsonPath("$.vinculos[0].dni").doesNotExist())
+				.andExpect(jsonPath("$.vinculos[0].escuelaId").doesNotExist())
+				.andExpect(jsonPath("$.escuelaId").doesNotExist());
+
+		ArgumentCaptor<UsuarioAutenticado> actor = ArgumentCaptor.forClass(UsuarioAutenticado.class);
+		verify(servicio).revisionYVinculos(actor.capture(), eq(d1));
+		assertThat(actor.getValue().escuelaId()).isEqualTo(escuelaId);
+	}
+
+	@Test
+	void laLecturaDeLaRevisionSinVinculosDevuelveUnaListaVaciaYUnIdAjenoDa404Uniforme() throws Exception {
+		when(servicio.revisionYVinculos(any(), eq(d1))).thenReturn(new VinculosDeDeportista(d1, "0", List.of()))
+				.thenThrow(DeportistaAdminService.deportistaNoEncontrado());
+
+		mvc.perform(get(revisionDeDeportista).cookie(admin())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.versionVinculos").value("0")).andExpect(jsonPath("$.vinculos.length()").value(0));
+		mvc.perform(get(revisionDeDeportista).cookie(admin())).andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.codigo").value("DEPORTISTA_NO_ENCONTRADO"))
+				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(d1.toString()))));
+	}
+
 }

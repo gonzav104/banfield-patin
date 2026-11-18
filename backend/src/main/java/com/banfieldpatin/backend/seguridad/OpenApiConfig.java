@@ -121,6 +121,7 @@ public class OpenApiConfig {
 			// --- Vinculos
 			entry("GET /api/admin/familias/{familiaId}/deportistas", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
 			entry("GET /api/admin/deportistas/{deportistaId}/familias", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
+			entry("GET /api/admin/deportistas/{deportistaId}/vinculos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
 			entry("POST /api/admin/familias/{familiaId}/deportistas",
 					ruta(200, "404 FAMILIA_NO_ENCONTRADA", "404 DEPORTISTA_NO_ENCONTRADO", "409 FAMILIA_INACTIVA",
 							"409 DEPORTISTA_INACTIVO", "409 VINCULO_PRINCIPAL_EN_CONFLICTO", "409 CONFLICTO_CONCURRENCIA")),

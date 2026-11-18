@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.familias.vinculos;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
@@ -34,6 +36,7 @@ import com.banfieldpatin.backend.familias.FamiliaRepository;
 import com.banfieldpatin.backend.familias.vinculos.dto.ResultadoVinculacion;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
+import com.banfieldpatin.backend.familias.vinculos.dto.VinculosDeDeportista;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 /**
@@ -110,6 +113,21 @@ public class VinculoAdminService {
 		return vinculos.deDeportista(admin.escuelaId(), deportistaId);
 	}
 
+	/**
+	 * Revision de los vinculos del deportista y todos sus vinculos (mismo orden que {@link #listarDeDeportista}), tambien
+	 * sin vinculos o con el deportista inactivo. Dos sentencias dentro de una transaccion de solo lectura
+	 * {@code REPEATABLE_READ}: en PostgreSQL la instantanea se fija en la primera, de modo que la revision y la lista son
+	 * del mismo instante. Sin bloqueos ni {@code lock_timeout}. Otra escuela o inexistente: el 404 uniforme.
+	 */
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public VinculosDeDeportista revisionYVinculos(UsuarioAutenticado admin, UUID deportistaId) {
+		UUID escuelaId = admin.escuelaId();
+		long revision = vinculos.revisionesVinculos(escuelaId, List.of(deportistaId)).stream().findFirst()
+				.orElseThrow(DeportistaAdminService::deportistaNoEncontrado).versionVinculos();
+		return new VinculosDeDeportista(deportistaId, Long.toString(revision),
+				vinculos.deDeportista(escuelaId, deportistaId));
+	}
+
 	// ---------- vincular (lote, todo o nada) ----------
 
 	/**
@@ -131,6 +149,7 @@ public class VinculoAdminService {
 		Map<UUID, Deportista> porId = deportistas.bloquearParaVincular(escuelaId, ids).stream()
 				.collect(Collectors.toMap(Deportista::getId, Function.identity()));
 		exigirExistentes(solicitados, porId);
+		Map<UUID, Long> revisiones = revisionesBloqueadas(escuelaId, ids);
 		exigirActivos(solicitados, porId);
 
 		Map<UUID, FamiliaDeportista> existentes = vinculos.deFamiliaYDeportistas(escuelaId, familiaId, ids).stream()
@@ -141,9 +160,10 @@ public class VinculoAdminService {
 		List<VinculacionRespuesta.Resultado> resultados = new ArrayList<>();
 		for (UUID deportistaId : ids) {
 			Deportista deportista = porId.get(deportistaId);
+			long revision = revisiones.get(deportistaId);
 			FamiliaDeportista vinculo = existentes.get(deportistaId);
 			if (vinculo != null && vinculo.getEstado() == EstadoVinculo.ACTIVO) {
-				resultados.add(resultado(vinculo, familia, deportista, ResultadoVinculacion.SIN_CAMBIOS));
+				resultados.add(resultado(vinculo, familia, deportista, revision, ResultadoVinculacion.SIN_CAMBIOS));
 				continue;
 			}
 			// Principal solo si no hay otro ACTIVO principal; se decide con el deportista bloqueado.
@@ -164,14 +184,14 @@ public class VinculoAdminService {
 					Map.of("familiaId", familiaId, "deportistaId", deportistaId, "esPrincipal", principal, "origen",
 							resultado == ResultadoVinculacion.CREADO ? "NUEVO" : "REUTILIZADO"),
 					datos);
-			resultados.add(resultado(vinculo, familia, deportista, resultado));
+			resultados.add(resultado(vinculo, familia, deportista, revision, resultado));
 		}
 		return new VinculacionRespuesta(resultados);
 	}
 
 	private static VinculacionRespuesta.Resultado resultado(FamiliaDeportista vinculo, Familia familia,
-			Deportista deportista, ResultadoVinculacion resultado) {
-		return new VinculacionRespuesta.Resultado(VinculoRespuesta.de(vinculo, familia, deportista), resultado);
+			Deportista deportista, long revision, ResultadoVinculacion resultado) {
+		return new VinculacionRespuesta.Resultado(VinculoRespuesta.de(vinculo, familia, deportista, revision), resultado);
 	}
 
 	private static void exigirExistentes(List<UUID> solicitados, Map<UUID, Deportista> porId) {
@@ -253,11 +273,12 @@ public class VinculoAdminService {
 				.orElseThrow(VinculoAdminService::vinculoNoEncontrado);
 		FamiliaDeportista vinculo = vinculos.buscarVinculo(escuelaId, familiaId, deportistaId)
 				.orElseThrow(VinculoAdminService::vinculoNoEncontrado);
+		long revision = revisionesBloqueadas(escuelaId, List.of(deportistaId)).get(deportistaId);
 		if (vinculo.getEstado() != EstadoVinculo.ACTIVO) {
 			throw vinculoNoActivo();
 		}
 		if (vinculo.isEsPrincipal()) {
-			return VinculoRespuesta.de(vinculo, familia, deportista);
+			return VinculoRespuesta.de(vinculo, familia, deportista, revision);
 		}
 		FamiliaDeportista anterior = vinculos.principalActivo(escuelaId, deportistaId).orElse(null);
 		if (anterior != null) {
@@ -271,7 +292,7 @@ public class VinculoAdminService {
 		detalle.put("deportistaId", deportistaId);
 		detalle.put("anteriorVinculoId", anterior == null ? null : anterior.getId());
 		registrar(admin, AccionAuditoria.VINCULO_PRINCIPAL_CAMBIADO, vinculo, detalle, datos);
-		return VinculoRespuesta.de(vinculo, familia, deportista);
+		return VinculoRespuesta.de(vinculo, familia, deportista, revision);
 	}
 
 	// ---------- auxiliares ----------
@@ -279,6 +300,18 @@ public class VinculoAdminService {
 	private Familia cargarFamilia(UsuarioAutenticado admin, UUID familiaId) {
 		return familias.findByIdAndEscuelaId(familiaId, admin.escuelaId())
 				.orElseThrow(FamiliaAdminService::familiaNoEncontrada);
+	}
+
+	/**
+	 * Revisiones de los deportistas YA bloqueados por esta transaccion, leidas de la base (proyeccion escalar). Como la fila
+	 * esta bloqueada {@code FOR UPDATE}, ninguna otra transaccion puede cambiarlas hasta el commit.
+	 */
+	private Map<UUID, Long> revisionesBloqueadas(UUID escuelaId, List<UUID> ids) {
+		Map<UUID, Long> revisiones = new HashMap<>();
+		for (RevisionVinculos r : vinculos.revisionesVinculos(escuelaId, ids)) {
+			revisiones.put(r.deportistaId(), r.versionVinculos());
+		}
+		return revisiones;
 	}
 
 	/**

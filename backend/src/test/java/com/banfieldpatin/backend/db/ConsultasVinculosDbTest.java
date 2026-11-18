@@ -122,7 +122,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 	// ---------- escrituras: techos de sentencias ----------
 
 	@Test
-	void vincularUnLoteDeNUsaComoMaximoCuatroMasDosNSentenciasConMasDeCincoFilas() {
+	void vincularUnLoteDeNUsaComoMaximoCincoMasDosNSentenciasConMasDeCincoFilas() {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 		List<UUID> ids = sembrarDeportistas(7, "Lote");
 		// Mezcla de resultados: dos ya ACTIVOS (SIN_CAMBIOS), uno REVOCADO (REACTIVADO) y cuatro nuevos (CREADO).
@@ -132,15 +132,15 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 
 		long sentencias = sentencias(() -> servicio.vincular(admin, familia, ids, DATOS));
 
-		assertThat(sentencias).isLessThanOrEqualTo(4 + 2L * ids.size());
-		// Solo Hibernate: familia + bloqueo + existentes + principales + una escritura por vinculo cambiado (5).
-		assertThat(sentencias).isLessThanOrEqualTo(4 + 5);
+		assertThat(sentencias).isLessThanOrEqualTo(5 + 2L * ids.size());
+		// Solo Hibernate: familia + bloqueo + revisiones + existentes + principales + una escritura por vinculo cambiado (5).
+		assertThat(sentencias).isLessThanOrEqualTo(5 + 5);
 		assertThat(contarAuditoria("VINCULO_ACTIVADO")).isEqualTo(5);
 		verificarInvariantes();
 	}
 
 	@Test
-	void cambiarElPrincipalUsaComoMaximoSeisSentenciasDeHibernateConMasDeCincoFamilias() {
+	void cambiarElPrincipalUsaComoMaximoSieteSentenciasDeHibernateConMasDeCincoFamilias() {
 		UUID d = deportista("Uno");
 		List<UUID> familias = new ArrayList<>();
 		for (int i = 0; i < 6; i++) {
@@ -151,8 +151,8 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 
 		long sentencias = sentencias(() -> servicio.cambiarPrincipal(admin, familias.get(5), d, DATOS));
 
-		// familia + bloqueo + vinculo objetivo + principal actual + bajar + subir = 6 (mas la auditoria por JDBC).
-		assertThat(sentencias).isLessThanOrEqualTo(6);
+		// familia + bloqueo + vinculo objetivo + revision + principal actual + bajar + subir = 7 (mas la auditoria por JDBC).
+		assertThat(sentencias).isLessThanOrEqualTo(7);
 		assertThat(principalesActivos(d)).isEqualTo(1);
 	}
 
@@ -165,6 +165,18 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 		long sentencias = sentencias(() -> servicio.revocar(admin, f, d, DATOS));
 
 		assertThat(sentencias).isLessThanOrEqualTo(5);
+	}
+
+	@Test
+	void laLecturaDeLaRevisionUsaDosSentenciasConMasDeCincoVinculosYUnaSiEsUn404() {
+		UUID d = deportista("Uno");
+		for (int i = 0; i < 6; i++) {
+			servicio.vincular(admin, datos.familia(escuelaA, "Familia " + i, true), List.of(d), DATOS);
+		}
+
+		assertThat(sentencias(() -> servicio.revisionYVinculos(admin, d))).isLessThanOrEqualTo(2);
+		assertThat(sentencias(() -> org.assertj.core.api.Assertions
+				.catchThrowable(() -> servicio.revisionYVinculos(admin, UUID.randomUUID())))).isLessThanOrEqualTo(1);
 	}
 
 	// ---------- cantidadDeportistasActivos (N2) en el listado de familias ----------
