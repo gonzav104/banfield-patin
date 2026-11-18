@@ -56,6 +56,17 @@ export interface FakeAdminTutor {
   version?: number;
 }
 
+export type FakeLinkState = 'PENDIENTE' | 'ACTIVO' | 'RECHAZADO' | 'REVOCADO';
+
+/** A family-athlete link as the ADMIN endpoints of FE-05/U11-B see it (VinculoRespuesta): it never carries a DNI, a CUIL or who authorized it. */
+export interface FakeAdminLink {
+  id: string;
+  familyId: string;
+  athleteId: string;
+  estado: FakeLinkState;
+  esPrincipal: boolean;
+}
+
 interface FakeInvitation {
   id: string;
   token: string;
@@ -183,6 +194,7 @@ export class FakeBackend {
   private enrolledInFlight = new Set<string>();
   private families: FakeFamily[] = [];
   private adminAthletes: FakeAdminAthlete[] = [];
+  private adminLinks: FakeAdminLink[] = [];
   private seasons: FakeSeason[] = [];
   private sportsRows: FakeSportsRow[] = [];
   private invitations: FakeInvitation[] = [];
@@ -702,6 +714,87 @@ export class FakeBackend {
   }
 
   /**
+   * A link between a family and an athlete of the ADMIN model (GET /admin/deportistas/{id}/vinculos, GET /admin/familias/{id}/deportistas).
+   * It sits on the families and athletes that already exist here; it does not touch the portal model (`linkAthlete`/`revokeLink`).
+   * Mirrors rules F1 (at most one ACTIVE principal per athlete) and one link per pair; the principal flag only makes sense when ACTIVE.
+   */
+  addAdminLink(familyId: string, athleteId: string, data: { estado?: FakeLinkState; esPrincipal?: boolean } = {}): FakeAdminLink {
+    if (!this.families.some((f) => f.id === familyId)) throw new Error('Unknown fake family');
+    if (!this.adminAthletes.some((a) => a.id === athleteId)) throw new Error('Unknown fake athlete');
+    if (this.adminLinks.some((l) => l.familyId === familyId && l.athleteId === athleteId)) throw new Error('The fake family and athlete are already linked');
+    const link: FakeAdminLink = { id: `vin-${++this.counter}`, familyId, athleteId, estado: data.estado ?? 'ACTIVO', esPrincipal: data.esPrincipal ?? false };
+    if (link.esPrincipal && link.estado !== 'ACTIVO') throw new Error('Only an ACTIVE fake link can be the principal');
+    if (link.esPrincipal && this.adminLinks.some((l) => l.athleteId === athleteId && l.estado === 'ACTIVO' && l.esPrincipal)) throw new Error('The fake athlete already has a principal link');
+    this.adminLinks.push(link);
+    return link;
+  }
+
+  /** Another administrator changes a link while this one is looking at it: the revision of that athlete's links moves on. Revoking never promotes another link. */
+  changeAdminLinkBehindTheScenes(linkId: string, change: { estado?: FakeLinkState; esPrincipal?: boolean }): void {
+    const link = this.adminLinks.find((l) => l.id === linkId);
+    if (!link) throw new Error('Unknown fake link');
+    Object.assign(link, change);
+    if (link.estado !== 'ACTIVO') link.esPrincipal = false;
+    const athlete = this.adminAthletes.find((a) => a.id === link.athleteId);
+    if (athlete) athlete.version += 1;
+  }
+
+  /** The count of links the ADMIN model holds (every state). */
+  adminLinkCount(): number {
+    return this.adminLinks.length;
+  }
+
+  private linkView(link: FakeAdminLink) {
+    const family = this.families.find((f) => f.id === link.familyId)!;
+    const athlete = this.adminAthletes.find((a) => a.id === link.athleteId)!;
+    return {
+      vinculoId: link.id,
+      familiaId: family.id,
+      familiaNombre: family.nombreReferencia,
+      deportistaId: athlete.id,
+      deportistaNombre: athlete.nombre,
+      deportistaApellido: athlete.apellido,
+      deportistaActivo: athlete.activo,
+      estado: link.estado,
+      esPrincipal: link.esPrincipal,
+      autorizadoEn: link.estado === 'ACTIVO' || link.estado === 'REVOCADO' ? '2026-03-01T12:00:00Z' : null,
+      versionVinculos: String(athlete.version),
+    };
+  }
+
+  /**
+   * Mirrors GET /admin/deportistas/{id}/vinculos (VinculosDeDeportista: the revision of the athlete's links and ALL its links, every state, from
+   * the same snapshot; 404 DEPORTISTA_NO_ENCONTRADO) and GET /admin/familias/{id}/deportistas (the links of the family, every state, ordered by
+   * surname and name; 404 FAMILIA_NO_ENCONTRADA). Both are reads only: there is no write route for links in this model.
+   */
+  private linksRoute(method: string, path: string): { status: number; body?: unknown } | null {
+    const ofAthlete = /^\/admin\/deportistas\/([^/]+)\/vinculos$/.exec(path);
+    const ofFamily = /^\/admin\/familias\/([^/]+)\/deportistas$/.exec(path);
+    if (method !== 'get' || (!ofAthlete && !ofFamily)) return null;
+    if (ofAthlete) {
+      const athlete = this.adminAthletes.find((a) => a.id === ofAthlete[1]);
+      if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      const vinculos = this.adminLinks
+        .filter((l) => l.athleteId === athlete.id)
+        .map((l) => this.linkView(l))
+        .sort((a, b) => a.familiaNombre.toLowerCase().localeCompare(b.familiaNombre.toLowerCase()) || a.vinculoId.localeCompare(b.vinculoId));
+      return { status: 200, body: { deportistaId: athlete.id, versionVinculos: String(athlete.version), vinculos } };
+    }
+    const family = this.families.find((f) => f.id === ofFamily![1]);
+    if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+    const rows = this.adminLinks
+      .filter((l) => l.familyId === family.id)
+      .map((l) => this.linkView(l))
+      .sort(
+        (a, b) =>
+          a.deportistaApellido.toLowerCase().localeCompare(b.deportistaApellido.toLowerCase()) ||
+          a.deportistaNombre.toLowerCase().localeCompare(b.deportistaNombre.toLowerCase()) ||
+          a.vinculoId.localeCompare(b.vinculoId),
+      );
+    return { status: 200, body: rows };
+  }
+
+  /**
    * Mirrors GET /admin/deportistas/{id}/temporadas[/{temporadaId}] (U9) and the POST of the history path. The history is an UNPAGED
    * array, newest year first; the single row answers 404 in the backend's order: athlete, then season, then the row (another school's
    * athlete is just «not found»).
@@ -887,6 +980,8 @@ export class FakeBackend {
         .map(({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }) => ({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }));
       return { status: 200, body: this.page(rows, params) };
     }
+    const links = this.linksRoute(method, path);
+    if (links) return links;
     const detail = /^\/admin\/familias\/([^/]+)$/.exec(path);
     if (method === 'get' && detail) {
       const family = this.families.find((f) => f.id === detail[1]);
