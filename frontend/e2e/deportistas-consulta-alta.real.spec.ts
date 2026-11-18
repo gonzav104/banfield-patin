@@ -224,7 +224,7 @@ test.describe('athlete list (real backend)', () => {
 });
 
 test.describe('athlete detail (real backend)', () => {
-  test('shows every datum of the contract with the FULL DNI and CUIL as plain text, with no form field and no family link', async () => {
+  test('shows every datum of the contract with the FULL DNI and CUIL as plain text, with no form field and no direct link to a family', async () => {
     await page.goto(`/admin/deportistas/${fullId}`);
     await expect(page.getByRole('heading', { level: 1, name: `${FULL.nombre} ${FULL.apellido}` })).toBeVisible();
     const text = await mainText();
@@ -235,7 +235,10 @@ test.describe('athlete detail (real backend)', () => {
     await expect(page.getByRole('main').getByRole('textbox')).toHaveCount(0); // the data are plain text: editing is a separate screen (U8)
     await expect(page.getByRole('button', { name: /guardar/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Editar deportista' })).toHaveAttribute('href', `/admin/deportistas/${fullId}/editar`);
-    await expect(page.getByRole('main').getByRole('link', { name: /familia/i })).toHaveCount(0);
+    // U11-B: the detail still draws no family and links to none; the ONLY family-related link is the access to this athlete's links screen.
+    await expect(page.getByRole('main').locator('a[href^="/admin/familias/"]')).toHaveCount(0);
+    await expect(page.getByRole('main').getByRole('link', { name: /familia/i })).toHaveCount(1);
+    await expect(page.getByRole('main').getByRole('link', { name: /familia/i })).toHaveAttribute('href', `/admin/deportistas/${fullId}/vinculos`);
     expect(page.url()).not.toContain(FULL.dni);
     expect((await stored(fullId)).version).toMatch(/^[0-9]+$/); // the revision exists and is decimal (not shown)
   });

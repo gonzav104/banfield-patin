@@ -109,7 +109,10 @@ describe('athlete detail: data (mock backend)', () => {
     const athlete = seedFull();
     open(`/admin/deportistas/${athlete.id}`);
     await screen.findByRole('heading', { level: 1, name: 'Lucía Sintética' });
-    expect(within(screen.getByRole('main')).queryByText(/familia|temporada|categor/i)).not.toBeInTheDocument();
+    // U11-B adds ONE access card («Familias vinculadas», a link to a read-only screen): it carries the word «familias» but no family data.
+    const access = screen.getByRole('region', { name: 'Familias vinculadas' });
+    expect(within(screen.getByRole('main')).queryAllByText(/familia|temporada|categor/i).filter((node) => !access.contains(node))).toEqual([]);
+    expect(backend.requests.filter((r) => /\/vinculos$/.test(r.url))).toEqual([]);
   });
 
   it('does not take the notice of a created athlete unless it arrives in the navigation state', async () => {
