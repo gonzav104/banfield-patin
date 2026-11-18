@@ -33,6 +33,7 @@ import com.banfieldpatin.backend.deportistas.DeportistaRepository;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.vinculos.dto.DeportistaAVincular;
 import com.banfieldpatin.backend.familias.vinculos.dto.ResultadoVinculacion;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
@@ -51,6 +52,14 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
  * VINCULO_PRINCIPAL_EN_CONFLICTO y toda la transaccion (incluida la auditoria) se revierte. La fila de la familia NO se
  * bloquea: una desactivacion concurrente de la familia es benigna (una familia inactiva no concede nada y el vinculo
  * resultante es visible y revocable por el ADMIN).
+ *
+ * <p>Revision optimista agregada (V11, U11-A): cada deportista tiene {@code version_vinculos}, la revision de TODOS sus
+ * vinculos. Las tres escrituras exigen la revision que el ADMIN observo y la comparan con la leida de la base DESPUES de
+ * tomar el bloqueo de fila ({@link FamiliaDeportistaRepository#revisionesVinculos}, una proyeccion escalar: nunca el valor
+ * de una entidad en cache). Una revision distinta es 409 EDICION_DESACTUALIZADA aunque la operacion fuera idempotente.
+ * Solo un cambio efectivo la avanza, una vez por deportista y operacion, con una actualizacion condicionada por escuela en
+ * la misma transaccion y despues de las escrituras ({@link FamiliaDeportistaRepository#incrementarRevisionVinculos}). La
+ * revision de datos permanentes del deportista ({@code version}) no se toca.
  *
  * <p>Espera acotada: las tres transacciones que bloquean ejecutan {@code SET LOCAL lock_timeout} (ver
  * {@link LockTimeoutVinculos}) antes de su primera sentencia. Si otra transaccion retiene el deportista mas de ese plazo,
@@ -132,13 +141,15 @@ public class VinculoAdminService {
 
 	/**
 	 * Precedencia: familia 404 -> familia inactiva 409 (primero, incluso para un lote que seria todo SIN_CAMBIOS) ->
-	 * bloqueo de los deportistas -> algun id inexistente o de otra escuela 404 (lista cada posicion {@code deportistaIds[i]},
-	 * nunca el valor) -> algun deportista inactivo 409 -> escritura -> revision +1 de cada deportista CREADO o REACTIVADO.
-	 * Cualquier fallo no deja nada escrito, auditado ni ninguna revision movida. Los ids repetidos se quitan conservando el
-	 * orden; el tope de 50 se valida antes (en el DTO).
+	 * bloqueo de los deportistas -> algun id inexistente o de otra escuela 404 -> alguna revision obsoleta 409
+	 * EDICION_DESACTUALIZADA (aunque ese deportista diera SIN_CAMBIOS) -> algun deportista inactivo 409 -> escritura ->
+	 * revision +1 de cada deportista CREADO o REACTIVADO. Los errores listan cada posicion {@code deportistas[i]}, nunca el
+	 * valor. Cualquier fallo no deja nada escrito, auditado ni ninguna revision movida. Los ids repetidos se quitan
+	 * conservando la primera posicion (el DTO ya rechazo un repetido con revisiones distintas); el tope de 50 se valida
+	 * antes (en el DTO).
 	 */
 	@Transactional
-	public VinculacionRespuesta vincular(UsuarioAutenticado admin, UUID familiaId, List<UUID> solicitados,
+	public VinculacionRespuesta vincular(UsuarioAutenticado admin, UUID familiaId, List<DeportistaAVincular> pedidos,
 			DatosSolicitud datos) {
 		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
@@ -146,11 +157,13 @@ public class VinculoAdminService {
 		if (!familia.isActiva()) {
 			throw FamiliaAdminService.familiaInactiva();
 		}
+		List<UUID> solicitados = pedidos.stream().map(DeportistaAVincular::deportistaId).toList();
 		List<UUID> ids = solicitados.stream().distinct().toList();
 		Map<UUID, Deportista> porId = deportistas.bloquearParaVincular(escuelaId, ids).stream()
 				.collect(Collectors.toMap(Deportista::getId, Function.identity()));
 		exigirExistentes(solicitados, porId);
 		Map<UUID, Long> revisiones = revisionesBloqueadas(escuelaId, ids);
+		exigirRevisionesVigentes(pedidos, revisiones);
 		exigirActivos(solicitados, porId);
 
 		Map<UUID, FamiliaDeportista> existentes = vinculos.deFamiliaYDeportistas(escuelaId, familiaId, ids).stream()
@@ -206,6 +219,22 @@ public class VinculoAdminService {
 		}
 	}
 
+	/** Una entrada por cada POSICION cuya revision esperada no es la vigente (sin ids ni revisiones en el error). */
+	private static void exigirRevisionesVigentes(List<DeportistaAVincular> pedidos, Map<UUID, Long> revisiones) {
+		List<DetalleError> obsoletas = new ArrayList<>();
+		for (int i = 0; i < pedidos.size(); i++) {
+			DeportistaAVincular pedido = pedidos.get(i);
+			if (!pedido.versionEsperada().equals(revisiones.get(pedido.deportistaId()))) {
+				obsoletas.add(new DetalleError("deportistas[" + i + "]",
+						"La revision de los vinculos del deportista cambio."));
+			}
+		}
+		if (!obsoletas.isEmpty()) {
+			throw new ExcepcionNegocio(HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA",
+					FamiliaAdminService.edicionDesactualizada().getMessage(), obsoletas);
+		}
+	}
+
 	private static void exigirActivos(List<UUID> solicitados, Map<UUID, Deportista> porId) {
 		List<DetalleError> inactivos = detalles(solicitados, id -> !porId.get(id).isActivo(),
 				"El deportista esta inactivo.");
@@ -221,7 +250,7 @@ public class VinculoAdminService {
 		List<DetalleError> detalles = new ArrayList<>();
 		for (int i = 0; i < solicitados.size(); i++) {
 			if (alcanza.test(solicitados.get(i))) {
-				detalles.add(new DetalleError("deportistaIds[" + i + "]", mensaje));
+				detalles.add(new DetalleError("deportistas[" + i + "]", mensaje));
 			}
 		}
 		return detalles;

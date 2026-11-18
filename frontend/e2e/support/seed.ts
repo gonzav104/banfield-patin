@@ -136,7 +136,7 @@ export class AdminSeed {
 
   /**
    * The revision of an athlete's family links as the backend stores it right now (FE-05/U11-A): a decimal string read from
-   * GET /api/admin/deportistas/{id}/vinculos. It is read, never invented: revoking and changing the principal require
+   * GET /api/admin/deportistas/{id}/vinculos. It is read, never invented: linking, revoking and changing the principal require
    * the revision the caller observed. It is independent of the athlete revision (`athleteVersion`).
    */
   private async linksVersion(athleteId: string): Promise<string> {
@@ -145,8 +145,14 @@ export class AdminSeed {
     return links.versionVinculos as string;
   }
 
+  /** Since FE-05/U11-A each athlete of the batch carries the link revision observed just before (read once per athlete, sent unchanged). */
   async link(familyId: string, athleteIds: string[]): Promise<void> {
-    await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistaIds: athleteIds }, 'link athletes');
+    const versions = new Map<string, string>();
+    for (const id of athleteIds) {
+      if (!versions.has(id)) versions.set(id, await this.linksVersion(id));
+    }
+    const deportistas = athleteIds.map((deportistaId) => ({ deportistaId, versionEsperada: versions.get(deportistaId) }));
+    await this.post(`/api/admin/familias/${familyId}/deportistas`, { deportistas }, 'link athletes');
   }
 
   /**

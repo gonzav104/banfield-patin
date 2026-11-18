@@ -129,7 +129,8 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 
 		assertThat(descripcion(documento, "POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal", "409"))
 				.contains("FAMILIA_INACTIVA", "VINCULO_NO_ACTIVO", "VINCULO_PRINCIPAL_EN_CONFLICTO", "CONFLICTO_CONCURRENCIA");
-		for (String escritura : new String[] { "POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+		for (String escritura : new String[] { "POST /api/admin/familias/{familiaId}/deportistas",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal" }) {
 			assertThat(descripcion(documento, escritura, "409")).as(escritura).contains("EDICION_DESACTUALIZADA",
 					"CONFLICTO_CONCURRENCIA");
@@ -193,5 +194,30 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 
 	private static Set<String> componentes(Class<?> registro) {
 		return new TreeSet<>(Arrays.stream(registro.getRecordComponents()).map(RecordComponent::getName).toList());
+	}
+
+	@Test
+	void lasRevisionesDeLosVinculosSonCadenasYLasEscriturasLasExigen() throws Exception {
+		JsonNode documento = arbol();
+		JsonNode esquemas = documento.path("components").path("schemas");
+
+		assertThat(esquemas.path("VinculoRespuesta").path("properties").path("versionVinculos").path("type").asString())
+				.isEqualTo("string");
+		assertThat(esquemas.path("VinculosDeDeportista").path("properties").path("versionVinculos").path("type")
+				.asString()).isEqualTo("string");
+		assertThat(nombres(esquemas.path("VinculosDeDeportista").path("properties")))
+				.containsExactlyInAnyOrder("deportistaId", "versionVinculos", "vinculos");
+		for (String esquema : new String[] { "VinculosVersionEsperada", "DeportistaAVincular" }) {
+			assertThat(esquemas.path(esquema).path("properties").path("versionEsperada").path("type").asString())
+					.as(esquema).isEqualTo("string");
+			assertThat(esquemas.path(esquema).path("required").toString()).as(esquema).contains("versionEsperada");
+		}
+		assertThat(esquemas.path("DeportistaAVincular").path("required").toString()).contains("deportistaId");
+		assertThat(nombres(esquemas.path("VincularSolicitud").path("properties"))).containsExactly("deportistas");
+		for (String escritura : new String[] { "POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal" }) {
+			assertThat(operacionDe(documento, escritura).path("requestBody").toString()).as(escritura)
+					.contains("VinculosVersionEsperada");
+		}
 	}
 }

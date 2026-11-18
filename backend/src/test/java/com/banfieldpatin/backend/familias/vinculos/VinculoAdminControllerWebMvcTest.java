@@ -39,6 +39,7 @@ import com.banfieldpatin.backend.compartido.error.ManejadorGlobalErrores;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
+import com.banfieldpatin.backend.familias.vinculos.dto.DeportistaAVincular;
 import com.banfieldpatin.backend.familias.vinculos.dto.ResultadoVinculacion;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
@@ -105,12 +106,18 @@ class VinculoAdminControllerWebMvcTest {
 				estado, principal, Instant.parse("2026-05-05T12:00:00Z"), "3");
 	}
 
+	/** Lote con revision "0" para cada deportista (contrato U11-A). */
 	private static String ids(UUID... ids) {
-		StringBuilder json = new StringBuilder("{\"deportistaIds\":[");
+		StringBuilder json = new StringBuilder("{\"deportistas\":[");
 		for (int i = 0; i < ids.length; i++) {
-			json.append(i == 0 ? "" : ",").append('"').append(ids[i]).append('"');
+			json.append(i == 0 ? "" : ",").append("{\"deportistaId\":\"").append(ids[i])
+					.append("\",\"versionEsperada\":\"0\"}");
 		}
 		return json.append("]}").toString();
+	}
+
+	private static List<DeportistaAVincular> pedidos(UUID... ids) {
+		return java.util.Arrays.stream(ids).map(id -> new DeportistaAVincular(id, 0L)).toList();
 	}
 
 	private static final String REVISION = "{\"versionEsperada\":\"0\"}";
@@ -139,7 +146,7 @@ class VinculoAdminControllerWebMvcTest {
 				.andExpect(jsonPath("$.resultados[1].resultado").value("SIN_CAMBIOS"));
 
 		ArgumentCaptor<UsuarioAutenticado> actor = ArgumentCaptor.forClass(UsuarioAutenticado.class);
-		verify(servicio).vincular(actor.capture(), eq(familiaId), eq(List.of(d2, d1)), any(DatosSolicitud.class));
+		verify(servicio).vincular(actor.capture(), eq(familiaId), eq(pedidos(d2, d1)), any(DatosSolicitud.class));
 		assertThat(actor.getValue().escuelaId()).isEqualTo(escuelaId);
 		assertThat(actor.getValue().id()).isEqualTo(adminId);
 	}
@@ -150,22 +157,22 @@ class VinculoAdminControllerWebMvcTest {
 
 		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1, d1))).andExpect(status().isOk());
 
-		verify(servicio).vincular(any(), eq(familiaId), eq(List.of(d1, d1)), any());
+		verify(servicio).vincular(any(), eq(familiaId), eq(pedidos(d1, d1)), any());
 	}
 
 	@Test
 	void unaListaVaciaDeMasDe50ItemsONulaDa400ValidacionNombrandoElCampo() throws Exception {
-		StringBuilder cincuentaYUno = new StringBuilder("{\"deportistaIds\":[");
+		UUID[] cincuentaYUno = new UUID[51];
 		for (int i = 0; i < 51; i++) {
-			cincuentaYUno.append(i == 0 ? "" : ",").append('"').append(UUID.randomUUID()).append('"');
+			cincuentaYUno[i] = UUID.randomUUID();
 		}
-		cincuentaYUno.append("]}");
+		String uno = ids(d1).replace("{\"deportistas\":[", "").replace("]}", "");
 
-		for (String json : new String[] { "{\"deportistaIds\":[]}", cincuentaYUno.toString(),
-				"{\"deportistaIds\":[\"" + d1 + "\",null]}", "{}", "{\"deportistaIds\":null}" }) {
+		for (String json : new String[] { "{\"deportistas\":[]}", ids(cincuentaYUno),
+				"{\"deportistas\":[" + uno + ",null]}", "{}", "{\"deportistas\":null}" }) {
 			mvc.perform(cuerpo(post(listaDeFamilia), admin(), json)).andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.codigo").value("VALIDACION"))
-					.andExpect(jsonPath("$.detalles[0].campo").value(org.hamcrest.Matchers.startsWith("deportistaIds")));
+					.andExpect(jsonPath("$.detalles[0].campo").value(org.hamcrest.Matchers.startsWith("deportistas")));
 		}
 		verifyNoInteractions(servicio);
 	}
@@ -186,11 +193,11 @@ class VinculoAdminControllerWebMvcTest {
 		for (String extra : new String[] { "\"esPrincipal\":true", "\"estado\":\"ACTIVO\"",
 				"\"autorizadoPor\":\"" + UUID.randomUUID() + "\"", "\"familiaId\":\"" + UUID.randomUUID() + "\"",
 				"\"escuelaId\":\"" + UUID.randomUUID() + "\"" }) {
-			mvc.perform(cuerpo(post(listaDeFamilia), admin(), "{\"deportistaIds\":[\"" + d1 + "\"]," + extra + "}"))
+			mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1).replace("]}", "]," + extra + "}")))
 					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
 					.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("esPrincipal"))));
 		}
-		mvc.perform(cuerpo(post(listaDeFamilia), admin(), "{\"deportistaIds\":[\"no-es-uuid\"]}"))
+		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1).replace(d1.toString(), "no-es-uuid")))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
 		verifyNoInteractions(servicio);
 	}
@@ -201,9 +208,9 @@ class VinculoAdminControllerWebMvcTest {
 				.thenThrow(FamiliaAdminService.familiaNoEncontrada())
 				.thenThrow(FamiliaAdminService.familiaInactiva())
 				.thenThrow(new ExcepcionNegocio(HttpStatus.NOT_FOUND, "DEPORTISTA_NO_ENCONTRADO", "No existe.",
-						List.of(new DetalleError("deportistaIds[1]", "El deportista no existe."))))
+						List.of(new DetalleError("deportistas[1]", "El deportista no existe."))))
 				.thenThrow(new ExcepcionNegocio(HttpStatus.CONFLICT, "DEPORTISTA_INACTIVO", "Inactivo.",
-						List.of(new DetalleError("deportistaIds[0]", "El deportista esta inactivo."))))
+						List.of(new DetalleError("deportistas[0]", "El deportista esta inactivo."))))
 				.thenThrow(VinculoAdminService.conflictoConcurrente());
 
 		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1))).andExpect(status().isNotFound())
@@ -212,11 +219,11 @@ class VinculoAdminControllerWebMvcTest {
 				.andExpect(jsonPath("$.codigo").value("FAMILIA_INACTIVA"));
 		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1, d2))).andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.codigo").value("DEPORTISTA_NO_ENCONTRADO"))
-				.andExpect(jsonPath("$.detalles[0].campo").value("deportistaIds[1]"))
+				.andExpect(jsonPath("$.detalles[0].campo").value("deportistas[1]"))
 				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(d2.toString()))));
 		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1))).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.codigo").value("DEPORTISTA_INACTIVO"))
-				.andExpect(jsonPath("$.detalles[0].campo").value("deportistaIds[0]"));
+				.andExpect(jsonPath("$.detalles[0].campo").value("deportistas[0]"));
 		mvc.perform(cuerpo(post(listaDeFamilia), admin(), ids(d1))).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.codigo").value("VINCULO_PRINCIPAL_EN_CONFLICTO"))
 				.andExpect(jsonPath("$.mensaje").value("Otro cambio sobre el mismo deportista ocurrio al mismo tiempo. Reintentá."));
@@ -414,6 +421,14 @@ class VinculoAdminControllerWebMvcTest {
 
 	// ---------- revision de los vinculos (U11-A) ----------
 
+	private static String elemento(String deportistaId, String version) {
+		return "{\"deportistaId\":" + deportistaId + ",\"versionEsperada\":" + version + "}";
+	}
+
+	private static String lote(String... elementos) {
+		return "{\"deportistas\":[" + String.join(",", elementos) + "]}";
+	}
+
 	@Test
 	void laLecturaDeLaRevisionDevuelveLaRevisionComoCadenaYLosVinculosConLaSuya() throws Exception {
 		when(servicio.revisionYVinculos(any(), eq(d1))).thenReturn(new VinculosDeDeportista(d1, "3",
@@ -473,18 +488,71 @@ class VinculoAdminControllerWebMvcTest {
 	}
 
 	@Test
-	void laRevisionMaximaDeBigintEsValidaEnRevocarYPrincipal() throws Exception {
+	void laRevisionMaximaDeBigintEsValidaEnRevocarPrincipalYLote() throws Exception {
 		when(servicio.revocar(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any()))
 				.thenReturn(vinculo(d1, EstadoVinculo.REVOCADO, false));
 		when(servicio.cambiarPrincipal(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any()))
 				.thenReturn(vinculo(d1, EstadoVinculo.ACTIVO, true));
+		when(servicio.vincular(any(), any(), any(), any())).thenReturn(new VinculacionRespuesta(List.of()));
 		String maxima = "{\"versionEsperada\":\"9223372036854775807\"}";
 
 		mvc.perform(cuerpo(post(listaDeFamilia + "/" + d1 + "/revocar"), admin(), maxima)).andExpect(status().isOk());
 		mvc.perform(cuerpo(post(listaDeFamilia + "/" + d1 + "/principal"), admin(), maxima)).andExpect(status().isOk());
+		mvc.perform(cuerpo(post(listaDeFamilia), admin(), lote(elemento("\"" + d1 + "\"", "\"9223372036854775807\""))))
+				.andExpect(status().isOk());
 
 		verify(servicio).revocar(any(), eq(familiaId), eq(d1), eq(Long.MAX_VALUE), any());
 		verify(servicio).cambiarPrincipal(any(), eq(familiaId), eq(d1), eq(Long.MAX_VALUE), any());
+		verify(servicio).vincular(any(), eq(familiaId), eq(List.of(new DeportistaAVincular(d1, Long.MAX_VALUE))), any());
+	}
+
+	@Test
+	void unElementoDelLoteSinRevisionOSinIdDa400ValidacionNombrandoLaPosicion() throws Exception {
+		String id = "\"" + d1 + "\"";
+		for (String[] caso : new String[][] { { "{\"deportistaId\":" + id + "}", "deportistas[0].versionEsperada" },
+				{ elemento(id, "null"), "deportistas[0].versionEsperada" },
+				{ "{\"versionEsperada\":\"0\"}", "deportistas[0].deportistaId" },
+				{ elemento("null", "\"0\""), "deportistas[0].deportistaId" } }) {
+			mvc.perform(cuerpo(post(listaDeFamilia), admin(), lote(caso[0]))).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("VALIDACION"))
+					.andExpect(jsonPath("$.detalles[0].campo").value(caso[1]));
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void unElementoDelLoteMalFormadoConPropiedadesDeMasOElCuerpoAnteriorDan400SolicitudInvalidaSinEco() throws Exception {
+		String id = "\"" + d1 + "\"";
+		for (String json : new String[] { "{\"deportistaIds\":[" + id + "]}",
+				lote(elemento(id, "\"0\"")).replace("]}", "],\"deportistaIds\":[" + id + "]}"), lote(id),
+				lote(elemento(id, "0")), lote(elemento(id, "\"-1\"")), lote(elemento(id, "\"9223372036854775808\"")),
+				lote(elemento(id, "\"x1\"")), lote(elemento("\"no-es-uuid\"", "\"0\"")),
+				lote(elemento(id, "\"0\"").replace("}", ",\"esPrincipal\":true}")),
+				lote(elemento(id, "\"0\"").replace("}", ",\"familiaId\":" + id + "}")) }) {
+			mvc.perform(cuerpo(post(listaDeFamilia), admin(), json)).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+					.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(d1.toString()))))
+					.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("9223372036854775808"))));
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void unDeportistaRepetidoConLaMismaRevisionPasaAlServicioYConRevisionesDistintasEsAmbiguoYDa400() throws Exception {
+		when(servicio.vincular(any(), any(), any(), any())).thenReturn(new VinculacionRespuesta(List.of()));
+		String id = "\"" + d1 + "\"";
+
+		mvc.perform(cuerpo(post(listaDeFamilia), admin(), lote(elemento(id, "\"4\""), elemento(id, "\"4\""))))
+				.andExpect(status().isOk());
+		verify(servicio).vincular(any(), eq(familiaId),
+				eq(List.of(new DeportistaAVincular(d1, 4L), new DeportistaAVincular(d1, 4L))), any());
+
+		org.mockito.Mockito.clearInvocations(servicio);
+		mvc.perform(cuerpo(post(listaDeFamilia), admin(),
+				lote(elemento(id, "\"4\""), elemento("\"" + d2 + "\"", "\"1\""), elemento(id, "\"5\""))))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"))
+				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(d1.toString()))));
+		verifyNoInteractions(servicio);
 	}
 
 	@Test
@@ -492,10 +560,14 @@ class VinculoAdminControllerWebMvcTest {
 		ExcepcionNegocio obsoleta = FamiliaAdminService.edicionDesactualizada();
 		when(servicio.revocar(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any())).thenThrow(obsoleta);
 		when(servicio.cambiarPrincipal(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any())).thenThrow(obsoleta);
+		when(servicio.vincular(any(), any(), any(), any())).thenThrow(new ExcepcionNegocio(HttpStatus.CONFLICT,
+				"EDICION_DESACTUALIZADA", obsoleta.getMessage(),
+				List.of(new DetalleError("deportistas[1]", "La revision de los vinculos del deportista cambio."))));
 		String siete = "{\"versionEsperada\":\"7\"}";
 
 		for (MockHttpServletRequestBuilder req : List.of(cuerpo(post(listaDeFamilia + "/" + d1 + "/revocar"), admin(), siete),
-				cuerpo(post(listaDeFamilia + "/" + d1 + "/principal"), admin(), siete))) {
+				cuerpo(post(listaDeFamilia + "/" + d1 + "/principal"), admin(), siete),
+				cuerpo(post(listaDeFamilia), admin(), lote(elemento("\"" + d2 + "\"", "\"7\""), elemento("\"" + d1 + "\"", "\"7\""))))) {
 			mvc.perform(req).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
 					.andExpect(jsonPath("$.mensaje")
 							.value("El registro fue modificado. Es necesario volver a cargarlo antes de guardar."))

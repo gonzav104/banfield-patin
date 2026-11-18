@@ -106,7 +106,7 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 		return json == null ? r : r.contentType("application/json").content(json);
 	}
 
-	/** Revision vigente de los vinculos del deportista (U11-A). */
+	/** Revision vigente de los vinculos del deportista (U11-A): cada solicitud la lee y la envia, como un cliente real. */
 	private long revision() {
 		return jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id = :d").param("d", d)
 				.query(Long.class).single();
@@ -114,7 +114,8 @@ class VinculosLockTimeoutHttpDbTest extends BaseDbTest {
 
 	private MockHttpServletResponse vincular(UUID familia) throws Exception {
 		return mvc.perform(conSesion(post("/api/admin/familias/" + familia + "/deportistas"),
-				"{\"deportistaIds\":[\"" + d + "\"]}")).andReturn().getResponse();
+				"{\"deportistas\":[{\"deportistaId\":\"" + d + "\",\"versionEsperada\":\"" + revision() + "\"}]}"))
+				.andReturn().getResponse();
 	}
 
 	private MockHttpServletResponse revocar(UUID familia) throws Exception {

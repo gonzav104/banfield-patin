@@ -130,7 +130,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 		datos.vinculo(escuelaA, familia, ids.get(1), "ACTIVO", true, adminId);
 		datos.vinculo(escuelaA, familia, ids.get(2), "REVOCADO", false, adminId);
 
-		long sentencias = sentencias(() -> servicio.vincular(admin, familia, ids, DATOS));
+		long sentencias = sentencias(() -> vigente.vincular(admin, familia, ids, DATOS));
 
 		assertThat(sentencias).isLessThanOrEqualTo(6 + 2L * ids.size());
 		// Solo Hibernate: familia + bloqueo + revisiones + existentes + principales + una escritura por vinculo cambiado (5)
@@ -149,7 +149,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 		for (int i = 0; i < 6; i++) {
 			UUID f = datos.familia(escuelaA, "Familia " + i, true);
 			familias.add(f);
-			servicio.vincular(admin, f, List.of(d), DATOS);
+			vigente.vincular(admin, f, List.of(d), DATOS);
 		}
 
 		long sentencias = sentencias(() -> vigente.cambiarPrincipal(admin, familias.get(5), d, DATOS));
@@ -164,7 +164,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 	void revocarUsaComoMaximoSieteSentencias() {
 		UUID f = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f, List.of(d), DATOS);
+		vigente.vincular(admin, f, List.of(d), DATOS);
 
 		long sentencias = sentencias(() -> vigente.revocar(admin, f, d, DATOS));
 
@@ -176,7 +176,7 @@ class ConsultasVinculosDbTest extends BaseVinculosDb {
 	void laLecturaDeLaRevisionUsaDosSentenciasConMasDeCincoVinculosYUnaSiEsUn404() {
 		UUID d = deportista("Uno");
 		for (int i = 0; i < 6; i++) {
-			servicio.vincular(admin, datos.familia(escuelaA, "Familia " + i, true), List.of(d), DATOS);
+			vigente.vincular(admin, datos.familia(escuelaA, "Familia " + i, true), List.of(d), DATOS);
 		}
 
 		assertThat(sentencias(() -> servicio.revisionYVinculos(admin, d))).isLessThanOrEqualTo(2);

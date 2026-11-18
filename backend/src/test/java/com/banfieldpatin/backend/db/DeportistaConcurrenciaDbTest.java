@@ -315,7 +315,8 @@ class DeportistaConcurrenciaDbTest extends BaseDbTest {
     }
 
     @Test void vincularYCargarDocumentosBloqueanLaFilaPeroNoMuevenLaRevisionYUnaDesactivacionEsperaYSeAplica() throws Exception {
-        MvcResult desactivacion = carrera(() -> vinculosSvc.vincular(admin, familia, List.of(deportista), DATOS),
+        MvcResult desactivacion = carrera(() -> vinculosSvc.vincular(admin, familia,
+                List.of(new com.banfieldpatin.backend.familias.vinculos.dto.DeportistaAVincular(deportista, 0L)), DATOS),
                 () -> mvc.perform(comando(post(ruta() + "/desactivar"), version("\"0\""))).andReturn(),
                 "%update%deportista%");
         // La revision cubre datos personales y estado, no los vinculos: la desactivacion espero, vio la misma revision y se aplico.

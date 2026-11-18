@@ -56,7 +56,7 @@ public class VinculoAdminController {
 	@PostMapping("/familias/{familiaId}/deportistas")
 	public VinculacionRespuesta vincular(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID familiaId,
 			@Valid @RequestBody VincularSolicitud solicitud, HttpServletRequest request) {
-		return servicio.vincular(UsuarioAutenticado.desde(jwt), familiaId, solicitud.deportistaIds(),
+		return servicio.vincular(UsuarioAutenticado.desde(jwt), familiaId, solicitud.deportistas(),
 				DatosSolicitud.de(request));
 	}
 

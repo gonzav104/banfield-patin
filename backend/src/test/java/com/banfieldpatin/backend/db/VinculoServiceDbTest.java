@@ -89,14 +89,14 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		UUID f1 = datos.familia(escuelaA, "Familia Secreta", true);
 		UUID f2 = datos.familia(escuelaA, "Otra", true);
 		UUID d = deportistaConDocumentos();
-		UUID vinculoF1 = servicio.vincular(admin, f1, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
-		servicio.vincular(admin, f1, List.of(d), DATOS); // SIN_CAMBIOS: sin auditoria
-		servicio.vincular(admin, f2, List.of(d), DATOS);
+		UUID vinculoF1 = vigente.vincular(admin, f1, List.of(d), DATOS).resultados().get(0).vinculo().vinculoId();
+		vigente.vincular(admin, f1, List.of(d), DATOS); // SIN_CAMBIOS: sin auditoria
+		vigente.vincular(admin, f2, List.of(d), DATOS);
 		vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		vigente.cambiarPrincipal(admin, f2, d, DATOS); // ya es principal: sin auditoria
 		vigente.revocar(admin, f1, d, DATOS);
 		vigente.revocar(admin, f1, d, DATOS); // repetida: sin auditoria
-		servicio.vincular(admin, f1, List.of(d), DATOS); // reutiliza la fila
+		vigente.vincular(admin, f1, List.of(d), DATOS); // reutiliza la fila
 
 		List<Map<String, Object>> eventos = jdbc.sql("""
 				SELECT accion, usuario_id, recurso_tipo, recurso_id, ip::text AS ip, user_agent, detalle::text AS detalle
@@ -126,9 +126,9 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 	void sinPrincipalPreviaElCambioAuditaAnteriorVinculoIdNuloYUnaFalloDeNegocioNoAudita() {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportista("Uno");
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 		vigente.revocar(admin, f1, d, DATOS);
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 		// Se baja el principal por fuera para simular "no hay principal previo" y se vuelve a promover.
 		jdbc.sql("UPDATE gestion_patin.familia_deportista SET es_principal = false WHERE familia_id = :f").param("f", f1).update();
 
@@ -180,8 +180,8 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		// A (servicio real) crea el vinculo principal SIN confirmar; B (sin protecciones) intenta otro principal para el
 		// mismo deportista tras insertar primero a "otro": se queda esperando el indice unico y, al confirmar A, la base lo
 		// rechaza. Se traduce a 409 y el lote entero de B (incluido "otro" y su auditoria) se revierte.
-		Par par = bBloqueadaDetrasDeA(() -> servicio.vincular(admin, f1, List.of(d), DATOS),
-				() -> transaccion.execute(s -> sinProtecciones.vincular(admin, f2, List.of(otro, d), DATOS)));
+		Par par = bBloqueadaDetrasDeA(() -> vigente.vincular(admin, f1, List.of(d), DATOS),
+				() -> transaccion.execute(s -> vigente.usando(sinProtecciones).vincular(admin, f2, List.of(otro, d), DATOS)));
 
 		assertThat(par.a()).isNotNull();
 		assertThat(par.b()).isInstanceOfSatisfying(ExcepcionNegocio.class, e -> {
@@ -212,10 +212,10 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 	void unaViolacionDelParFamiliaDeportistaSeTraduceAlMismo409YDejaUnWarnConSuRestriccion() {
 		UUID f1 = datos.familia(escuelaA, "Uno", true);
 		UUID d = deportistaConDocumentos();
-		servicio.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
 
 		// Sin la comprobacion previa de vinculos existentes, el segundo alta del mismo par viola uq_familia_deportista.
-		Throwable e = catchThrowable(() -> transaccion.execute(s -> servicioSinProtecciones(true).vincular(admin, f1, List.of(d), DATOS)));
+		Throwable e = catchThrowable(() -> transaccion.execute(s -> vigente.usando(servicioSinProtecciones(true)).vincular(admin, f1, List.of(d), DATOS)));
 
 		assertThat(e).isInstanceOfSatisfying(ExcepcionNegocio.class,
 				ex -> assertThat(ex.getCodigo()).isEqualTo("VINCULO_PRINCIPAL_EN_CONFLICTO"));
@@ -241,7 +241,7 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		VinculoAdminService servicioConFamiliaFalsa = new VinculoAdminService(inventa, deportistas, repositorio, auditoria,
 				reloj, lockTimeout);
 
-		Throwable e = catchThrowable(() -> transaccion.execute(s -> servicioConFamiliaFalsa.vincular(admin, inexistente, List.of(d), DATOS)));
+		Throwable e = catchThrowable(() -> transaccion.execute(s -> vigente.usando(servicioConFamiliaFalsa).vincular(admin, inexistente, List.of(d), DATOS)));
 
 		// La excepcion REAL arrastra el mensaje del servidor con los valores de la clave: es lo que NO debe llegar al log.
 		assertThat(e).isInstanceOf(DataIntegrityViolationException.class);
@@ -278,11 +278,11 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		UUID f2 = datos.familia(escuelaA, "Otra", true);
 		UUID d = deportistaConDocumentos();
 
-		servicio.vincular(admin, f1, List.of(d), DATOS);
-		servicio.vincular(admin, f2, List.of(d), DATOS);
+		vigente.vincular(admin, f1, List.of(d), DATOS);
+		vigente.vincular(admin, f2, List.of(d), DATOS);
 		vigente.cambiarPrincipal(admin, f2, d, DATOS);
 		vigente.revocar(admin, f1, d, DATOS);
-		catchThrowable(() -> servicio.vincular(admin, f1, List.of(UUID.randomUUID()), DATOS));
+		catchThrowable(() -> vigente.vincular(admin, f1, List.of(UUID.randomUUID()), DATOS));
 
 		sinDatosSensiblesEnLogs(f1, f2, d);
 	}

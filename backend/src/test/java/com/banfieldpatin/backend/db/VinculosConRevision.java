@@ -1,11 +1,14 @@
 package com.banfieldpatin.backend.db;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminService;
+import com.banfieldpatin.backend.familias.vinculos.dto.DeportistaAVincular;
+import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
@@ -25,9 +28,22 @@ final class VinculosConRevision {
 		this.servicio = servicio;
 	}
 
+	/** El mismo ayudante con otro servicio (por ejemplo, uno con dependencias decoradas). */
+	VinculosConRevision usando(VinculoAdminService otro) {
+		return new VinculosConRevision(jdbc, otro);
+	}
+
 	long revision(UUID deportistaId) {
 		return jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id = :d").param("d", deportistaId)
 				.query(Long.class).optional().orElse(0L);
+	}
+
+	List<DeportistaAVincular> vigentes(List<UUID> ids) {
+		return ids.stream().map(id -> new DeportistaAVincular(id, revision(id))).toList();
+	}
+
+	VinculacionRespuesta vincular(UsuarioAutenticado admin, UUID familiaId, List<UUID> ids, DatosSolicitud datos) {
+		return servicio.vincular(admin, familiaId, vigentes(ids), datos);
 	}
 
 	VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, DatosSolicitud datos) {
