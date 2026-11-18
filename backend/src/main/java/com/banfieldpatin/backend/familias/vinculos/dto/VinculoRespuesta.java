@@ -28,7 +28,7 @@ public record VinculoRespuesta(UUID vinculoId, UUID familiaId, String familiaNom
 
 	/**
 	 * {@code versionVinculos} se recibe aparte: la entidad {@link Deportista} puede venir del contexto de persistencia con
-	 * un valor anterior; el servicio pasa el valor leido bajo el bloqueo.
+	 * un valor anterior; el servicio pasa el valor leido bajo el bloqueo (y, si hubo cambio, el incrementado).
 	 */
 	public static VinculoRespuesta de(FamiliaDeportista fd, Familia familia,
 			Deportista deportista, long versionVinculos) {

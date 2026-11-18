@@ -111,6 +111,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 
 		assertThat(resultadoDe(par.a(), f1)).isEqualTo(ResultadoVinculacion.CREADO);
 		assertThat(resultadoDe(par.b(), f2)).isEqualTo(ResultadoVinculacion.CREADO);
+		assertThat(revision(d)).isEqualTo(2);
 		// A confirmo primero: es el principal; B, que vio la fila de A tras esperar el bloqueo, no lo es.
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("es_principal", true).containsEntry("estado", "ACTIVO");
 		assertThat(fila(f2, d).orElseThrow()).containsEntry("es_principal", false).containsEntry("estado", "ACTIVO");
@@ -133,6 +134,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			assertThat(resultados).as("ronda %d", ronda).allMatch(r -> r instanceof VinculacionRespuesta);
 			assertThat(filas(d)).as("ronda %d", ronda).hasSize(2).allSatisfy(f -> assertThat(f.get("estado")).isEqualTo("ACTIVO"));
 			assertThat(principalesActivos(d)).as("ronda %d", ronda).isEqualTo(1);
+			assertThat(revision(d)).as("ronda %d: una vez por vinculo creado", ronda).isEqualTo(2);
 		}
 		verificarInvariantes();
 		sinViolacionesDeRestriccion();
@@ -156,6 +158,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		deportistaConTresFamilias(d, f1, f2, f3);
 		UUID vinculoF2 = (UUID) fila(f2, d).orElseThrow().get("id");
 
+		long inicial = revision(d);
 		Par par = bBloqueadaDetrasDeA(() -> servicio.cambiarPrincipal(admin, f2, d, DATOS),
 				() -> servicio.cambiarPrincipal(admin, f3, d, DATOS));
 
@@ -172,6 +175,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 				""").param("e", escuelaA).query(String.class).list();
 		assertThat(anteriores).hasSize(2);
 		assertThat(anteriores.get(1)).isEqualTo(vinculoF2.toString());
+		assertThat(revision(d)).isEqualTo(inicial + 2);
 		verificarInvariantes();
 		sinViolacionesDeRestriccion();
 	}
@@ -184,6 +188,8 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		UUID f3 = datos.familia(escuelaA, "Tres", true);
 		UUID d = deportista("Uno");
 		deportistaConTresFamilias(d, f1, f2, f3);
+		long inicial = revision(d);
+		long cambiosIniciales = contarAuditoria("VINCULO_PRINCIPAL_CAMBIADO");
 		AtomicBoolean muestrear = new AtomicBoolean(true);
 		AtomicInteger minimo = new AtomicInteger(Integer.MAX_VALUE);
 		AtomicInteger maximo = new AtomicInteger(0);
@@ -214,6 +220,8 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		// En ningun momento observable (estado confirmado) hubo cero ni dos principales.
 		assertThat(minimo.get()).isEqualTo(1);
 		assertThat(maximo.get()).isEqualTo(1);
+		// La revision avanzo exactamente una vez por cada cambio efectivo (los idempotentes no la mueven).
+		assertThat(revision(d) - inicial).isEqualTo(contarAuditoria("VINCULO_PRINCIPAL_CAMBIADO") - cambiosIniciales);
 		verificarInvariantes();
 		sinViolacionesDeRestriccion();
 	}
@@ -446,6 +454,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 
 		assertThat(resultadoDe(par.a(), f1)).isEqualTo(ResultadoVinculacion.CREADO);
 		assertThat(resultadoDe(par.b(), f1)).isEqualTo(ResultadoVinculacion.SIN_CAMBIOS);
+		assertThat(revision(d)).as("SIN_CAMBIOS no mueve la revision").isEqualTo(1);
 		assertThat(filas(d)).hasSize(1);
 		assertThat(contarAuditoria("VINCULO_ACTIVADO")).isEqualTo(1);
 		verificarInvariantes();
@@ -464,6 +473,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			assertThat(resultados.stream().map(r -> resultadoDe(r, f1))).as("ronda %d", ronda)
 					.containsExactlyInAnyOrder(ResultadoVinculacion.CREADO, ResultadoVinculacion.SIN_CAMBIOS);
 			assertThat(filas(d)).as("ronda %d", ronda).hasSize(1);
+			assertThat(revision(d)).as("ronda %d", ronda).isEqualTo(1);
 		}
 		assertThat(contarAuditoria("VINCULO_ACTIVADO")).isEqualTo(RONDAS);
 		verificarInvariantes();
@@ -478,20 +488,24 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 		servicio.revocar(admin, f1, d, DATOS);
 
 		// A vuelve a vincular sin confirmar; B revoca detras: ve el ACTIVO de A y lo revoca. Final REVOCADO.
+		long antesDeReactivar = revision(d);
 		Par vinculaYRevoca = bBloqueadaDetrasDeA(() -> servicio.vincular(admin, f1, List.of(d), DATOS),
 				() -> servicio.revocar(admin, f1, d, DATOS));
 		assertThat(resultadoDe(vinculaYRevoca.a(), f1)).isEqualTo(ResultadoVinculacion.REACTIVADO);
 		assertThat(vinculo(vinculaYRevoca.b()).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("estado", "REVOCADO").containsEntry("es_principal", false);
+		assertThat(revision(d)).isEqualTo(antesDeReactivar + 2);
 
 		// A revoca (sobre un ACTIVO) sin confirmar; B vincula detras: ve el REVOCADO de A y lo reutiliza. Final ACTIVO principal.
 		servicio.vincular(admin, f1, List.of(d), DATOS);
+		long antesDeRevocar = revision(d);
 		Par revocaYVincula = bBloqueadaDetrasDeA(() -> servicio.revocar(admin, f1, d, DATOS),
 				() -> servicio.vincular(admin, f1, List.of(d), DATOS));
 		assertThat(vinculo(revocaYVincula.a()).estado()).isEqualTo(EstadoVinculo.REVOCADO);
 		assertThat(resultadoDe(revocaYVincula.b(), f1)).isEqualTo(ResultadoVinculacion.REACTIVADO);
 		assertThat(fila(f1, d).orElseThrow()).containsEntry("estado", "ACTIVO").containsEntry("es_principal", true);
 		assertThat(filas(d)).hasSize(1);
+		assertThat(revision(d)).isEqualTo(antesDeRevocar + 2);
 		verificarInvariantes();
 		sinViolacionesDeRestriccion();
 	}
@@ -511,10 +525,12 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			assertThat(filas(d)).as("ronda %d", ronda).hasSize(1);
 			if (vincular == ResultadoVinculacion.SIN_CAMBIOS) { // vincular gano el bloqueo: despues se revoco
 				assertThat(fila(f1, d).orElseThrow()).as("ronda %d", ronda).containsEntry("estado", "REVOCADO");
+				assertThat(revision(d)).as("ronda %d: crear + revocar", ronda).isEqualTo(2);
 			} else { // revocar gano: vincular reutilizo la fila
 				assertThat(vincular).isEqualTo(ResultadoVinculacion.REACTIVADO);
 				assertThat(fila(f1, d).orElseThrow()).as("ronda %d", ronda).containsEntry("estado", "ACTIVO")
 						.containsEntry("es_principal", true);
+				assertThat(revision(d)).as("ronda %d: crear + revocar + reactivar", ronda).isEqualTo(3);
 			}
 		}
 		verificarInvariantes();
@@ -559,6 +575,7 @@ class VinculosConcurrenciaDbTest extends BaseVinculosDb {
 			for (UUID d : ids) {
 				assertThat(filas(d)).as("ronda %d", ronda).hasSize(2);
 				assertThat(principalesActivos(d)).as("ronda %d", ronda).isEqualTo(1);
+				assertThat(revision(d)).as("ronda %d: una vez por lote efectivo", ronda).isEqualTo(2);
 			}
 		}
 		verificarInvariantes();

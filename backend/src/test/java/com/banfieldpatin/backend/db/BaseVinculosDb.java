@@ -113,6 +113,12 @@ abstract class BaseVinculosDb extends BaseDbTest {
 				.param("d", deportistaId).query().listOfRows();
 	}
 
+	/** Revision de los vinculos del deportista en la base (V11). */
+	long revision(UUID deportistaId) {
+		return jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id = :d").param("d", deportistaId)
+				.query(Long.class).single();
+	}
+
 	long principalesActivos(UUID deportistaId) {
 		return jdbc.sql("""
 				SELECT count(*) FROM gestion_patin.familia_deportista

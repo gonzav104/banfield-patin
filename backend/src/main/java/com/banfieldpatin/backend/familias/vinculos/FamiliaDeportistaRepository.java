@@ -137,6 +137,20 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	List<RevisionVinculos> revisionesVinculos(@Param("escuelaId") UUID escuelaId,
 			@Param("deportistaIds") Collection<UUID> deportistaIds);
 
+	/**
+	 * Avanza en uno la revision de los vinculos de esos deportistas de la escuela (los que tuvieron un cambio efectivo).
+	 * Actualizacion masiva: no pasa por {@code @Version}, de modo que la revision de datos permanentes ({@code version}) no
+	 * se mueve. Devuelve las filas cambiadas. No limpia el contexto: la entidad {@code Deportista} no se usa para leer la
+	 * revision (ver {@link #revisionesVinculos}).
+	 */
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			update Deportista d set d.versionVinculos = d.versionVinculos + 1
+			where d.escuelaId = :escuelaId and d.id in :deportistaIds
+			""")
+	int incrementarRevisionVinculos(@Param("escuelaId") UUID escuelaId,
+			@Param("deportistaIds") Collection<UUID> deportistaIds);
+
 	// ---------- portal de FAMILIA (solo lectura) ----------
 
 	/**

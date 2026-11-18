@@ -323,6 +323,10 @@ class DeportistaConcurrenciaDbTest extends BaseDbTest {
         assertThat((String) JsonPath.read(desactivacion.getResponse().getContentAsString(), "$.version")).isEqualTo("1");
         assertThat(activo()).isFalse();
         assertThat(revision()).isEqualTo(1);
+        // U11-A: la vinculacion movio solo la revision de vinculos (una vez) y la desactivacion, que la entidad escribe sin esa
+        // columna, no la piso con el valor que habia leido antes del incremento.
+        assertThat(jdbc.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id=:i").param("i", deportista)
+                .query(Long.class).single()).isEqualTo(1);
         // Desactivar no revoca vinculos ni borra historial (regla existente).
         assertThat(jdbc.sql("SELECT estado FROM gestion_patin.familia_deportista WHERE deportista_id=:d").param("d", deportista)
                 .query(String.class).list()).containsExactly("ACTIVO");

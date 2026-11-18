@@ -84,6 +84,8 @@ class VinculoAdminServiceTest {
 			escrituras.add(fd.getDeportistaId() + ":" + fd.getEstado() + ":" + fd.isEsPrincipal());
 			return fd;
 		});
+		when(vinculos.incrementarRevisionVinculos(eq(escuelaId), any()))
+				.thenAnswer(inv -> ((java.util.Collection<?>) inv.getArgument(1)).size());
 	}
 
 	// ---------- fixtures ----------
@@ -683,6 +685,114 @@ class VinculoAdminServiceTest {
 
 		verify(vinculos, never()).saveAndFlush(any(FamiliaDeportista.class));
 		verifyNoInteractions(auditoria);
+	}
+
+	// ---------- revision agregada de los vinculos (U11-A) ----------
+
+	private void sinEscriturasNiRevision() {
+		verify(vinculos, never()).saveAndFlush(any());
+		verify(vinculos, never()).revocarSiActivo(any(), any(), any());
+		verify(vinculos, never()).incrementarRevisionVinculos(any(), any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void vincularIncrementaUnaVezLaRevisionDeCadaDeportistaCreadoOReactivadoYDevuelveLaPosterior() {
+		UUID d3 = UUID.randomUUID();
+		familia(true);
+		bloqueables(deportista(d1, true), deportista(d2, true), deportista(d3, true));
+		revisiones(new RevisionVinculos(d1, 4L), new RevisionVinculos(d2, 7L), new RevisionVinculos(d3, 2L));
+		existentes(vinculo(d1, EstadoVinculo.ACTIVO, true), vinculo(d3, EstadoVinculo.REVOCADO, false));
+		principales(d1);
+
+		VinculacionRespuesta respuesta = servicio.vincular(admin, familiaId, List.of(d1, d2, d3, d2), DATOS);
+
+		assertThat(respuesta.resultados()).extracting(r -> r.resultado()).containsExactly(ResultadoVinculacion.SIN_CAMBIOS,
+				ResultadoVinculacion.CREADO, ResultadoVinculacion.REACTIVADO);
+		assertThat(respuesta.resultados()).extracting(r -> r.vinculo().versionVinculos()).containsExactly("4", "8", "3");
+		verify(vinculos).incrementarRevisionVinculos(escuelaId, List.of(d2, d3));
+		verify(vinculos, org.mockito.Mockito.times(1)).incrementarRevisionVinculos(any(), any());
+		assertThat(eventos(2)).extracting(e -> e.detalle().get("deportistaId")).containsExactly(d2, d3);
+	}
+
+	@Test
+	void vincularLeeLaRevisionDespuesDelBloqueoEIncrementaDespuesDeEscribirYAuditar() {
+		familia(true);
+		bloqueables(deportista(d1, true));
+		existentes();
+		principales();
+
+		servicio.vincular(admin, familiaId, List.of(d1), DATOS);
+
+		InOrder orden = inOrder(lockTimeout, familias, deportistas, vinculos, auditoria);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(familias).findByIdAndEscuelaId(familiaId, escuelaId);
+		orden.verify(deportistas).bloquearParaVincular(escuelaId, List.of(d1));
+		orden.verify(vinculos).revisionesVinculos(escuelaId, List.of(d1));
+		orden.verify(vinculos).saveAndFlush(any(FamiliaDeportista.class));
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		orden.verify(vinculos).incrementarRevisionVinculos(escuelaId, List.of(d1));
+	}
+
+	@Test
+	void revocarUnActivoAuditaEIncrementaUnaVezDespuesDeLaActualizacion() {
+		vinculoParaRevocar(EstadoVinculo.ACTIVO, true);
+		when(vinculos.revocarSiActivo(escuelaId, familiaId, d1)).thenReturn(1);
+
+		servicio.revocar(admin, familiaId, d1, DATOS);
+
+		InOrder orden = inOrder(deportistas, vinculos, auditoria);
+		orden.verify(deportistas).bloquearParaVincular(escuelaId, List.of(d1));
+		orden.verify(vinculos).buscarVinculo(escuelaId, familiaId, d1);
+		orden.verify(vinculos).revocarSiActivo(escuelaId, familiaId, d1);
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		orden.verify(vinculos).incrementarRevisionVinculos(escuelaId, List.of(d1));
+		orden.verify(vinculos).respuesta(escuelaId, familiaId, d1);
+	}
+
+	@Test
+	void revocarUnVinculoYaRevocadoEs200SinIncrementar() {
+		vinculoParaRevocar(EstadoVinculo.REVOCADO, false);
+
+		assertThat(servicio.revocar(admin, familiaId, d1, DATOS).estado()).isEqualTo(EstadoVinculo.REVOCADO);
+
+		sinEscriturasNiRevision();
+	}
+
+	@Test
+	void cambiarPrincipalIncrementaUnaSolaVezYDevuelveLaPosterior() {
+		familia(true);
+		bloqueables(deportista(d1, true));
+		revisiones(new RevisionVinculos(d1, 10L));
+		FamiliaDeportista destino = destinoPrincipal(EstadoVinculo.ACTIVO, false);
+		FamiliaDeportista actual = FixturesDominio.vinculo(UUID.randomUUID(), escuelaId, UUID.randomUUID(), d1,
+				EstadoVinculo.ACTIVO, true);
+		when(vinculos.principalActivo(escuelaId, d1)).thenReturn(Optional.of(actual));
+
+		VinculoRespuesta respuesta = servicio.cambiarPrincipal(admin, familiaId, d1, DATOS);
+
+		assertThat(respuesta.versionVinculos()).isEqualTo("11");
+		InOrder orden = inOrder(deportistas, vinculos, auditoria);
+		orden.verify(deportistas).bloquearParaVincular(escuelaId, List.of(d1));
+		orden.verify(vinculos).buscarVinculo(escuelaId, familiaId, d1);
+		orden.verify(vinculos).revisionesVinculos(escuelaId, List.of(d1));
+		orden.verify(vinculos).saveAndFlush(actual);
+		orden.verify(vinculos).saveAndFlush(destino);
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		orden.verify(vinculos).incrementarRevisionVinculos(escuelaId, List.of(d1));
+		verify(vinculos, org.mockito.Mockito.times(1)).incrementarRevisionVinculos(any(), any());
+	}
+
+	@Test
+	void cambiarPrincipalYaPrincipalEs200SinEscribirNiIncrementar() {
+		familia(true);
+		bloqueables(deportista(d1, true));
+		revisiones(new RevisionVinculos(d1, 10L));
+		destinoPrincipal(EstadoVinculo.ACTIVO, true);
+
+		assertThat(servicio.cambiarPrincipal(admin, familiaId, d1, DATOS).versionVinculos()).isEqualTo("10");
+
+		sinEscriturasNiRevision();
 	}
 
 	// ---------- lectura de la revision ----------

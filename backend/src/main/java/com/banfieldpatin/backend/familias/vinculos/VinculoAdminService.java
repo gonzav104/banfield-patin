@@ -55,7 +55,7 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
  * <p>Espera acotada: las tres transacciones que bloquean ejecutan {@code SET LOCAL lock_timeout} (ver
  * {@link LockTimeoutVinculos}) antes de su primera sentencia. Si otra transaccion retiene el deportista mas de ese plazo,
  * la base responde 55P03, Spring lo traduce a {@code CannotAcquireLockException} y el manejador global responde 409
- * CONFLICTO_CONCURRENCIA; la transaccion se revierte (nada escrito, nada auditado).
+ * CONFLICTO_CONCURRENCIA; la transaccion se revierte (nada escrito, nada auditado, ninguna revision movida).
  *
  * <p>La auditoria (solo ids, banderas y nombres de campos) se escribe en la transaccion del cambio y solo ante cambios
  * reales. Ningun log contiene DNI, CUIL ni nombres.
@@ -133,8 +133,9 @@ public class VinculoAdminService {
 	/**
 	 * Precedencia: familia 404 -> familia inactiva 409 (primero, incluso para un lote que seria todo SIN_CAMBIOS) ->
 	 * bloqueo de los deportistas -> algun id inexistente o de otra escuela 404 (lista cada posicion {@code deportistaIds[i]},
-	 * nunca el valor) -> algun deportista inactivo 409 -> escritura. Cualquier fallo no deja nada escrito ni auditado.
-	 * Los ids repetidos se quitan conservando el orden; el tope de 50 se valida antes (en el DTO).
+	 * nunca el valor) -> algun deportista inactivo 409 -> escritura -> revision +1 de cada deportista CREADO o REACTIVADO.
+	 * Cualquier fallo no deja nada escrito, auditado ni ninguna revision movida. Los ids repetidos se quitan conservando el
+	 * orden; el tope de 50 se valida antes (en el DTO).
 	 */
 	@Transactional
 	public VinculacionRespuesta vincular(UsuarioAutenticado admin, UUID familiaId, List<UUID> solicitados,
@@ -158,6 +159,7 @@ public class VinculoAdminService {
 		Instant ahora = Instant.now(reloj);
 
 		List<VinculacionRespuesta.Resultado> resultados = new ArrayList<>();
+		List<UUID> cambiados = new ArrayList<>();
 		for (UUID deportistaId : ids) {
 			Deportista deportista = porId.get(deportistaId);
 			long revision = revisiones.get(deportistaId);
@@ -184,8 +186,10 @@ public class VinculoAdminService {
 					Map.of("familiaId", familiaId, "deportistaId", deportistaId, "esPrincipal", principal, "origen",
 							resultado == ResultadoVinculacion.CREADO ? "NUEVO" : "REUTILIZADO"),
 					datos);
-			resultados.add(resultado(vinculo, familia, deportista, revision, resultado));
+			cambiados.add(deportistaId);
+			resultados.add(resultado(vinculo, familia, deportista, revision + 1, resultado));
 		}
+		incrementarRevision(escuelaId, cambiados);
 		return new VinculacionRespuesta(resultados);
 	}
 
@@ -227,8 +231,9 @@ public class VinculoAdminService {
 
 	/**
 	 * Siempre permitido (tambien con familia o deportista inactivos). Bajo el bloqueo del deportista, una actualizacion
-	 * CONDICIONAL ACTIVO -> REVOCADO decide si hubo cambio real: solo entonces se audita. Repetir es un 200 idempotente
-	 * sin auditoria; PENDIENTE/RECHAZADO -> 409 VINCULO_NO_ACTIVO; sin vinculo -> 404. No promueve a otro vinculo.
+	 * CONDICIONAL ACTIVO -> REVOCADO decide si hubo cambio real: solo entonces se audita y la revision de los vinculos
+	 * avanza. Repetir es un 200 idempotente sin auditoria ni incremento; PENDIENTE/RECHAZADO -> 409 VINCULO_NO_ACTIVO; sin
+	 * vinculo -> 404. No promueve a otro vinculo.
 	 */
 	@Transactional
 	public VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, DatosSolicitud datos) {
@@ -247,7 +252,9 @@ public class VinculoAdminService {
 			auditoria.registrar(new EventoAuditoria(escuelaId, admin.id(), AccionAuditoria.VINCULO_REVOCADO, RECURSO,
 					vinculoId, Map.of("familiaId", familiaId, "deportistaId", deportistaId, "eraPrincipal", eraPrincipal),
 					datos));
+			incrementarRevision(escuelaId, List.of(deportistaId));
 		}
+		// Proyeccion leida despues del incremento: trae la revision posterior a la operacion.
 		return vinculos.respuesta(escuelaId, familiaId, deportistaId).orElseThrow(VinculoAdminService::vinculoNoEncontrado);
 	}
 
@@ -256,9 +263,10 @@ public class VinculoAdminService {
 	/**
 	 * Unico camino para cambiar el principal (nunca revocar y recrear), solo entre vinculos ACTIVOS y con la familia
 	 * activa. Orden: familia 404 -> familia inactiva 409 -> bloqueo del deportista -> vinculo 404 -> no ACTIVO 409 ->
-	 * ya es principal: 200 sin escribir ni auditar -> bajar al principal actual (aunque su familia este inactiva: solo se
-	 * valida la familia destino) y subir el elegido, cada uno con {@code saveAndFlush} y en ESE orden para que
-	 * {@code uq_fd_principal_activo} no se viole nunca a mitad de la transaccion.
+	 * ya es principal: 200 sin escribir, auditar ni mover la revision -> bajar al principal actual (aunque su familia este
+	 * inactiva: solo se valida la familia destino) y subir el elegido, cada uno con {@code saveAndFlush} y en ESE orden para
+	 * que {@code uq_fd_principal_activo} no se viole nunca a mitad de la transaccion -> auditoria -> revision +1 (una sola
+	 * vez, aunque se escriban dos filas).
 	 */
 	@Transactional
 	public VinculoRespuesta cambiarPrincipal(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId,
@@ -292,7 +300,8 @@ public class VinculoAdminService {
 		detalle.put("deportistaId", deportistaId);
 		detalle.put("anteriorVinculoId", anterior == null ? null : anterior.getId());
 		registrar(admin, AccionAuditoria.VINCULO_PRINCIPAL_CAMBIADO, vinculo, detalle, datos);
-		return VinculoRespuesta.de(vinculo, familia, deportista, revision);
+		incrementarRevision(escuelaId, List.of(deportistaId));
+		return VinculoRespuesta.de(vinculo, familia, deportista, revision + 1);
 	}
 
 	// ---------- auxiliares ----------
@@ -312,6 +321,21 @@ public class VinculoAdminService {
 			revisiones.put(r.deportistaId(), r.versionVinculos());
 		}
 		return revisiones;
+	}
+
+	/**
+	 * Revision +1 de los deportistas que tuvieron un cambio efectivo, en la misma transaccion y despues de las escrituras.
+	 * Sin cambios no hay sentencia. Si la base no actualiza exactamente esas filas (no deberia: estan bloqueadas por esta
+	 * transaccion), se aborta y todo se revierte.
+	 */
+	private void incrementarRevision(UUID escuelaId, List<UUID> cambiados) {
+		if (cambiados.isEmpty()) {
+			return;
+		}
+		int filas = vinculos.incrementarRevisionVinculos(escuelaId, cambiados);
+		if (filas != cambiados.size()) {
+			throw new IllegalStateException("La revision de vinculos no se actualizo para todos los deportistas");
+		}
 	}
 
 	/**
