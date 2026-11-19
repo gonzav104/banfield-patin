@@ -89,8 +89,10 @@ export async function apiWrite<T = void>(
   method: 'post' | 'put' | 'patch' | 'delete',
   url: string,
   data?: unknown,
+  beforeWrite?: () => void,
 ): Promise<T> {
   const { headerName, token } = await fetchCsrf();
+  beforeWrite?.();
   const response = await http.request<T>({ method, url, data, headers: { [headerName]: token } });
   return response.data;
 }
