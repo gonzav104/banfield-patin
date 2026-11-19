@@ -195,6 +195,7 @@ export class FakeBackend {
   private families: FakeFamily[] = [];
   private adminAthletes: FakeAdminAthlete[] = [];
   private adminLinks: FakeAdminLink[] = [];
+  private adminLinkVersions = new Map<string, number>();
   private seasons: FakeSeason[] = [];
   private sportsRows: FakeSportsRow[] = [];
   private invitations: FakeInvitation[] = [];
@@ -725,6 +726,7 @@ export class FakeBackend {
     const link: FakeAdminLink = { id: `vin-${++this.counter}`, familyId, athleteId, estado: data.estado ?? 'ACTIVO', esPrincipal: data.esPrincipal ?? false };
     if (link.esPrincipal && link.estado !== 'ACTIVO') throw new Error('Only an ACTIVE fake link can be the principal');
     if (link.esPrincipal && this.adminLinks.some((l) => l.athleteId === athleteId && l.estado === 'ACTIVO' && l.esPrincipal)) throw new Error('The fake athlete already has a principal link');
+    if (!this.adminLinkVersions.has(athleteId)) this.adminLinkVersions.set(athleteId, this.adminAthletes.find((a) => a.id === athleteId)!.version);
     this.adminLinks.push(link);
     return link;
   }
@@ -736,7 +738,7 @@ export class FakeBackend {
     Object.assign(link, change);
     if (link.estado !== 'ACTIVO') link.esPrincipal = false;
     const athlete = this.adminAthletes.find((a) => a.id === link.athleteId);
-    if (athlete) athlete.version += 1;
+    if (athlete) this.adminLinkVersions.set(athlete.id, (this.adminLinkVersions.get(athlete.id) ?? athlete.version) + 1);
   }
 
   /** The count of links the ADMIN model holds (every state). */
@@ -758,16 +760,33 @@ export class FakeBackend {
       estado: link.estado,
       esPrincipal: link.esPrincipal,
       autorizadoEn: link.estado === 'ACTIVO' || link.estado === 'REVOCADO' ? '2026-03-01T12:00:00Z' : null,
-      versionVinculos: String(athlete.version),
+      versionVinculos: String(this.adminLinkVersions.get(athlete.id) ?? athlete.version),
     };
   }
 
   /**
    * Mirrors GET /admin/deportistas/{id}/vinculos (VinculosDeDeportista: the revision of the athlete's links and ALL its links, every state, from
    * the same snapshot; 404 DEPORTISTA_NO_ENCONTRADO) and GET /admin/familias/{id}/deportistas (the links of the family, every state, ordered by
-   * surname and name; 404 FAMILIA_NO_ENCONTRADA). Both are reads only: there is no write route for links in this model.
+   * surname and name; 404 FAMILIA_NO_ENCONTRADA). Writes also mirror the revocar/principal commands with aggregate revision checks.
    */
-  private linksRoute(method: string, path: string): { status: number; body?: unknown } | null {
+  private linksRoute(method: string, path: string, body: unknown): { status: number; body?: unknown } | null {
+    const write = /^\/admin\/familias\/([^/]+)\/deportistas\/([^/]+)\/(revocar|principal)$/.exec(path);
+    if (method === 'post' && write) {
+      const family = this.families.find((f) => f.id === write[1]);
+      const athlete = this.adminAthletes.find((a) => a.id === write[2]);
+      const link = this.adminLinks.find((l) => l.familyId === write[1] && l.athleteId === write[2]);
+      if (!family || !athlete || !link) return this.error(404, 'VINCULO_NO_ENCONTRADO', 'No existe.');
+      if (write[3] === 'principal' && !family.activa) return this.error(409, 'FAMILIA_INACTIVA', 'Familia inactiva.');
+      if ((body as { versionEsperada?: string })?.versionEsperada !== String(this.adminLinkVersions.get(athlete.id) ?? athlete.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Revisión desactualizada.');
+      if (write[3] === 'revocar' && link.estado === 'REVOCADO') return { status: 200, body: this.linkView(link) };
+      if (link.estado !== 'ACTIVO') return this.error(409, 'VINCULO_NO_ACTIVO', 'Vínculo no activo.');
+      if (write[3] === 'revocar') this.changeAdminLinkBehindTheScenes(link.id, { estado: 'REVOCADO' });
+      else if (!link.esPrincipal) {
+        this.adminLinks.filter((l) => l.athleteId === athlete.id).forEach((l) => { l.esPrincipal = false; });
+        this.changeAdminLinkBehindTheScenes(link.id, { esPrincipal: true });
+      }
+      return { status: 200, body: this.linkView(link) };
+    }
     const ofAthlete = /^\/admin\/deportistas\/([^/]+)\/vinculos$/.exec(path);
     const ofFamily = /^\/admin\/familias\/([^/]+)\/deportistas$/.exec(path);
     if (method !== 'get' || (!ofAthlete && !ofFamily)) return null;
@@ -778,7 +797,7 @@ export class FakeBackend {
         .filter((l) => l.athleteId === athlete.id)
         .map((l) => this.linkView(l))
         .sort((a, b) => a.familiaNombre.toLowerCase().localeCompare(b.familiaNombre.toLowerCase()) || a.vinculoId.localeCompare(b.vinculoId));
-      return { status: 200, body: { deportistaId: athlete.id, versionVinculos: String(athlete.version), vinculos } };
+      return { status: 200, body: { deportistaId: athlete.id, versionVinculos: String(this.adminLinkVersions.get(athlete.id) ?? athlete.version), vinculos } };
     }
     const family = this.families.find((f) => f.id === ofFamily![1]);
     if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
@@ -980,7 +999,7 @@ export class FakeBackend {
         .map(({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }) => ({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }));
       return { status: 200, body: this.page(rows, params) };
     }
-    const links = this.linksRoute(method, path);
+    const links = this.linksRoute(method, path, body);
     if (links) return links;
     const detail = /^\/admin\/familias\/([^/]+)$/.exec(path);
     if (method === 'get' && detail) {

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { useParams } from 'react-router-dom';
 import { AthleteNotFound } from '@/features/admin-deportistas/AthleteNotFound';
 import { AthleteStatusBadge } from '@/features/admin-deportistas/AthleteStatusBadge';
@@ -24,7 +25,8 @@ import {
   PRINCIPAL_FAMILY,
 } from './messages';
 import { athleteDetailPath, familyDetailPath } from './navigation';
-import type { LinkRow } from './schemas';
+import { LinkManagement } from './LinkActions';
+import type { AthleteLinks, LinkRow } from './schemas';
 import { LinkGroups, LinksNotice, LinksReadError, LinkStateBadge, LinkTarget, PrincipalBadge } from './LinksUi';
 
 function FamilyItem({ row }: { row: LinkRow }) {
@@ -37,13 +39,14 @@ function FamilyItem({ row }: { row: LinkRow }) {
   );
 }
 
-function Links({ athlete, rows }: { athlete: AthleteHeader; rows: LinkRow[] }) {
+function Links({ athlete, snapshot, disabled, refresh }: { athlete: AthleteHeader; snapshot: AthleteLinks; disabled: boolean; refresh: () => Promise<unknown> }) {
+  const rows = snapshot.vinculos;
   const { active } = groupLinks(rows);
   return (
     <div className="max-w-3xl space-y-6">
       <SportsLink to={athleteDetailPath(athlete.id)}>{BACK_TO_ATHLETE}</SportsLink>
       <header className="space-y-2">
-        <h1 className="text-3xl font-extrabold tracking-tight">{ATHLETE_TITLE}</h1>
+        <h1 tabIndex={-1} className="text-3xl font-extrabold tracking-tight">{ATHLETE_TITLE}</h1>
         <p className="min-w-0 break-words text-lg font-semibold">
           {athlete.nombre} {athlete.apellido}
         </p>
@@ -58,7 +61,9 @@ function Links({ athlete, rows }: { athlete: AthleteHeader; rows: LinkRow[] }) {
       {rows.length === 0 ? <LinksNotice>{ATHLETE_NO_LINKS}</LinksNotice> : null}
       {rows.length > 0 && active.length === 0 ? <LinksNotice>{ATHLETE_NO_ACTIVE_LINKS}</LinksNotice> : null}
       {active.length > 0 && !active.some(isPrincipalLink) ? <p className="text-sm text-muted">{NO_PRINCIPAL_NOTE}</p> : null}
-      <LinkGroups rows={rows} level="h2" renderItem={(row) => <FamilyItem row={row} />} />
+      <LinkManagement snapshot={snapshot} disabled={disabled} refresh={refresh}>
+        {(actions) => <LinkGroups rows={rows} level="h2" renderItem={(row) => <><FamilyItem row={row} />{actions(row)}</>} />}
+      </LinkManagement>
     </div>
   );
 }
@@ -97,16 +102,23 @@ function LinksScreen() {
       </div>
     );
   }
-  return <Links athlete={header.data} rows={links.data.vinculos} />;
+  return <>
+    {links.isError ? <div role="status" className="space-y-2">
+      <p>No pudimos actualizar los vínculos. Consultá el estado vigente antes de operar.</p>
+      <Button variant="outline" onClick={() => void links.refetch()}>Consultar vínculos vigentes</Button>
+    </div> : null}
+    <Links athlete={header.data} snapshot={links.data} disabled={links.isError || links.isFetching}
+      refresh={() => links.refetch({ throwOnError: true })} />
+  </>;
 }
 
 /**
- * The families linked to ONE athlete, for ONE identity, read-only. Keyed by both, a session that now belongs to someone else, or a different
+ * The families linked to ONE athlete, for ONE identity. Keyed by both, a session that now belongs to someone else, or a different
  * athlete, starts from nothing (new queries, no data of the previous one) instead of keeping what was already drawn.
  */
 export function AdminVinculosDeportistaPage() {
   const session = useSession();
   const { id } = useParams();
-  const identity = session.status === 'authenticated' ? session.user.id : '';
+  const identity = session.status === 'authenticated' ? [session.user.id, session.user.rol, session.user.escuelaId, session.user.familiaId].join('|') : '';
   return <LinksScreen key={`${identity}:${id ?? ''}`} />;
 }
