@@ -372,14 +372,14 @@ describe('links of an athlete: navigation', () => {
   });
 });
 
-describe('links of an athlete: strictly read-only', () => {
-  it('draws no control to create, revoke, reactivate or change a link, not even a disabled one, and sends only reads', async () => {
+describe('links of an athlete: consultation without implicit writes', () => {
+  it('offers no create or reactivate action and sends only reads before confirmation', async () => {
     const { athlete } = seedMixedLinks(backend);
     open(linksPath(athlete.id));
     await screen.findByRole('heading', { level: 2, name: 'Vínculos activos' });
 
     const main = within(screen.getByRole('main'));
-    expect(main.queryAllByRole('button')).toEqual([]);
+    expect(main.queryByRole('button', { name: /crear|vincular|reactivar|agregar/i })).not.toBeInTheDocument();
     expect(main.queryAllByRole('checkbox')).toEqual([]);
     expect(main.queryAllByRole('radio')).toEqual([]);
     expect(main.queryAllByRole('textbox')).toEqual([]);
@@ -390,12 +390,12 @@ describe('links of an athlete: strictly read-only', () => {
     expect(backend.writes()).toEqual([]);
   });
 
-  it('asks only for the header of the athlete and its links, with no personal data in any address', async () => {
+  it('asks for the athlete header, links and family eligibility, with no personal data in any address', async () => {
     const { athlete } = seedMixedLinks(backend);
     open(linksPath(athlete.id));
     await screen.findByRole('heading', { level: 2, name: 'Vínculos activos' });
 
-    const allowed = [new RegExp(`^/admin/deportistas/${athlete.id}$`), new RegExp(`^/admin/deportistas/${athlete.id}/vinculos$`)];
+    const allowed = [new RegExp(`^/admin/deportistas/${athlete.id}$`), new RegExp(`^/admin/deportistas/${athlete.id}/vinculos$`), /^\/admin\/familias\/[^/]+$/];
     for (const request of adminRequests()) {
       expect(request.method).toBe('get');
       expect(allowed.some((pattern) => pattern.test(request.url)), request.url).toBe(true);

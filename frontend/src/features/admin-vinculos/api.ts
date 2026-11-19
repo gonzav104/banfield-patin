@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
-import { apiGet } from '@/lib/http';
-import { athleteLinksSchema, familyAthletesSchema, type AthleteLinks, type LinkRow } from './schemas';
+import { apiGet, apiWrite } from '@/lib/http';
+import { athleteLinksSchema, familyAthletesSchema, linkRowSchema, type AthleteLinks, type LinkRow } from './schemas';
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data);
@@ -28,4 +28,17 @@ export async function getFamilyAthletes(familyId: string): Promise<LinkRow[]> {
   const rows = parse(familyAthletesSchema, await apiGet(`/admin/familias/${encodeURIComponent(familyId)}/deportistas`));
   if (rows.some((row) => row.familiaId !== familyId)) throw mismatch();
   return rows;
+}
+
+export type LinkAction = 'revocar' | 'principal';
+export type ChangeLinkInput = { athleteId: string; familyId: string; linkId: string; action: LinkAction; version: string; familyIds: string[] };
+
+/** A confirmed response must belong to the requested pair AND represent the requested action. Malformed 2xx is uncertain. */
+export async function changeLink(input: ChangeLinkInput): Promise<LinkRow> {
+  const row = parse(linkRowSchema, await apiWrite('post',
+    `/admin/familias/${encodeURIComponent(input.familyId)}/deportistas/${encodeURIComponent(input.athleteId)}/${input.action}`,
+    { versionEsperada: input.version }));
+  if (row.familiaId !== input.familyId || row.deportistaId !== input.athleteId || row.vinculoId !== input.linkId) throw mismatch();
+  if (input.action === 'revocar' ? row.estado !== 'REVOCADO' || row.esPrincipal : row.estado !== 'ACTIVO' || !row.esPrincipal) throw mismatch();
+  return row;
 }

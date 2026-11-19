@@ -398,3 +398,15 @@ sobre una misma base). Se ejecutan los mismos escenarios, sin omitir ni duplicar
 - No se puede distinguir en pantalla *por qué* una invitación no está disponible (vencida, revocada, usada, inválida): el backend lo oculta a propósito.
 - El enlace de invitación solo existe en la respuesta de creación; no hay forma de recuperarlo luego.
 - El bloqueo por intentos fallidos del backend responde igual que unas credenciales incorrectas: la UI no puede distinguirlo.
+
+## Gestión administrativa de vínculos (FE-05/U11-C)
+
+En **Familias vinculadas** del deportista, un administrador puede revocar un vínculo activo o cambiar la familia principal. La ficha familiar conserva su consulta sin controles adicionales.
+
+- Cada operación exige una confirmación; cancelar no escribe. Revocar retira el acceso familiar, conserva el historial y no elige otra principal. Cambiar principal no revoca otras familias ni transfiere al deportista. Solo una familia habilitada con vínculo activo puede ser elegida.
+- La confirmación captura la revisión del GET administrativo, sin actualizarla silenciosamente. Una edición desactualizada exige consultar el estado vigente, revisar una nueva confirmación y confirmarla otra vez. Contención, vínculo no activo y familia inactiva tienen mensajes separados.
+- Ante red, timeout, 5xx o respuesta malformada, el resultado permanece incierto: no se reenvía automáticamente ni se anuncia éxito a partir de una consulta. Incluso al cerrar el diálogo es necesario consultar antes de volver a operar. Solo una respuesta POST válida confirma éxito.
+- El GET de vínculos no informa si la familia está habilitada: se consulta el endpoint familiar existente y se conserva únicamente su elegibilidad en una caché privada y efímera. No se muestran nuevos datos personales ni revisiones.
+- Los diálogos nativos permiten Escape, navegación por teclado y devolución de foco; durante el envío se bloquean la cancelación y los demás controles. Las respuestas de otra identidad no actualizan la caché.
+
+Verificación: `npm test -- src/features/admin-vinculos`, `npm run typecheck`, `npm run lint`, `npm run build`; E2E reales: desde la raíz, `E2E_SHARD=2 bash .github/scripts/frontend-e2e.sh` (Docker/PostgreSQL descartable, Java 21 y Chromium). El escenario de respuesta perdida aplica realmente la escritura antes de cortar únicamente su entrega; los otros escenarios de gestión usan el backend real sin interceptar respuestas.

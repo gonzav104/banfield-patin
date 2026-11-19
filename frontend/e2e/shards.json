@@ -18,7 +18,8 @@
       "familias-detalle-alta.real.spec.ts",
       "familias-listado.real.spec.ts",
       "familias-tutores.real.spec.ts",
-      "vinculos-consulta.real.spec.ts"
+      "vinculos-consulta.real.spec.ts",
+      "vinculos-gestion.real.spec.ts"
     ]
   }
 }
