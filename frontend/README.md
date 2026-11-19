@@ -401,7 +401,7 @@ sobre una misma base). Se ejecutan los mismos escenarios, sin omitir ni duplicar
 
 ## Gestión administrativa de vínculos (FE-05/U11-C)
 
-En **Familias vinculadas** del deportista, un administrador puede revocar un vínculo activo o cambiar la familia principal. La ficha familiar conserva su consulta sin controles adicionales.
+En **Familias vinculadas** del deportista, un administrador puede revocar un vínculo activo o cambiar la familia principal. En U11-C, la ficha familiar conserva su consulta sin controles adicionales; U11-D agrega el selector descrito más abajo.
 
 - Cada operación exige una confirmación; cancelar no escribe. Revocar retira el acceso familiar, conserva el historial y no elige otra principal. Cambiar principal no revoca otras familias ni transfiere al deportista. Solo una familia habilitada con vínculo activo puede ser elegida.
 - La confirmación captura la revisión del GET administrativo, sin actualizarla silenciosamente. Una edición desactualizada exige consultar el estado vigente, revisar una nueva confirmación y confirmarla otra vez. Contención, vínculo no activo y familia inactiva tienen mensajes separados.
@@ -410,3 +410,17 @@ En **Familias vinculadas** del deportista, un administrador puede revocar un ví
 - Los diálogos nativos permiten Escape, navegación por teclado y devolución de foco; durante el envío se bloquean la cancelación y los demás controles. Las respuestas de otra identidad no actualizan la caché.
 
 Verificación: `npm test -- src/features/admin-vinculos`, `npm run typecheck`, `npm run lint`, `npm run build`; E2E reales: desde la raíz, `E2E_SHARD=2 bash .github/scripts/frontend-e2e.sh` (Docker/PostgreSQL descartable, Java 21 y Chromium). El escenario de respuesta perdida aplica realmente la escritura antes de cortar únicamente su entrega; los otros escenarios de gestión usan el backend real sin interceptar respuestas.
+
+
+## Vinculación administrativa de deportistas (FE-05/U11-D)
+
+Desde el detalle de una familia, «Vincular deportistas» abre un selector de deportistas existentes. Reutiliza el listado ADMIN de activos, con búsqueda en memoria y páginas de veinte; mantiene hasta cincuenta seleccionados entre páginas. Solo usa nombre, apellido y DNI enmascarado del resumen: no solicita fichas con DNI/CUIL completos. La consulta cerrada no incorpora lecturas adicionales. Las familias inactivas no pueden abrirlo; los deportistas inactivos y los estados históricos no disponibles no se pueden agregar.
+
+- Diferencia sin vínculo, activo (sin cambios) y revocado (reactivación). La confirmación explica el acceso que obtendrá la familia, sin transferencia, revocación de otras familias ni promesa de relación principal. El backend decide la principal y conserva el identificador/historial de la relación reactivada.
+- Prepara cada revisión con `GET /api/admin/deportistas/{id}/vinculos` y comprueba la elegibilidad familiar. El lote envía una única petición `POST /api/admin/familias/{id}/deportistas`, `{deportistas:[{deportistaId,versionEsperada}]}`; revisiones decimales como cadenas, sin conversión a `Number`. El backend aplica atómicamente entre uno y cincuenta elementos.
+- La confirmación conserva sus revisiones aunque las consultas se actualicen. `EDICION_DESACTUALIZADA` retiene la selección y exige consultar datos vigentes, revisar una nueva confirmación y confirmar otra vez. Contención, familia/deportista inactivos y conflicto de principal tienen mensajes diferenciados. Los detalles por posición se vinculan exclusivamente a la selección enviada; no se reproduce texto arbitrario del servidor.
+- Red, timeout, 5xx o respuesta 2xx inválida son resultados inciertos: no hay reintento automático ni afirmación de fracaso/éxito. Consultar el estado vigente tampoco confirma el resultado anterior: refresca las consultas afectadas bajo la identidad capturada, para que cerrar el diálogo no deje la ficha familiar desactualizada. Solo una respuesta completa validada permite mostrar los totales `CREADO`, `REACTIVADO` y `SIN_CAMBIOS`.
+- Valida cantidad, orden, familia, deportista, identificadores únicos, estado activo, resultado coherente y revisión por elemento; la reactivación conserva el identificador observado. El bloqueo compartido por identidad/familia sobrevive al desmontaje del selector. Un guard opt-in inmediatamente después de obtener CSRF evita despachar bajo otra identidad; los consumidores anteriores de `apiWrite` conservan su comportamiento.
+- El éxito invalida las consultas de vínculos de los deportistas y de todas las familias relacionadas, además de los detalles/listas familiares. Nunca publica una respuesta parcial como un GET completo ni invalida por una respuesta tardía de otra identidad. El diálogo es modal, tiene nombre/descripción accesibles, recorrido de foco, Escape y retorno al disparador.
+
+Pruebas: `link-athletes-api.test.ts`, `link-athletes.test.tsx` y `vinculos-vinculacion.real.spec.ts` (siete escenarios, shard 2). Los E2E recorren navegador → backend real → PostgreSQL descartable; únicamente la pérdida de respuesta y la demora de transporte se interceptan explícitamente. La atomicidad y los estados finales se consultan en el backend real.

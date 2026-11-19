@@ -4,7 +4,7 @@ import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import { ApiError } from '@/lib/api-error';
 import { useIsMutating, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { changeLink, getAthleteLinks, getFamilyAthletes } from './api';
+import { changeLink, getAthleteLinks, getFamilyAthletes, linkFamilyAthletes, type LinkBatchSnapshot } from './api';
 
 /** Private queries are removed on identity changes; sensitive reads live only while observed. */
 export const athleteLinksKey = (athleteId: string) => ['admin', 'athlete-links', athleteId] as const;
@@ -29,7 +29,7 @@ export function useFamilyEligibility(id: string, enabled: boolean) {
   }, enabled, gcTime: 0 });
 }
 
-function linkIdentity(client: QueryClient): string {
+export function linkIdentity(client: QueryClient): string {
   const user = client.getQueryData<AuthUser | null>(sessionKey);
   return user ? [user.id, user.rol, user.escuelaId, user.familiaId, user.mfaPendiente].join('|') : '';
 }
@@ -60,4 +60,30 @@ export function useChangeLink(athleteId: string) {
       ]);
     },
   });
+}
+
+const batchWriteKey = (identity: string, familyId: string) => ['admin', 'family-link-write', identity, familyId] as const;
+export function useFamilyLinkWrite(familyId: string) {
+  const client = useQueryClient();
+  const actor = linkIdentity(client);
+  const key = batchWriteKey(actor, familyId);
+  const pending = useIsMutating({ mutationKey: key }) > 0;
+  // Recovery refreshes observed state, not the outcome of the preceding write.
+  async function refresh(snapshot: LinkBatchSnapshot) {
+    if (!actor || actor !== linkIdentity(client)) return;
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ['admin', 'families'] }),
+      ...snapshot.entries.map((e) => client.invalidateQueries({ queryKey: athleteLinksKey(e.athlete.id) })),
+      ...snapshot.familyIds.flatMap((id) => [client.invalidateQueries({ queryKey: familyAthletesKey(id) }), client.invalidateQueries({ queryKey: familyDetailKey(id) })]),
+    ]);
+  }
+  const mutation = useMutation({ mutationKey: key, retry: false,
+    mutationFn: (snapshot: LinkBatchSnapshot) => linkFamilyAthletes(snapshot, () => !!actor && actor === linkIdentity(client)),
+    onMutate: () => ({ actor }),
+    onSuccess: (_result, snapshot, context) => {
+      if (!context.actor || context.actor !== linkIdentity(client)) return;
+      return refresh(snapshot);
+    },
+  });
+  return { mutation, pending, refresh };
 }
