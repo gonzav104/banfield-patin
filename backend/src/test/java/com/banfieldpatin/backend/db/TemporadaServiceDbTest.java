@@ -89,7 +89,7 @@ class TemporadaServiceDbTest extends BaseTemporadasDb {
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
 		assertThatThrownBy(() -> servicio.obtener(admin, UUID.randomUUID()))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
-		assertThatThrownBy(() -> servicio.activar(admin, deB, DATOS))
+		assertThatThrownBy(() -> servicio.activar(admin, deB, null, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
 		assertThat(activa(deB)).isFalse();
 		assertThat(contarAuditoria(escuelaB, "TEMPORADA_ACTIVADA")).isZero();
@@ -102,7 +102,7 @@ class TemporadaServiceDbTest extends BaseTemporadasDb {
 		UUID vieja = datos.temporada(escuelaA, 2026, true);
 		UUID nueva = datos.temporada(escuelaA, 2027, false);
 
-		TemporadaRespuesta respuesta = servicio.activar(admin, nueva, DATOS);
+		TemporadaRespuesta respuesta = servicio.activar(admin, nueva, vieja, DATOS);
 
 		assertThat(respuesta).isEqualTo(new TemporadaRespuesta(nueva, 2027, true));
 		assertThat(activasDe(escuelaA)).containsExactly(nueva);
@@ -119,7 +119,7 @@ class TemporadaServiceDbTest extends BaseTemporadasDb {
 	void sinTemporadaActivaPreviaActivarFuncionaYLaAnteriorQuedaNulaEnLaAuditoria() {
 		UUID unica = datos.temporada(escuelaA, 2027, false);
 
-		servicio.activar(admin, unica, DATOS);
+		servicio.activar(admin, unica, null, DATOS);
 
 		assertThat(activasDe(escuelaA)).containsExactly(unica);
 		assertThat(jdbc.sql("""
@@ -133,7 +133,7 @@ class TemporadaServiceDbTest extends BaseTemporadasDb {
 		UUID activa = datos.temporada(escuelaA, 2027, true);
 		Object antes = actualizadoEn(activa);
 
-		TemporadaRespuesta respuesta = servicio.activar(admin, activa, DATOS);
+		TemporadaRespuesta respuesta = servicio.activar(admin, activa, null, DATOS);
 
 		assertThat(respuesta).isEqualTo(new TemporadaRespuesta(activa, 2027, true));
 		assertThat(actualizadoEn(activa)).as("sin UPDATE: el trigger no toco actualizado_en").isEqualTo(antes);
@@ -145,7 +145,7 @@ class TemporadaServiceDbTest extends BaseTemporadasDb {
 		UUID activaDeB = datos.temporada(escuelaB, 2026, true);
 		UUID deA = datos.temporada(escuelaA, 2027, false);
 
-		servicio.activar(admin, deA, DATOS);
+		servicio.activar(admin, deA, null, DATOS);
 
 		assertThat(activasDe(escuelaB)).containsExactly(activaDeB);
 		assertThat(activasDe(escuelaA)).containsExactly(deA);

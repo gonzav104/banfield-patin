@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.temporadas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -197,28 +199,66 @@ class TemporadaAdminControllerWebMvcTest {
 
 	// ---------- activacion ----------
 
-	@Test
-	void activarDevuelve200ConLaTemporadaActivaYLaEscuelaDelJwt() throws Exception {
-		when(servicio.activar(any(), eq(id), any())).thenReturn(new TemporadaRespuesta(id, 2027, true));
+	private MockHttpServletRequestBuilder activar(UUID temporada, String json) throws Exception {
+		return conCsrf(post("/api/admin/temporadas/" + temporada + "/activar").contentType(MediaType.APPLICATION_JSON)
+				.content(json)).cookie(admin());
+	}
 
-		mvc.perform(conCsrf(post("/api/admin/temporadas/" + id + "/activar")).cookie(admin())).andExpect(status().isOk())
+	@Test
+	void activarDevuelve200ConLaTemporadaActivaLaEscuelaDelJwtYLaIntencionDelAdmin() throws Exception {
+		UUID vigente = UUID.randomUUID();
+		when(servicio.activar(any(), eq(id), eq(vigente), any())).thenReturn(new TemporadaRespuesta(id, 2027, true));
+
+		mvc.perform(activar(id, "{\"activaEsperadaId\":\"" + vigente + "\"}")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.activa").value(true));
 
 		ArgumentCaptor<UsuarioAutenticado> actor = ArgumentCaptor.forClass(UsuarioAutenticado.class);
-		verify(servicio).activar(actor.capture(), eq(id), any());
+		verify(servicio).activar(actor.capture(), eq(id), eq(vigente), any());
 		assertThat(actor.getValue().escuelaId()).isEqualTo(escuelaId);
 	}
 
 	@Test
-	void activarUnaAjenaDa404YUnConflictoDeConcurrenciaDa409() throws Exception {
-		when(servicio.activar(any(), eq(id), any())).thenThrow(TemporadaAdminService.temporadaNoEncontrada());
-		UUID otra = UUID.randomUUID();
-		when(servicio.activar(any(), eq(otra), any())).thenThrow(TemporadaAdminService.conflictoConcurrente());
+	void activarAdmiteNullComoIntencionDeQueNoHabiaTemporadaActiva() throws Exception {
+		when(servicio.activar(any(), eq(id), isNull(), any())).thenReturn(new TemporadaRespuesta(id, 2027, true));
 
+		mvc.perform(activar(id, "{\"activaEsperadaId\":null}")).andExpect(status().isOk());
+
+		verify(servicio).activar(any(), eq(id), isNull(), any());
+	}
+
+	@Test
+	void activarSinLaIntencionDelAdminOConUnaMalformadaDa400SinLlegarAlServicio() throws Exception {
 		mvc.perform(conCsrf(post("/api/admin/temporadas/" + id + "/activar")).cookie(admin()))
-				.andExpect(status().isNotFound()).andExpect(jsonPath("$.codigo").value("TEMPORADA_NO_ENCONTRADA"));
-		mvc.perform(conCsrf(post("/api/admin/temporadas/" + otra + "/activar")).cookie(admin()))
-				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("CONFLICTO_CONCURRENCIA"));
+				.andExpect(status().isBadRequest());
+		mvc.perform(activar(id, "{}")).andExpect(status().isBadRequest());
+		mvc.perform(activar(id, "{\"activaEsperadaId\":\"no-es-uuid\"}")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		mvc.perform(activar(id, "{\"activaEsperadaId\":123}")).andExpect(status().isBadRequest());
+		mvc.perform(activar(id, "{\"activaEsperadaId\":null,\"escuelaId\":\"" + UUID.randomUUID() + "\"}"))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("SOLICITUD_INVALIDA"));
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void unaIntencionDesactualizadaDa409EdicionDesactualizadaSinEcoDeIds() throws Exception {
+		UUID vigente = UUID.randomUUID();
+		when(servicio.activar(any(), eq(id), any(), any())).thenThrow(TemporadaAdminService.intencionDesactualizada());
+
+		mvc.perform(activar(id, "{\"activaEsperadaId\":\"" + vigente + "\"}")).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
+				.andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(vigente.toString()))));
+	}
+
+	@Test
+	void activarUnaAjenaDa404YUnConflictoDeConcurrenciaDa409() throws Exception {
+		when(servicio.activar(any(), eq(id), any(), any())).thenThrow(TemporadaAdminService.temporadaNoEncontrada());
+		UUID otra = UUID.randomUUID();
+		when(servicio.activar(any(), eq(otra), any(), any())).thenThrow(TemporadaAdminService.conflictoConcurrente());
+
+		mvc.perform(activar(id, "{\"activaEsperadaId\":null}")).andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.codigo").value("TEMPORADA_NO_ENCONTRADA"));
+		mvc.perform(activar(otra, "{\"activaEsperadaId\":null}")).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("CONFLICTO_CONCURRENCIA"));
 	}
 
 	// ---------- autenticacion, autorizacion y CSRF ----------

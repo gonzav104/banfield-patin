@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
+import com.banfieldpatin.backend.temporadas.dto.TemporadaActivacionSolicitud;
 import com.banfieldpatin.backend.temporadas.dto.TemporadaRespuesta;
 import com.banfieldpatin.backend.temporadas.dto.TemporadaSolicitud;
 
@@ -58,7 +59,7 @@ public class TemporadaAdminController {
 
 	@PostMapping("/{id}/activar")
 	public TemporadaRespuesta activar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-			HttpServletRequest request) {
-		return servicio.activar(UsuarioAutenticado.desde(jwt), id, DatosSolicitud.de(request));
+			@RequestBody TemporadaActivacionSolicitud solicitud, HttpServletRequest request) {
+		return servicio.activar(UsuarioAutenticado.desde(jwt), id, solicitud.activaEsperadaId(), DatosSolicitud.de(request));
 	}
 }

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 
+import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.temporadas.dto.TemporadaRespuesta;
 
 import ch.qos.logback.classic.Level;
@@ -62,12 +63,13 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 	// ---------- dos activaciones de temporadas distintas ----------
 
 	@Test
-	void dosActivacionesDeTemporadasDistintasUnaDetrasDeLaOtraAmbasTienenExitoYQuedaUnaSolaActivaLaUltima() throws Exception {
+	void dosActivacionesEncadenadasDeTemporadasDistintasAmbasTienenExitoYQuedaUnaSolaActivaLaUltima() throws Exception {
 		UUID t1 = datos.temporada(escuelaA, 2026, false);
 		UUID t2 = datos.temporada(escuelaA, 2027, false);
 
-		Retencion a = new Retencion(() -> servicio.activar(admin, t1, DATOS));
-		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t2, DATOS));
+		// B es un cliente que ya observo la activacion de A (t1): su intencion coincide con lo que A deja confirmado.
+		Retencion a = new Retencion(() -> servicio.activar(admin, t1, null, DATOS));
+		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t2, t1, DATOS));
 		String sentencia;
 		try {
 			sentencia = assertBloqueada(b);
@@ -91,19 +93,26 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 	}
 
 	@Test
-	void rondasDeHilosLibresActivandoDosTemporadasDejanSiempreExactamenteUnaActiva() throws Exception {
+	void rondasDeHilosLibresActivandoDosTemporadasConLaMismaIntencionDejanExactamenteUnaActivaYUnConflictoDeIntencion()
+			throws Exception {
 		for (int ronda = 0; ronda < RONDAS; ronda++) {
 			UUID x = datos.temporada(escuelaA, 2030 + ronda * 2, false);
 			UUID y = datos.temporada(escuelaA, 2031 + ronda * 2, false);
+			UUID observada = activasDe(escuelaA).stream().findFirst().orElse(null);
+			long antes = contarAuditoria(escuelaA, "TEMPORADA_ACTIVADA");
 
-			List<Object> resultados = enParalelo(() -> servicio.activar(admin, x, DATOS),
-					() -> servicio.activar(admin, y, DATOS));
+			List<Object> resultados = enParalelo(() -> servicio.activar(admin, x, observada, DATOS),
+					() -> servicio.activar(admin, y, observada, DATOS));
 
-			assertThat(resultados).as("ronda " + ronda).allSatisfy(r -> assertThat(r).isInstanceOf(TemporadaRespuesta.class));
-			assertThat(activasDe(escuelaA)).as("ronda " + ronda).hasSize(1).containsAnyOf(x, y);
+			// Los dos admins observaron lo mismo: uno gana; el otro decidio sobre un estado que ya no es el vigente.
+			assertThat(resultados).as("ronda " + ronda).filteredOn(r -> r instanceof TemporadaRespuesta).hasSize(1);
+			assertThat(resultados).as("ronda " + ronda).filteredOn(r -> r instanceof ExcepcionNegocio).singleElement()
+					.satisfies(e -> assertThat(((ExcepcionNegocio) e).getCodigo()).isEqualTo("EDICION_DESACTUALIZADA"));
+			TemporadaRespuesta ganadora = (TemporadaRespuesta) resultados.stream()
+					.filter(r -> r instanceof TemporadaRespuesta).findFirst().orElseThrow();
+			assertThat(activasDe(escuelaA)).as("ronda " + ronda).containsExactly(ganadora.id());
+			assertThat(contarAuditoria(escuelaA, "TEMPORADA_ACTIVADA") - antes).as("ronda " + ronda).isEqualTo(1);
 		}
-		// Cada activacion real deja exactamente un evento: dos por ronda (la segunda es la que desactivo a la primera).
-		assertThat(contarAuditoria(escuelaA, "TEMPORADA_ACTIVADA")).isEqualTo(RONDAS * 2L);
 		sinViolacionesNiErrores();
 	}
 
@@ -114,8 +123,8 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 		UUID previa = datos.temporada(escuelaA, 2026, true);
 		UUID t = datos.temporada(escuelaA, 2027, false);
 
-		Retencion a = new Retencion(() -> servicio.activar(admin, t, DATOS));
-		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t, DATOS));
+		Retencion a = new Retencion(() -> servicio.activar(admin, t, previa, DATOS));
+		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t, previa, DATOS));
 		try {
 			assertBloqueada(b);
 		} finally {
@@ -135,10 +144,11 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 	void rondasDeHilosLibresActivandoLaMismaTemporadaAuditanExactamenteUnaVez() throws Exception {
 		for (int ronda = 0; ronda < RONDAS; ronda++) {
 			UUID t = datos.temporada(escuelaA, 2030 + ronda, false);
+			UUID observada = activasDe(escuelaA).stream().findFirst().orElse(null);
 			long antes = contarAuditoria(escuelaA, "TEMPORADA_ACTIVADA");
 
-			List<Object> resultados = enParalelo(() -> servicio.activar(admin, t, DATOS),
-					() -> servicio.activar(admin, t, DATOS), () -> servicio.activar(admin, t, DATOS));
+			List<Object> resultados = enParalelo(() -> servicio.activar(admin, t, observada, DATOS),
+					() -> servicio.activar(admin, t, observada, DATOS), () -> servicio.activar(admin, t, observada, DATOS));
 
 			assertThat(resultados).as("ronda " + ronda).allSatisfy(r -> assertThat(r).isEqualTo(new TemporadaRespuesta(t,
 					2030 + (int) (jdbc.sql("SELECT anio FROM gestion_patin.temporada WHERE id = :i").param("i", t)
@@ -156,8 +166,8 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 		UUID deA = datos.temporada(escuelaA, 2027, false);
 		UUID deB = datos.temporada(escuelaB, 2027, false);
 
-		try (Retencion a = new Retencion(() -> servicio.activar(admin, deA, DATOS))) {
-			Object resultadoB = enOtroHilo(() -> servicio.activar(adminDeB, deB, DATOS)).get(SIN_ESPERA_SEGUNDOS, TimeUnit.SECONDS);
+		try (Retencion a = new Retencion(() -> servicio.activar(admin, deA, null, DATOS))) {
+			Object resultadoB = enOtroHilo(() -> servicio.activar(adminDeB, deB, null, DATOS)).get(SIN_ESPERA_SEGUNDOS, TimeUnit.SECONDS);
 
 			assertThat(resultadoB).isEqualTo(new TemporadaRespuesta(deB, 2027, true));
 			assertThat(activa(deA)).as("A todavia no confirmo").isFalse();
@@ -171,7 +181,7 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 	void unaActivacionRetenidaNoFrenaOperacionesConClaveForaneaHaciaLaMismaEscuela() throws Exception {
 		UUID deA = datos.temporada(escuelaA, 2027, false);
 
-		try (Retencion a = new Retencion(() -> servicio.activar(admin, deA, DATOS))) {
+		try (Retencion a = new Retencion(() -> servicio.activar(admin, deA, null, DATOS))) {
 			// Insertar una familia y una temporada toma FOR KEY SHARE sobre la fila de la escuela (comprobacion de la FK).
 			Future<Object> familia = enOtroHilo(() -> datos.familia(escuelaA, "Mientras se activa", true));
 			Future<Object> otraTemporada = enOtroHilo(() -> datos.temporada(escuelaA, 2028, false));

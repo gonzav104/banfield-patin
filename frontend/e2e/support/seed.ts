@@ -181,8 +181,14 @@ export class AdminSeed {
     return page.contenido.find((t) => t.anio === anio) ?? (await this.post<{ id: string; anio: number; activa: boolean }>('/api/admin/temporadas', { anio }, `create season ${anio}`));
   }
 
+  /**
+   * Since FE-05/U13 the activation must carry the admin's intent: the id of the season observed as active (null when none).
+   * It is read just before and sent unchanged, so a stale decision would be rejected with 409 EDICION_DESACTUALIZADA.
+   */
   async activateSeason(seasonId: string): Promise<void> {
-    await this.post(`/api/admin/temporadas/${seasonId}/activar`, {}, 'activate season');
+    const page = await expectOk<{ contenido: { id: string; activa: boolean }[] }>(await this.admin.get('/api/admin/temporadas?page=0&size=100'), 'list seasons');
+    const observedActive = page.contenido.find((t) => t.activa)?.id ?? null;
+    await this.post(`/api/admin/temporadas/${seasonId}/activar`, { activaEsperadaId: observedActive }, 'activate season');
   }
 
   /** The sports data of one athlete in one season (what the family sees as «Temporada vigente» when that season is active). */

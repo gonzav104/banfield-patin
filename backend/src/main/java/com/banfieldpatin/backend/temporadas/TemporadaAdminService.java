@@ -2,6 +2,7 @@ package com.banfieldpatin.backend.temporadas;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -33,9 +34,12 @@ import com.banfieldpatin.backend.temporadas.dto.TemporadaSolicitud;
  * <p>Activar es la unica operacion concurrente. Orden fijo: (1) lectura escalar sin bloqueo: si ya esta activa, 200 sin
  * escrituras ni auditoria; (2) bloqueo de la fila de la escuela ({@code FOR NO KEY UPDATE}, con espera acotada), que serializa
  * las activaciones de ESA escuela y de ninguna otra; (3) con el bloqueo tomado se vuelve a leer el estado, porque otra
- * transaccion pudo activarla mientras se esperaba (tambien responde 200 sin auditar); (4) se desactiva la activa anterior y
- * se hace flush ANTES de activar la nueva, porque el indice parcial unico no es diferible; (5) auditoria en la misma
- * transaccion. El indice parcial queda como red de seguridad: una violacion se traduce a 409 CONFLICTO_CONCURRENCIA.
+ * transaccion pudo activarla mientras se esperaba (tambien responde 200 sin auditar); (4) la intencion del ADMIN
+ * ({@code activaEsperadaId}: la activa que observo, o null) se compara con la activa CONFIRMADA: si difiere, 409
+ * EDICION_DESACTUALIZADA sin escribir ni auditar (una decision sobre un estado viejo no pisa un cambio posterior);
+ * (5) se desactiva la activa anterior y se hace flush ANTES de activar la nueva, porque el indice parcial unico no es
+ * diferible; (6) auditoria en la misma transaccion. Pedir la que ya es la activa es idempotente aunque la intencion este
+ * vieja: el resultado pedido ya es el vigente y no hay nada que pisar. El indice parcial queda como red de seguridad: una violacion se traduce a 409 CONFLICTO_CONCURRENCIA.
  */
 @Service
 public class TemporadaAdminService {
@@ -76,6 +80,15 @@ public class TemporadaAdminService {
 				"Otra activacion de temporadas esta en curso. Reintentá en unos segundos.");
 	}
 
+	/**
+	 * La temporada activa ya no es la que el ADMIN observo al decidir. Mismo codigo que el resto de las ediciones
+	 * desactualizadas; el mensaje no incluye ids ni anios (ni de la activa vigente ni de la esperada).
+	 */
+	public static ExcepcionNegocio intencionDesactualizada() {
+		return new ExcepcionNegocio(HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA",
+				"La temporada activa cambió. Volvé a cargar las temporadas antes de activar.");
+	}
+
 	@Transactional(readOnly = true)
 	public Pagina<TemporadaRespuesta> listar(UsuarioAutenticado admin, Pageable pageable) {
 		return Pagina.de(temporadas.listar(admin.escuelaId(), pageable), TemporadaRespuesta::de);
@@ -114,9 +127,9 @@ public class TemporadaAdminService {
 	 * la excepcion (su mensaje nombra tablas y filas y jamas se imprime).
 	 */
 	@Transactional
-	public TemporadaRespuesta activar(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
+	public TemporadaRespuesta activar(UsuarioAutenticado admin, UUID id, UUID activaEsperadaId, DatosSolicitud datos) {
 		try {
-			return activarConBloqueo(admin, id, datos);
+			return activarConBloqueo(admin, id, activaEsperadaId, datos);
 		} catch (PessimisticLockingFailureException e) {
 			log.warn("Conflicto de concurrencia por bloqueo de base de datos (409): operacion=TemporadaAdminService.activar excepcion={}",
 					e.getClass().getName());
@@ -124,7 +137,8 @@ public class TemporadaAdminService {
 		}
 	}
 
-	private TemporadaRespuesta activarConBloqueo(UsuarioAutenticado admin, UUID id, DatosSolicitud datos) {
+	private TemporadaRespuesta activarConBloqueo(UsuarioAutenticado admin, UUID id, UUID activaEsperadaId,
+			DatosSolicitud datos) {
 		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		TemporadaVista previa = temporadas.vistaDe(id, escuelaId).orElseThrow(TemporadaAdminService::temporadaNoEncontrada);
@@ -140,6 +154,12 @@ public class TemporadaAdminService {
 			return TemporadaRespuesta.de(temporada);
 		}
 		Temporada anterior = temporadas.activaDe(escuelaId).orElse(null);
+		// La intencion del ADMIN se compara con el estado CONFIRMADO, ya con el bloqueo tomado: si otra activacion se confirmo
+		// mientras se esperaba, esta decision se tomo sobre un estado viejo y no se escribe ni se audita nada.
+		UUID activaVigenteId = anterior == null ? null : anterior.getId();
+		if (!Objects.equals(activaEsperadaId, activaVigenteId)) {
+			throw intencionDesactualizada();
+		}
 		if (anterior != null) {
 			anterior.desactivar();
 			guardar("activar", anterior);
