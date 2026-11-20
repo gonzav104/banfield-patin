@@ -2,6 +2,10 @@ package com.banfieldpatin.backend.compartido.auditoria;
 
 public enum AccionAuditoria {
     DOCUMENTO_CARGADO,
+	/** Descarga administrativa autorizada y verificada, registrada antes de transmitir el primer byte. */
+	DOCUMENTO_DESCARGADO,
+	/** Descarga rechazada porque el objeto leído no coincide con el tamaño o el SHA-256 del manifiesto. */
+	DOCUMENTO_INTEGRIDAD_FALLIDA,
 	DOCUMENTOS_CONSULTADOS,
 	LOGIN_EXITOSO,
 	LOGIN_FALLIDO,
