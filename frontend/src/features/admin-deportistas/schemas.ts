@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { documentStatusSchema } from '@/features/familia/schemas';
 import { pageSchema } from '@/features/invitations/schemas';
 
 /** Values accepted by `?estado=` of GET /api/admin/deportistas. The backend default is ACTIVOS, so the client always sends one. */
@@ -82,3 +83,19 @@ export interface AthleteUpdateInput {
   telefonoContacto: string | null;
   emailFederativo: string | null;
 }
+
+/**
+ * One current (vigente) document of an athlete as GET /api/admin/deportistas/{id}/documentos lists it (DocumentoMetadatos). Only
+ * what the screen shows is read: the season, the expiry and the `vigente` flag are not. The id is used in a path, so it must have
+ * the shape of an id. `motivoObservacion` is only shown for OBSERVADO. The metadata carries no MIME type and no file name.
+ */
+export const adminDocumentSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/),
+  tipo: z.string(),
+  estado: documentStatusSchema,
+  creadoEn: z.string(),
+  motivoObservacion: z.string().nullable().optional(),
+});
+export type AdminDocument = z.infer<typeof adminDocumentSchema>;
+
+export const adminDocumentPageSchema = z.object({ contenido: z.array(adminDocumentSchema), totalElementos: z.number() });

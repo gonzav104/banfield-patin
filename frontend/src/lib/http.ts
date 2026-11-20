@@ -1,4 +1,4 @@
-import axios, { isAxiosError } from 'axios';
+import axios, { AxiosError, AxiosHeaders, isAxiosError } from 'axios';
 import { ApiError } from './api-error';
 
 /**
@@ -40,20 +40,20 @@ function requestPath(error: unknown): string {
   return url.split('?')[0] ?? '';
 }
 
-http.interceptors.response.use(
-  (response) => response,
-  (error: unknown) => {
-    const apiError = ApiError.from(error);
-    if (apiError.kind === 'unauthenticated') {
-      if (apiError.code === 'NO_AUTENTICADO') {
-        sessionEventListener?.('lost');
-      } else if (apiError.code === null && !NO_SESSION_CHECK.has(requestPath(error))) {
-        sessionEventListener?.('suspect');
-      }
+/** Normalises a failed request into an ApiError and raises the session events it implies. */
+function rejectAsApiError(error: unknown): Promise<never> {
+  const apiError = ApiError.from(error);
+  if (apiError.kind === 'unauthenticated') {
+    if (apiError.code === 'NO_AUTENTICADO') {
+      sessionEventListener?.('lost');
+    } else if (apiError.code === null && !NO_SESSION_CHECK.has(requestPath(error))) {
+      sessionEventListener?.('suspect');
     }
-    return Promise.reject(apiError);
-  },
-);
+  }
+  return Promise.reject(apiError);
+}
+
+http.interceptors.response.use((response) => response, rejectAsApiError);
 
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const DEFAULT_CSRF_HEADER = 'X-XSRF-TOKEN';
@@ -95,6 +95,12 @@ export interface WriteOptions {
   onUploadProgress?: (fraction: number) => void;
 }
 
+/** Extra headers plus the CSRF header, which an extra header with the same name (in any case) can never replace. */
+function withCsrfHeader(headers: Record<string, string> | undefined, headerName: string, token: string): Record<string, string> {
+  const extra = Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => name.toLowerCase() !== headerName.toLowerCase()));
+  return { ...extra, [headerName]: token };
+}
+
 /** State-changing request with a fresh CSRF header. Never retried automatically: a failed write is ambiguous. */
 export async function apiWrite<T = void>(
   method: 'post' | 'put' | 'patch' | 'delete',
@@ -105,13 +111,12 @@ export async function apiWrite<T = void>(
 ): Promise<T> {
   const { headerName, token } = await fetchCsrf();
   beforeWrite?.();
-  const extra = Object.fromEntries(Object.entries(options.headers ?? {}).filter(([name]) => name.toLowerCase() !== headerName.toLowerCase()));
   const progress = options.onUploadProgress;
   const response = await http.request<T>({
     method,
     url,
     data,
-    headers: { ...extra, [headerName]: token },
+    headers: withCsrfHeader(options.headers, headerName, token),
     ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
     ...(progress ? { onUploadProgress: (event) => event.total && progress(Math.min(event.loaded / event.total, 1)) } : {}),
   });
@@ -121,4 +126,76 @@ export async function apiWrite<T = void>(
 export async function apiGet<T>(url: string): Promise<T> {
   const response = await http.get<T>(url);
   return response.data;
+}
+
+/** Optional settings of a binary read. `headers` can never replace the CSRF header; `timeout` overrides the 60 s default. */
+export interface BlobOptions {
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+
+/** A binary answer, kept in memory only. `contentType` is the media type without parameters, lower-cased (null when absent). */
+export interface BlobResponse {
+  blob: Blob;
+  contentType: string | null;
+  /** The raw Content-Disposition header (null when absent or unreadable). The caller decides what name, if any, to trust. */
+  contentDisposition: string | null;
+}
+
+/** Downloads of private files are larger than JSON answers: a slow connection needs more than the 15 s default. */
+export const BLOB_TIMEOUT_MS = 60_000;
+/** An error body bigger than this is not a JSON error of the API: it is never read. */
+const MAX_ERROR_BODY_BYTES = 64 * 1024;
+
+/** FileReader instead of `Blob.text()`, which some runtimes (jsdom among them) do not implement. */
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error ?? new Error('unreadable'));
+    reader.readAsText(blob);
+  });
+}
+
+async function readJsonError(data: unknown): Promise<unknown> {
+  if (!(data instanceof Blob) || data.size === 0 || data.size > MAX_ERROR_BODY_BYTES) return {};
+  try {
+    const parsed: unknown = JSON.parse(await readBlobText(data));
+    return parsed !== null && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {}; // not JSON (for example a proxy page): the error keeps its status and no code
+  }
+}
+
+/**
+ * GET of a private binary file with a fresh CSRF header (some file routes require it on reads, to keep a third-party page from
+ * triggering an audited access). Never retried automatically: every successful read may be an audited access. Every status is
+ * accepted at the transport level so that an error body, which arrives as a Blob, is read as JSON BEFORE it is normalised: the
+ * caller gets the same `ApiError` (code included) and the same session events as with any other request. The server text is never
+ * surfaced by this function; only `codigo` drives the UI.
+ */
+export async function apiGetBlob(url: string, options: BlobOptions = {}): Promise<BlobResponse> {
+  const { headerName, token } = await fetchCsrf();
+  const response = await http.request<unknown>({
+    method: 'get',
+    url,
+    responseType: 'blob',
+    headers: withCsrfHeader(options.headers, headerName, token),
+    timeout: options.timeout ?? BLOB_TIMEOUT_MS,
+    validateStatus: () => true,
+  });
+  if (response.status < 200 || response.status >= 300) {
+    const data = await readJsonError(response.data);
+    const failed = new AxiosError(`Request failed with status code ${response.status}`, AxiosError.ERR_BAD_RESPONSE, response.config, response.request, {
+      ...response,
+      data,
+    });
+    return rejectAsApiError(failed);
+  }
+  if (!(response.data instanceof Blob)) throw new ApiError('server', 'El servidor respondió con un formato inesperado.');
+  const headers = AxiosHeaders.from(response.headers as Record<string, string>);
+  const rawType = headers.get('content-type');
+  const contentType = typeof rawType === 'string' ? (rawType.split(';')[0]?.trim().toLowerCase() ?? '') || null : null;
+  const rawDisposition = headers.get('content-disposition');
+  return { blob: response.data, contentType, contentDisposition: typeof rawDisposition === 'string' ? rawDisposition : null };
 }

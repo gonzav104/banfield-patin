@@ -1,7 +1,12 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
-import { apiGet, apiWrite } from '@/lib/http';
-import { athleteDetailSchema, athletePageSchema, type AthleteDetail, type AthleteInput, type AthletePage, type AthleteStatusFilter, type AthleteUpdateInput } from './schemas';
+import { apiGet, apiGetBlob, apiWrite } from '@/lib/http';
+import {
+  adminDocumentPageSchema,
+  athleteDetailSchema, athletePageSchema,
+  type AdminDocument,
+  type AthleteDetail,
+  type AthleteInput, type AthletePage, type AthleteStatusFilter, type AthleteUpdateInput } from './schemas';
 
 export const ATHLETE_PAGE_SIZE = 20;
 /** The most the backend returns in one page (Pagina.TAMANIO_MAXIMO): the verification of an uncertain creation asks for all of it. */
@@ -66,4 +71,45 @@ export async function changeAthleteStatus(input: { id: string; action: AthleteSt
     athleteDetailSchema,
     await apiWrite('post', `/admin/deportistas/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }),
   );
+}
+
+/** Every current document of an athlete fits in one page: there is at most one per type. */
+export const ATHLETE_DOCUMENTS_PAGE_SIZE = 100;
+
+/** GET /api/admin/deportistas/{id}/documentos: metadata of the CURRENT documents only (no file, no name, no MIME type). */
+export async function listAthleteDocuments(athleteId: string): Promise<AdminDocument[]> {
+  const query = new URLSearchParams({ page: '0', size: String(ATHLETE_DOCUMENTS_PAGE_SIZE) });
+  return parse(adminDocumentPageSchema, await apiGet(`/admin/deportistas/${encodeURIComponent(athleteId)}/documentos?${query.toString()}`)).contenido;
+}
+
+/**
+ * A document file, in memory only. The kind comes from the Content-Type of the answer, against an allow-list: anything else is
+ * `unsupported` and its bytes are dropped (never rendered, never offered for download).
+ */
+export type DocumentFile = { kind: 'image'; blob: Blob } | { kind: 'pdf'; blob: Blob; fileName: string } | { kind: 'unsupported' };
+
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png']);
+export const FALLBACK_PDF_NAME = 'documento.pdf';
+const SAFE_PDF_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.pdf$/i;
+
+/** The neutral name the server put in Content-Disposition, only when it is a plain «name.pdf»; otherwise `documento.pdf`. */
+export function pdfFileName(contentDisposition: string | null): string {
+  const match = contentDisposition ? /filename="([^"]*)"/i.exec(contentDisposition) ?? /filename=([^;\s]+)/i.exec(contentDisposition) : null;
+  const name = match?.[1]?.trim() ?? '';
+  return SAFE_PDF_NAME.test(name) ? name : FALLBACK_PDF_NAME;
+}
+
+/**
+ * GET /api/admin/deportistas/{athleteId}/documentos/{documentId}/archivo, with the CSRF header the route requires. Every successful
+ * answer is an AUDITED access on the server: the caller never retries it by itself. Not cached anywhere (no query cache).
+ */
+export async function fetchAthleteDocumentFile(athleteId: string, documentId: string): Promise<DocumentFile> {
+  const { blob, contentType, contentDisposition } = await apiGetBlob(
+    `/admin/deportistas/${encodeURIComponent(athleteId)}/documentos/${encodeURIComponent(documentId)}/archivo`,
+  );
+  if (contentType && IMAGE_TYPES.has(contentType)) return { kind: 'image', blob: blob.type === contentType ? blob : new Blob([blob], { type: contentType }) };
+  if (contentType === 'application/pdf') {
+    return { kind: 'pdf', blob: blob.type === contentType ? blob : new Blob([blob], { type: contentType }), fileName: pdfFileName(contentDisposition) };
+  }
+  return { kind: 'unsupported' };
 }

@@ -53,6 +53,13 @@ export interface FakeDocumentUpload {
   status: number;
 }
 
+/** One read of a document file by an administrator (the mock's view of the DOCUMENTO_DESCARGADO audit). */
+export interface FakeDocumentDownload {
+  athleteId: string;
+  documentId: string;
+  status: number;
+}
+
 export type FakeInvitationStatus = 'PENDIENTE' | 'USADA' | 'REVOCADA' | 'EXPIRADA';
 
 interface FakeFamily {
@@ -229,8 +236,12 @@ export class FakeBackend {
   private athletes = new Map<string, FakeAthlete>();
   private documents = new Map<string, FakeDocument[]>();
   private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string }>();
+  /** The bytes of a stored document, by document id (an upload stores what it received). */
+  private documentFiles = new Map<string, { file: Blob; disposition: string | null }>();
   /** Every upload that reached the (mock) server, in order. */
   readonly documentUploads: FakeDocumentUpload[] = [];
+  /** Every request for a document file that reached the (mock) server past CSRF and session, in order. */
+  readonly documentDownloads: FakeDocumentDownload[] = [];
   /** Mirrors `DOCUMENTOS_CARGA_HABILITADA`: off by default, like the real backend. */
   documentUpload: { enabled: boolean; maxBytes: number } = { enabled: false, maxBytes: 5_000_000 };
   /** Mirrors FRONTEND_URL_BASE: when null the backend returns `enlaceRegistro: null`. */
@@ -1259,6 +1270,59 @@ export class FakeBackend {
   }
 
   /**
+   * The bytes the server will send for a document (GET /admin/deportistas/{id}/documentos/{documentId}/archivo), with the
+   * Content-Type of the Blob and, by default, a neutral `attachment` name. A document without bytes gets a tiny PNG.
+   */
+  attachDocumentFile(documentId: string, file: Blob, disposition: string | null = defaultDisposition(file.type)): this {
+    this.documentFiles.set(documentId, { file, disposition });
+    return this;
+  }
+
+  /** Mirrors the list of current documents (GET /familia/... and GET /admin/deportistas/{id}/documentos): motivo only for OBSERVADO. */
+  private currentDocumentsPage(athleteId: string, params: URLSearchParams) {
+    const contenido = this.documentsOf(athleteId).map((d) => ({
+      ...d,
+      temporadaId: null,
+      vigente: true,
+      fechaVencimiento: null,
+      motivoObservacion: d.estado === 'OBSERVADO' ? d.motivoObservacion : null,
+    }));
+    return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
+  }
+
+  /**
+   * Mirrors the ADMIN document routes (U16): the list of current documents and the file of one of them. The file route requires the
+   * CSRF header even though it is a GET (D2), then the session and the role; one 404 DOCUMENTO_NO_ENCONTRADO for an unknown athlete or a
+   * document that is not a current one of THAT athlete. It is a MOCK: integrity and audit failures are simulated with `override`.
+   */
+  private adminDocumentsRoute(
+    method: string,
+    path: string,
+    params: URLSearchParams,
+    current: FakeUser | undefined,
+    csrfHeader: string | null,
+  ): { status: number; body?: unknown; headers?: Record<string, string> } | null {
+    const list = /^\/admin\/deportistas\/([^/]+)\/documentos$/.exec(path);
+    const file = /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
+    if (method !== 'get' || (!list && !file)) return null;
+    if (file && (!csrfHeader || csrfHeader !== this.csrfToken)) return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
+    if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+    if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+    if (list) {
+      if (!this.adminAthletes.some((a) => a.id === list[1])) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      return this.currentDocumentsPage(list[1]!, params);
+    }
+    const [, athleteId, documentId] = file!;
+    const known = this.adminAthletes.some((a) => a.id === athleteId) && this.documentsOf(athleteId!).some((d) => d.id === documentId);
+    this.documentDownloads.push({ athleteId: athleteId!, documentId: documentId!, status: known ? 200 : 404 });
+    if (!known) return this.error(404, 'DOCUMENTO_NO_ENCONTRADO', 'El documento no existe.');
+    const stored = this.documentFiles.get(documentId!) ?? { file: new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }), disposition: defaultDisposition('image/png') };
+    const headers: Record<string, string> = { 'content-type': stored.file.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    if (stored.disposition !== null) headers['content-disposition'] = stored.disposition;
+    return { status: 200, body: stored.file, headers };
+  }
+
+  /**
    * Mirrors POST /api/familia/deportistas/{id}/documentos for the DNI types: CSRF and session are checked by `route`.
    * The same Idempotency-Key with the same athlete, type, size and MIME returns the SAME document (200) and stores nothing
    * new; with anything else it is a 409, like a second DNI of a type that already has a current one. It is a MOCK: the real
@@ -1299,6 +1363,7 @@ export class FakeBackend {
       return this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
     }
     const created = this.seedDocument(athleteId, { tipo, estado: 'CARGADO', creadoEn: new Date().toISOString() });
+    this.attachDocumentFile(created.id, archivo);
     this.uploadKeys.set(key, { athleteId, tipo, size: archivo.size, type: archivo.type, documentId: created.id });
     record(201);
     return { status: 201, body: created };
@@ -1332,14 +1397,7 @@ export class FakeBackend {
       const id = documents[1]!;
       if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
       if (!family || family.links.get(id) !== true) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
-      const contenido = this.documentsOf(id).map((d) => ({
-        ...d,
-        temporadaId: null,
-        vigente: true,
-        fechaVencimiento: null,
-        motivoObservacion: d.estado === 'OBSERVADO' ? d.motivoObservacion : null,
-      }));
-      return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
+      return this.currentDocumentsPage(id, params);
     }
 
     if (path === '/familia/mi-familia') {
@@ -1444,22 +1502,27 @@ export class FakeBackend {
     }
 
     // The answer is computed NOW (with the identity and data of this moment); a held request only delays its delivery.
-    const result = this.route(method, url, body, csrfHeader, idempotencyKey);
+    const result: { status: number; body?: unknown; headers?: Record<string, string> } = this.route(method, url, body, csrfHeader, idempotencyKey);
     const holdIndex = this.holds.findIndex((h) => h.method === method && h.url === url);
     if (holdIndex >= 0) {
       const [hold] = this.holds.splice(holdIndex, 1);
       return new Promise((resolve, reject) => {
         hold!.deliver = () => {
-          void this.respond(config, result.status, result.body).then(resolve, reject);
+          void this.respond(config, result.status, result.body, result.headers).then(resolve, reject);
         };
       });
     }
-    return this.respond(config, result.status, result.body);
+    return this.respond(config, result.status, result.body, result.headers);
   };
 
-  private respond(config: InternalAxiosRequestConfig, status: number, data: unknown) {
-    const response = { data, status, statusText: String(status), headers: {}, config, request: {} };
-    if (status >= 400) {
+  /**
+   * Like a browser adapter: a request with `responseType: 'blob'` receives every body, an error JSON included, as a Blob; and the
+   * request's own `validateStatus` decides what is an error (the default one rejects everything outside 2xx).
+   */
+  private respond(config: InternalAxiosRequestConfig, status: number, data: unknown, headers: Record<string, string> = {}) {
+    const body = config.responseType === 'blob' && !(data instanceof Blob) && data !== undefined ? toBlob(data) : data;
+    const response = { data: body, status, statusText: String(status), headers, config, request: {} };
+    if (config.validateStatus ? !config.validateStatus(status) : status >= 400) {
       return Promise.reject(new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_RESPONSE', config, {}, response));
     }
     return Promise.resolve(response);
@@ -1483,7 +1546,13 @@ export class FakeBackend {
     };
   }
 
-  private route(method: string, url: string, body: unknown, csrfHeader: string | null, idempotencyKey: string | null = null): { status: number; body?: unknown } {
+  private route(
+    method: string,
+    url: string,
+    body: unknown,
+    csrfHeader: string | null,
+    idempotencyKey: string | null = null,
+  ): { status: number; body?: unknown; headers?: Record<string, string> } {
     if (method === 'get' && url === '/auth/csrf') {
       if (!this.csrfToken) this.setCsrfCookie(`csrf-${this.requests.length}`);
       return { status: 200, body: { headerName: 'X-XSRF-TOKEN', token: `masked-${this.csrfToken}` } };
@@ -1536,6 +1605,8 @@ export class FakeBackend {
     }
 
     const parsed = new URL(url, 'http://fake.local');
+    const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader);
+    if (adminDocuments) return adminDocuments;
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);
     if (handled) return handled;
     const portal = this.portalRoute(method, parsed.pathname, parsed.searchParams, current, body, idempotencyKey);
@@ -1543,4 +1614,14 @@ export class FakeBackend {
 
     return this.error(404, 'RECURSO_NO_ENCONTRADO');
   }
+}
+
+/** The neutral name the mock sends for a stored file: never the name the family chose. */
+function defaultDisposition(type: string): string {
+  const extension = type === 'application/pdf' ? 'pdf' : type === 'image/jpeg' ? 'jpg' : 'png';
+  return `attachment; filename="documento.${extension}"`;
+}
+
+function toBlob(data: unknown): Blob {
+  return typeof data === 'string' ? new Blob([data], { type: 'text/html' }) : new Blob([JSON.stringify(data)], { type: 'application/json' });
 }
