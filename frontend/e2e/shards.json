@@ -5,6 +5,7 @@
       "auth.real.spec.ts",
       "deportistas-edicion-estados.real.spec.ts",
       "deportistas-datos-deportivos-edicion.real.spec.ts",
+      "documentos-descarga-admin.real.spec.ts",
       "familias-edicion-estados.real.spec.ts",
       "invitations.real.spec.ts",
       "portal-ficha.real.spec.ts",

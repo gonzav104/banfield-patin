@@ -1,8 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { dbQuery, hasDisposableDb } from './support/db';
+import { browserJpeg, sha256, syntheticPdf } from './support/documents';
 import { eicarBytes } from './support/fakes/eicar';
 import { addPrivacyHazards, inspectJpeg } from './support/jpeg';
 import { leakPattern } from './support/leak';
@@ -104,31 +105,6 @@ function operationCount(athleteId: string, tipo: string): number {
   return Number(out.trim());
 }
 
-/** A minimal, valid one-page PDF (exact xref offsets). `comment` goes into its content stream as a PDF comment line. */
-function syntheticPdf(comment: Uint8Array | null = null): Buffer {
-  const text = Buffer.from('BT /F1 24 Tf 72 720 Td (Documento sintetico) Tj ET\n', 'latin1');
-  const content = comment ? Buffer.concat([Buffer.from('% ', 'latin1'), Buffer.from(comment), Buffer.from('\n', 'latin1'), text]) : text;
-  const objects = [
-    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1'),
-    Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 'latin1'),
-    Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', 'latin1'),
-    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', 'latin1'),
-    Buffer.concat([Buffer.from(`<< /Length ${content.length} >>\nstream\n`, 'latin1'), content, Buffer.from('endstream', 'latin1')]),
-  ];
-  const parts: Buffer[] = [Buffer.from('%PDF-1.4\n', 'latin1')];
-  const offsets: number[] = [];
-  let length = parts[0]!.length;
-  objects.forEach((body, index) => {
-    const object = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`, 'latin1'), body, Buffer.from('\nendobj\n', 'latin1')]);
-    offsets.push(length);
-    parts.push(object);
-    length += object.length;
-  });
-  const xref = [`xref\n0 ${objects.length + 1}\n`, '0000000000 65535 f \n', ...offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)].join('');
-  parts.push(Buffer.from(`${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`, 'latin1'));
-  return Buffer.concat(parts);
-}
-
 /**
  * What the page handed to the network for each upload, recorded inside the page (test-only instrumentation of
  * XMLHttpRequest, which axios uses): the Idempotency-Key header and the `archivo` part's file name, type, size and SHA-256.
@@ -167,35 +143,6 @@ async function sentUploads(page: Page, count: number): Promise<SentUpload[]> {
   const read = () => page.evaluate(() => (window as unknown as { __e2eUploads?: SentUpload[] }).__e2eUploads ?? []);
   await expect.poll(async () => (await read()).filter((u) => u.sha256 !== null).length).toBe(count);
   return read();
-}
-const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
-
-/** A JPEG rendered by the real browser from a canvas: a document-like card, large enough to be scaled down. */
-async function browserJpeg(page: Page): Promise<Buffer> {
-  const base64 = await page.evaluate(async ({ width, height }) => {
-    const canvas = new OffscreenCanvas(width, height);
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('no 2d context');
-    const gradient = context.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#dfe8f2');
-    gradient.addColorStop(1, '#f6efe0');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
-    context.fillStyle = '#1f2a44';
-    context.font = 'bold 120px sans-serif';
-    context.fillText('DOCUMENTO SINTETICO', 160, 260);
-    context.font = '80px sans-serif';
-    for (let line = 0; line < 8; line++) context.fillText(`Campo ${line + 1}: valor de prueba`, 160, 480 + line * 170);
-    context.strokeStyle = '#1f2a44';
-    context.lineWidth = 12;
-    context.strokeRect(60, 60, width - 120, height - 120);
-    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return btoa(binary);
-  }, PHOTO_SIZE);
-  return Buffer.from(base64, 'base64');
 }
 
 async function familyPage(viewport?: { width: number; height: number }): Promise<{ context: BrowserContext; page: Page; consoleLines: string[] }> {
@@ -260,7 +207,7 @@ test.beforeAll(async ({ browser }) => {
   await seed.addSportsRow(ids.main, (await seed.season(YEAR)).id, { categoria: 'Sub-11-Docs', rama: 'Femenina', divisional: 'Docs A', numeroCorredor: '0815' });
 
   // The fixture: rendered by the real browser, then given GPS Exif and trailing bytes. Proven here, not assumed.
-  photo = Buffer.from(addPrivacyHazards(new Uint8Array(await browserJpeg(adminPage))));
+  photo = Buffer.from(addPrivacyHazards(new Uint8Array(await browserJpeg(adminPage, PHOTO_SIZE))));
   expect(inspectJpeg(photo)).toMatchObject({ isJpeg: true, hasExif: true, hasGps: true, ...PHOTO_SIZE });
   expect(inspectJpeg(photo).trailingBytes).toBeGreaterThan(100);
 });
