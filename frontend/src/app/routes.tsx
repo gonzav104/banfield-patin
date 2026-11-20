@@ -21,6 +21,7 @@ import { AdminDatosDeportivosHistorialPage } from '@/features/admin-datos-deport
 import { AdminDeportistaEditarPage } from '@/features/admin-deportistas/AdminDeportistaEditarPage';
 import { AdminDeportistaNuevoPage } from '@/features/admin-deportistas/AdminDeportistaNuevoPage';
 import { AdminDeportistasPage } from '@/features/admin-deportistas/AdminDeportistasPage';
+import { AdminTemporadasPage } from '@/features/admin-temporadas/AdminTemporadasPage';
 import { AdminVinculosDeportistaPage } from '@/features/admin-vinculos/AdminVinculosDeportistaPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { RegistrationPage } from '@/features/registration/RegistrationPage';
@@ -89,6 +90,7 @@ export function AppRoutes() {
           <Route path="/admin/deportistas/:id/temporadas/nueva" element={<AdminDatosDeportivosAltaPage />} />
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId" element={<AdminDatosDeportivosDetallePage />} />
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId/editar" element={<AdminDatosDeportivosEdicionPage />} />
+          <Route path="/admin/temporadas" element={<AdminTemporadasPage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
         </Route>
