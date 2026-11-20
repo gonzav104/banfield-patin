@@ -9,6 +9,7 @@
       "invitations.real.spec.ts",
       "portal-ficha.real.spec.ts",
       "portal.real.spec.ts",
+      "temporadas-gestion.real.spec.ts",
       "tutores-edicion.real.spec.ts"
     ],
     "2": [
