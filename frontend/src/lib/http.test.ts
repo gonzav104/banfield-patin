@@ -45,6 +45,26 @@ describe('http client (mock backend)', () => {
     expect(backend.writes()).toHaveLength(1);
   });
 
+  it('sends extra headers on a write, but never lets them replace the CSRF header', async () => {
+    const backend = createBackend();
+    await apiWrite('post', '/auth/login', { email: 'lucia@example.com', password: 'correct-horse' }, undefined, {
+      headers: { 'Idempotency-Key': '7d0c8a2e-1111-4222-8333-444455556666', 'X-XSRF-TOKEN': 'forged' },
+    });
+
+    const [write] = backend.writes();
+    expect(write?.idempotencyKey).toBe('7d0c8a2e-1111-4222-8333-444455556666');
+    expect(write?.csrfHeader).toMatch(/^csrf-/);
+  });
+
+  it('keeps the previous behaviour of a write without options (no extra headers)', async () => {
+    const backend = createBackend();
+    await apiWrite('post', '/auth/login', { email: 'lucia@example.com', password: 'correct-horse' });
+
+    const [write] = backend.writes();
+    expect(write?.idempotencyKey).toBeNull();
+    expect(write?.body).toEqual({ email: 'lucia@example.com', password: 'correct-horse' });
+  });
+
   it.each([
     [401, 'NO_AUTENTICADO', 'unauthenticated'],
     [403, 'CSRF_INVALIDO', 'csrf'],

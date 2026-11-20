@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchAthleteFicha, fetchAthletes, fetchMyFamily, isAthleteId } from './api';
+import { fetchAthleteDocuments, fetchAthleteFicha, fetchAthletes, fetchMyFamily, fetchUploadAvailability, isAthleteId } from './api';
 import { identityKey, type FamilyIdentity } from './identity';
 
 /**
@@ -13,6 +13,10 @@ export const familyKeys = {
   /** User + family + athlete: another identity, or another athlete, never shares an entry. */
   ficha: (identity: FamilyIdentity | null, athleteId: string | undefined) =>
     ['familia', identity ? identityKey(identity) : 'sin-sesion', 'ficha', athleteId ?? 'sin-id'] as const,
+  documents: (identity: FamilyIdentity | null, athleteId: string | undefined) =>
+    ['familia', identity ? identityKey(identity) : 'sin-sesion', 'documentos', athleteId ?? 'sin-id'] as const,
+  uploadAvailability: (identity: FamilyIdentity | null) =>
+    ['familia', identity ? identityKey(identity) : 'sin-sesion', 'documentos-disponibilidad'] as const,
 };
 
 export function useMyFamily(identity: FamilyIdentity) {
@@ -49,5 +53,31 @@ export function useAthleteFicha(identity: FamilyIdentity | null, athleteId: stri
     queryFn: () => fetchAthleteFicha(athleteId as string),
     enabled: !!identity?.familyId && isAthleteId(athleteId),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Current documents of one athlete: same guards as the sheet (session with a family and a UUID id). `gcTime: 0`: the
+ * metadata is not kept once no screen shows it, and an entry rebuilt by a screen that is being replaced (for example
+ * while the identity changes) is collected as soon as it loses its last observer.
+ */
+export function useAthleteDocuments(identity: FamilyIdentity | null, athleteId: string | undefined) {
+  return useQuery({
+    queryKey: familyKeys.documents(identity, athleteId),
+    queryFn: () => fetchAthleteDocuments(athleteId as string),
+    enabled: !!identity?.familyId && isAthleteId(athleteId),
+    staleTime: 30_000,
+    gcTime: 0,
+  });
+}
+
+/** Whether uploads are enabled by configuration. The backend still decides every upload. Same `gcTime` as above. */
+export function useUploadAvailability(identity: FamilyIdentity | null) {
+  return useQuery({
+    queryKey: familyKeys.uploadAvailability(identity),
+    queryFn: fetchUploadAvailability,
+    enabled: !!identity?.familyId,
+    staleTime: 60_000,
+    gcTime: 0,
   });
 }

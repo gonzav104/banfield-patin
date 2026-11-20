@@ -23,10 +23,35 @@ export interface LoggedRequest {
   method: string;
   url: string;
   csrfHeader: string | null;
+  /** The Idempotency-Key header, when the client sent one (document uploads). */
+  idempotencyKey: string | null;
   body: unknown;
 }
 
-type Override = { status: number; body?: unknown } | 'network';
+/** `lost`: the server PROCESSES the request (side effects happen) but the client gets a network error instead of the answer. */
+type Override = { status: number; body?: unknown } | 'network' | 'lost';
+
+export type FakeDocumentStatus = 'PENDIENTE' | 'CARGADO' | 'APROBADO' | 'OBSERVADO' | 'VENCIDO';
+
+export interface FakeDocument {
+  id: string;
+  tipo: string;
+  estado: FakeDocumentStatus;
+  creadoEn: string;
+  motivoObservacion: string | null;
+}
+
+/** What the server received in one document upload (the mock's view, for assertions). */
+export interface FakeDocumentUpload {
+  athleteId: string;
+  tipo: string;
+  idempotencyKey: string;
+  fileName: string;
+  type: string;
+  size: number;
+  blob: Blob;
+  status: number;
+}
 
 export type FakeInvitationStatus = 'PENDIENTE' | 'USADA' | 'REVOCADA' | 'EXPIRADA';
 
@@ -202,6 +227,12 @@ export class FakeBackend {
   private counter = 0;
   private portalFamilies = new Map<string, PortalFamily>();
   private athletes = new Map<string, FakeAthlete>();
+  private documents = new Map<string, FakeDocument[]>();
+  private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string }>();
+  /** Every upload that reached the (mock) server, in order. */
+  readonly documentUploads: FakeDocumentUpload[] = [];
+  /** Mirrors `DOCUMENTOS_CARGA_HABILITADA`: off by default, like the real backend. */
+  documentUpload: { enabled: boolean; maxBytes: number } = { enabled: false, maxBytes: 5_000_000 };
   /** Mirrors FRONTEND_URL_BASE: when null the backend returns `enlaceRegistro: null`. */
   frontendBase: string | null = 'http://app.test';
 
@@ -1205,15 +1236,111 @@ export class FakeBackend {
     return this;
   }
 
-  private portalRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined): { status: number; body?: unknown } | null {
+  enableDocumentUpload(maxBytes = 5_000_000): this {
+    this.documentUpload = { enabled: true, maxBytes };
+    return this;
+  }
+
+  /** A current (vigente) document of an athlete, as the server would list it. */
+  seedDocument(athleteId: string, document: Partial<FakeDocument> & { tipo: string }): FakeDocument {
+    const created: FakeDocument = {
+      id: `00000000-0000-4000-9000-${String(++this.counter).padStart(12, '0')}`,
+      estado: 'CARGADO',
+      creadoEn: '2026-03-10T14:00:00Z',
+      motivoObservacion: null,
+      ...document,
+    };
+    this.documents.set(athleteId, [...(this.documents.get(athleteId) ?? []), created]);
+    return created;
+  }
+
+  documentsOf(athleteId: string): FakeDocument[] {
+    return this.documents.get(athleteId) ?? [];
+  }
+
+  /**
+   * Mirrors POST /api/familia/deportistas/{id}/documentos for the DNI types: CSRF and session are checked by `route`.
+   * The same Idempotency-Key with the same athlete, type, size and MIME returns the SAME document (200) and stores nothing
+   * new; with anything else it is a 409, like a second DNI of a type that already has a current one. It is a MOCK: the real
+   * server compares the SHA-256 of the bytes.
+   */
+  private uploadDocument(athleteId: string, body: unknown, key: string | null, family: PortalFamily | undefined): { status: number; body?: unknown } {
+    if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
+    if (!key || !UUID_FORMAT.test(key) || !(body instanceof FormData)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (!UUID_FORMAT.test(athleteId) || !family || family.links.get(athleteId) !== true) {
+      return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    }
+    const tipo = body.get('tipo');
+    const archivo = body.get('archivo');
+    if (typeof tipo !== 'string' || !(archivo instanceof Blob) || body.getAll('archivo').length !== 1) {
+      return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    }
+    const record = (status: number) =>
+      this.documentUploads.push({
+        athleteId, tipo, idempotencyKey: key, fileName: archivo instanceof File ? archivo.name : '', type: archivo.type, size: archivo.size, blob: archivo, status,
+      });
+    if (archivo.size > this.documentUpload.maxBytes) {
+      record(413);
+      return this.error(413, 'ARCHIVO_DEMASIADO_GRANDE', 'El archivo supera el límite permitido.');
+    }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(archivo.type)) {
+      record(422);
+      return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    }
+    const previous = this.uploadKeys.get(key);
+    if (previous) {
+      const same = previous.athleteId === athleteId && previous.tipo === tipo && previous.size === archivo.size && previous.type === archivo.type;
+      const stored = this.documentsOf(athleteId).find((d) => d.id === previous.documentId);
+      record(same && stored ? 200 : 409);
+      return same && stored ? { status: 200, body: stored } : this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    if (this.documentsOf(athleteId).some((d) => d.tipo === tipo)) {
+      record(409);
+      return this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    const created = this.seedDocument(athleteId, { tipo, estado: 'CARGADO', creadoEn: new Date().toISOString() });
+    this.uploadKeys.set(key, { athleteId, tipo, size: archivo.size, type: archivo.type, documentId: created.id });
+    record(201);
+    return { status: 201, body: created };
+  }
+
+  private portalRoute(
+    method: string,
+    path: string,
+    params: URLSearchParams,
+    current: FakeUser | undefined,
+    body?: unknown,
+    idempotencyKey: string | null = null,
+  ): { status: number; body?: unknown } | null {
     if (!path.startsWith('/familia/')) return null;
     if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
     if (this.session.pending || current.rol !== 'FAMILIA') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
-    if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
     // Like the real backend: the family comes from the session, never from the request (a `familiaId` parameter is ignored).
     const familyId = this.identity(current, false).familiaId;
     const family = familyId ? this.portalFamilies.get(familyId) : undefined;
+
+    const documents = /^\/familia\/deportistas\/([^/]+)\/documentos$/.exec(path);
+    if (documents && method === 'post') return this.uploadDocument(documents[1]!, body, idempotencyKey, family);
+    if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
+
+    if (path === '/familia/documentos/disponibilidad') {
+      return { status: 200, body: { habilitada: this.documentUpload.enabled, maxBytes: this.documentUpload.enabled ? this.documentUpload.maxBytes : null } };
+    }
+    if (documents) {
+      // Mirrors GET /api/familia/deportistas/{id}/documentos: only current documents, ONE 404 for every cause.
+      const id = documents[1]!;
+      if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!family || family.links.get(id) !== true) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      const contenido = this.documentsOf(id).map((d) => ({
+        ...d,
+        temporadaId: null,
+        vigente: true,
+        fechaVencimiento: null,
+        motivoObservacion: d.estado === 'OBSERVADO' ? d.motivoObservacion : null,
+      }));
+      return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
+    }
 
     if (path === '/familia/mi-familia') {
       if (!family || !family.activa) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
@@ -1301,18 +1428,23 @@ export class FakeBackend {
     const url = config.url ?? '';
     const body: unknown = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
     const csrfHeader = (config.headers.get('X-XSRF-TOKEN') as string | null | undefined) ?? null;
-    this.requests.push({ method, url, csrfHeader, body });
+    const idempotencyKey = (config.headers.get('Idempotency-Key') as string | null | undefined) ?? null;
+    this.requests.push({ method, url, csrfHeader, idempotencyKey, body });
 
     const index = this.overrides.findIndex((o) => o.method === method && o.url === url);
     if (index >= 0) {
       const override = this.overrides[index]!;
       if (override.once) this.overrides.splice(index, 1);
       if (override.value === 'network') return Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK', config));
+      if (override.value === 'lost') {
+        this.route(method, url, body, csrfHeader, idempotencyKey);
+        return Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK', config));
+      }
       return this.respond(config, override.value.status, override.value.body);
     }
 
     // The answer is computed NOW (with the identity and data of this moment); a held request only delays its delivery.
-    const result = this.route(method, url, body, csrfHeader);
+    const result = this.route(method, url, body, csrfHeader, idempotencyKey);
     const holdIndex = this.holds.findIndex((h) => h.method === method && h.url === url);
     if (holdIndex >= 0) {
       const [hold] = this.holds.splice(holdIndex, 1);
@@ -1351,7 +1483,7 @@ export class FakeBackend {
     };
   }
 
-  private route(method: string, url: string, body: unknown, csrfHeader: string | null): { status: number; body?: unknown } {
+  private route(method: string, url: string, body: unknown, csrfHeader: string | null, idempotencyKey: string | null = null): { status: number; body?: unknown } {
     if (method === 'get' && url === '/auth/csrf') {
       if (!this.csrfToken) this.setCsrfCookie(`csrf-${this.requests.length}`);
       return { status: 200, body: { headerName: 'X-XSRF-TOKEN', token: `masked-${this.csrfToken}` } };
@@ -1406,7 +1538,7 @@ export class FakeBackend {
     const parsed = new URL(url, 'http://fake.local');
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);
     if (handled) return handled;
-    const portal = this.portalRoute(method, parsed.pathname, parsed.searchParams, current);
+    const portal = this.portalRoute(method, parsed.pathname, parsed.searchParams, current, body, idempotencyKey);
     if (portal) return portal;
 
     return this.error(404, 'RECURSO_NO_ENCONTRADO');

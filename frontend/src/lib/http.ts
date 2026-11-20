@@ -84,16 +84,37 @@ async function fetchCsrf(): Promise<{ headerName: string; token: string }> {
   return { headerName, token };
 }
 
+/**
+ * Optional settings of one write. `headers` are sent as well (for example `Idempotency-Key`), but they can never replace
+ * the CSRF header. `timeout` overrides the default 15 s (a file upload on a slow phone takes longer). `onUploadProgress`
+ * receives the fraction sent, from 0 to 1, when the browser reports it.
+ */
+export interface WriteOptions {
+  headers?: Record<string, string>;
+  timeout?: number;
+  onUploadProgress?: (fraction: number) => void;
+}
+
 /** State-changing request with a fresh CSRF header. Never retried automatically: a failed write is ambiguous. */
 export async function apiWrite<T = void>(
   method: 'post' | 'put' | 'patch' | 'delete',
   url: string,
   data?: unknown,
   beforeWrite?: () => void,
+  options: WriteOptions = {},
 ): Promise<T> {
   const { headerName, token } = await fetchCsrf();
   beforeWrite?.();
-  const response = await http.request<T>({ method, url, data, headers: { [headerName]: token } });
+  const extra = Object.fromEntries(Object.entries(options.headers ?? {}).filter(([name]) => name.toLowerCase() !== headerName.toLowerCase()));
+  const progress = options.onUploadProgress;
+  const response = await http.request<T>({
+    method,
+    url,
+    data,
+    headers: { ...extra, [headerName]: token },
+    ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
+    ...(progress ? { onUploadProgress: (event) => event.total && progress(Math.min(event.loaded / event.total, 1)) } : {}),
+  });
   return response.data;
 }
 
