@@ -238,6 +238,8 @@ class InventarioRutasTest {
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
 				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}",
+				// Disponibilidad de la carga documental (U15): lectura de configuración, no escribe.
+				"GET /api/familia/documentos/disponibilidad",
 				// Ficha minima de un deportista propio (FE-04): datos generales y temporada vigente, sin datos sensibles.
 				"GET /api/familia/deportistas/{deportistaId}/ficha", "POST /api/familia/deportistas/{id}/documentos");
 	}

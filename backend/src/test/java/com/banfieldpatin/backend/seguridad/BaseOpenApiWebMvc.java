@@ -71,7 +71,8 @@ import tools.jackson.databind.json.JsonMapper;
 		MfaAdminController.class, FamiliaAdminController.class, FamiliaGestionAdminController.class,
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
-		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class })
+		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class,
+		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })

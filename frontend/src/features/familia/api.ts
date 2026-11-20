@@ -1,7 +1,20 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
-import { apiGet } from '@/lib/http';
-import { athleteFichaSchema, athletePageSchema, myFamilySchema, type AthleteFicha, type AthletePage, type MyFamily } from './schemas';
+import { apiGet, apiWrite } from '@/lib/http';
+import type { PreparedDocument } from './image-normalization';
+import {
+  athleteDocumentPageSchema,
+  athleteDocumentSchema,
+  athleteFichaSchema,
+  athletePageSchema,
+  myFamilySchema,
+  uploadAvailabilitySchema,
+  type AthleteDocument,
+  type AthleteFicha,
+  type AthletePage,
+  type MyFamily,
+  type UploadAvailability,
+} from './schemas';
 
 /** Page size of the athletes list and of the dashboard preview (the total comes from `totalElementos`). */
 export const ATHLETES_PAGE_SIZE = 10;
@@ -52,4 +65,49 @@ export async function fetchAthleteFicha(athleteId: string): Promise<AthleteFicha
  */
 export function isAthleteNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404 && error.code === 'DEPORTISTA_NO_ENCONTRADO';
+}
+
+/** The two DNI sides of the athlete, the only types this screen uploads. */
+export const DNI_TYPES = ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'] as const;
+export type DniType = (typeof DNI_TYPES)[number];
+
+/** Current documents of one athlete (at most a handful: one page of 100 is enough). */
+export async function fetchAthleteDocuments(athleteId: string): Promise<AthleteDocument[]> {
+  if (!isAthleteId(athleteId)) {
+    throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+  }
+  return parse(athleteDocumentPageSchema, await apiGet(`/familia/deportistas/${athleteId}/documentos?page=0&size=100`)).contenido;
+}
+
+export async function fetchUploadAvailability(): Promise<UploadAvailability> {
+  return parse(uploadAvailabilitySchema, await apiGet('/familia/documentos/disponibilidad'));
+}
+
+/** A slow phone needs more than the default 15 s to send a few MB. A timeout is retried with the same key. */
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Uploads ONE prepared document. The caller keeps `idempotencyKey` and `prepared` for a retry: the server returns the
+ * same document (200) for the same key and bytes, and never stores it twice. Only `archivo` and `tipo` are sent, with a
+ * neutral file name; the family, school and uploader come from the session on the server.
+ */
+export async function uploadAthleteDocument(input: {
+  athleteId: string;
+  tipo: DniType;
+  prepared: PreparedDocument;
+  idempotencyKey: string;
+  onProgress?: (fraction: number) => void;
+}): Promise<AthleteDocument> {
+  if (!isAthleteId(input.athleteId)) {
+    throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+  }
+  const form = new FormData();
+  form.append('tipo', input.tipo);
+  form.append('archivo', input.prepared.blob, input.prepared.fileName);
+  const data = await apiWrite<unknown>('post', `/familia/deportistas/${input.athleteId}/documentos`, form, undefined, {
+    headers: { 'Idempotency-Key': input.idempotencyKey },
+    timeout: UPLOAD_TIMEOUT_MS,
+    ...(input.onProgress ? { onUploadProgress: input.onProgress } : {}),
+  });
+  return parse(athleteDocumentSchema, data);
 }

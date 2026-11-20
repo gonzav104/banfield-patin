@@ -71,3 +71,32 @@ export const athleteFichaSchema = z.object({
   temporadaVigente: currentSeasonSchema.nullable(),
 });
 export type AthleteFicha = z.infer<typeof athleteFichaSchema>;
+
+/**
+ * Document metadata (`GET /api/familia/deportistas/{id}/documentos`, current versions only). The allow-list keeps only
+ * what the screen shows; the server never sends a file name, storage key or URL here. `motivoObservacion` only comes
+ * for OBSERVADO.
+ */
+export const documentStatusSchema = z.enum(['PENDIENTE', 'CARGADO', 'APROBADO', 'OBSERVADO', 'VENCIDO']);
+export type DocumentStatus = z.infer<typeof documentStatusSchema>;
+
+export const athleteDocumentSchema = z.object({
+  id: z.string(),
+  tipo: z.string(),
+  estado: documentStatusSchema,
+  creadoEn: z.string(),
+  motivoObservacion: z.string().nullable().optional(),
+});
+export type AthleteDocument = z.infer<typeof athleteDocumentSchema>;
+
+export const athleteDocumentPageSchema = z.object({
+  contenido: z.array(athleteDocumentSchema),
+  totalElementos: z.number(),
+});
+
+/** `GET /api/familia/documentos/disponibilidad`: configuration only, not the health of the scanner or the storage. */
+export const uploadAvailabilitySchema = z.object({
+  habilitada: z.boolean(),
+  maxBytes: z.number().int().positive().nullable(),
+});
+export type UploadAvailability = z.infer<typeof uploadAvailabilitySchema>;

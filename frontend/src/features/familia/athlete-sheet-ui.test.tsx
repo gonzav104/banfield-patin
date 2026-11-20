@@ -133,7 +133,12 @@ describe('athlete sheet: what it shows', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Ana Paz' });
     expect(main().innerHTML).not.toMatch(/98765432|27-98765432|2016-05-01|Calle Falsa|4444|secreto@|escuela-1|familia-1|temporada-xyz|fechaNacimiento/);
-    expect(main().textContent).not.toMatch(/DNI|CUIL|domicilio|nacimiento|teléfono|correo/i);
+    // The athlete's DATA never shows these labels. The documents section names the document types (DNI frente/dorso),
+    // which is not personal data: it is excluded from this text check, and the number checks above cover the whole page.
+    const documents = await screen.findByRole('region', { name: 'Documentos del deportista' });
+    const dataText = (main().textContent ?? '').replace(documents.textContent ?? '', '');
+    expect(dataText).not.toMatch(/DNI|CUIL|domicilio|nacimiento|teléfono|correo/i);
+    expect(documents.textContent).not.toMatch(/CUIL|domicilio|nacimiento|teléfono|correo/i);
     expect(main().innerHTML).not.toContain(athlete.id); // the athlete id is in the URL, never printed on screen
   });
 
@@ -202,8 +207,12 @@ describe('athlete sheet: navigation and access', () => {
     renderApp(sheetPath(ana.id));
     expect(await screen.findByRole('heading', { level: 1, name: 'Ana Paz' })).toBeInTheDocument();
 
+    await screen.findByRole('region', { name: 'Documentos del deportista' });
     const urls = backend.requests.filter((r) => r.url.startsWith('/familia/')).map((r) => r.url);
-    expect(urls).toEqual([sheetUrl(ana.id), sheetUrl(ana.id)]); // one per load, nothing else
+    // One sheet request per load. The only other family requests are the document metadata and the upload
+    // availability of the documents section (U15): never the 15-field detail nor the seasons.
+    expect(urls.filter((u) => u === sheetUrl(ana.id))).toHaveLength(2);
+    expect(new Set(urls)).toEqual(new Set([sheetUrl(ana.id), `${sheetPath(ana.id)}/documentos?page=0&size=100`, '/familia/documentos/disponibilidad']));
   });
 
   it('keeps the protected routes: without a session it goes to login, and an administrator never reaches the data', async () => {
@@ -442,8 +451,10 @@ describe('athlete sheet: accessibility', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ana Paz' });
 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Datos del deportista', 'Temporada 2026']);
-    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby'))).toEqual(['athlete-data-title', 'season-title']);
+    await screen.findByRole('heading', { level: 3, name: 'DNI – frente' });
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Datos del deportista', 'Temporada 2026', 'Documentos del deportista']);
+    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby'))).toEqual(['athlete-data-title', 'season-title', 'documents-title']);
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['DNI – frente', 'DNI – dorso']);
     expect(within(screen.getByRole('region', { name: 'Temporada 2026' })).getAllByRole('term').map((t) => t.textContent)).toEqual([
       'Categoría', 'Rama', 'Divisional', 'Número de corredor', 'Estado deportivo',
     ]);
