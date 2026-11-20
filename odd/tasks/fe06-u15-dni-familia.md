@@ -60,3 +60,8 @@ T1 (V12 en U18) y T2–T6 aprobadas el 2026-11-20 (Engram `decision/documentos-c
 - E2E: shard 1 112 passed; shard 2 103 passed.
 - Verificador independiente (Sonnet 5.5 / high): sin bloqueantes; S1, S4–S12 CUMPLE; S2 y S3 CUMPLE en código y NO VERIFICABLE en dispositivos reales. Prueba diferencial de `apiWrite` sin opciones: configuración idéntica a la base. Advertencias: la orientación EXIF no se prueba de punta a punta con una foto rotada; el doble de clamd detecta EICAR en cualquier parte del flujo (documentado).
 - Commits locales: `9479c77` (T1), `ea4ccb0` (T2) y el tercero (T3 + este documento). Sin push, PR ni merge.
+
+### L7 — Revisión nativa y cierre local, 2026-11-20
+- Revisión nativa (Gentle AI, lentes `review-risk`, `review-resilience`, `review-reliability`) sobre el rango `e75cbc6..33ef0b2`: **aprobada y reconocida** (`gentle-ai.review-acknowledged/v1`, lineage `review-4765d3bc5f81d5aa`, objetivo `sha256:a8b01bc9…89b6b`). Riesgo evaluado: alto (`process_boundary` y `shell_source` en `.github/scripts/frontend-e2e.sh`). Consentimiento otorgado por el usuario para este candidato. Sin bloqueantes: ninguna corrección abierta.
+- Hallazgos no bloqueantes (trabajo aparte; ninguno reabre la revisión): `R4-409-in-progress-drops-key` (resiliencia, WARNING), `R3-e2e-maxbytes-coupling` (confiabilidad, WARNING), `R3-node-ts-runtime` (confiabilidad, WARNING), `R3-exif-orientation-unproved` (confiabilidad, SUGGESTION). Clasificación previa al merge / posterior en la descripción del PR.
+- Autorización del usuario: push de la rama y PR hacia `main`; **merge no autorizado**. Este registro se agrega en un commit posterior de solo documentación: el código revisado no cambia.
