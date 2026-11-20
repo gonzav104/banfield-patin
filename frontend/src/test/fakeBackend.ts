@@ -572,11 +572,59 @@ export class FakeBackend {
     return this.adminAthletes.find((a) => a.id === id);
   }
 
-  /** A season of the school. They are created here, as in the real system they are created by a different unit (U14). */
+  /** A season of the school, seeded directly (the screens create them through POST /admin/temporadas, FE-05/U14). */
   addSeason(anio: number, activa = false): FakeSeason {
     const season: FakeSeason = { id: `temp-${++this.counter}`, anio, activa };
     this.seasons.push(season);
     return season;
+  }
+
+  /** What the server really has (read by the tests, never by the screens): a copy, newest year first. */
+  seasonsOnServer(): FakeSeason[] {
+    return this.seasons.map((s) => ({ ...s })).sort((a, b) => b.anio - a.anio);
+  }
+
+  /** What another administrator (or a request whose answer was lost) did: the season is really activated, the previous one stops being. */
+  activateSeasonBehindTheScenes(id: string): void {
+    const season = this.seasons.find((s) => s.id === id);
+    if (!season) throw new Error(`Unknown fake season ${id}`);
+    this.seasons.forEach((s) => { s.activa = s.id === id; });
+  }
+
+  /**
+   * Mirrors POST /admin/temporadas (TemporadaSolicitud). A property that is not `anio`, or a JSON year that is not an integer (a decimal,
+   * a string, a boolean, an array...) -> 400 SOLICITUD_INVALIDA; a missing/null year or one outside 2020-2100 -> 400 VALIDACION;
+   * a year the school already has -> 409 TEMPORADA_ANIO_DUPLICADO. A new season is INACTIVE (201, TemporadaRespuesta).
+   */
+  private createSeason(body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (typeof body !== 'object' || body === null || Array.isArray(body) || Object.keys(input).some((k) => k !== 'anio')) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const year = input.anio;
+    if (year !== undefined && year !== null && (typeof year !== 'number' || !Number.isInteger(year))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (typeof year !== 'number' || year < 2020 || year > 2100) return this.error(400, 'VALIDACION', 'Hay datos inválidos en la solicitud.');
+    if (this.seasons.some((s) => s.anio === year)) return this.error(409, 'TEMPORADA_ANIO_DUPLICADO', 'Ya existe una temporada para ese año.');
+    return { status: 201, body: { ...this.addSeason(year, false) } };
+  }
+
+  /**
+   * Mirrors POST /admin/temporadas/{id}/activar (FE-05/U13): the body is MANDATORY and carries only `activaEsperadaId` (a string or null;
+   * absent key, other properties or another type -> 400 SOLICITUD_INVALIDA). Order: 404 season, 200 when it is already the active one (even
+   * with a stale intent), 409 EDICION_DESACTUALIZADA when the confirmed active season is not the expected one, otherwise the previous one
+   * stops being active and the requested one is.
+   */
+  private activateSeason(id: string, body: unknown): { status: number; body?: unknown } {
+    const input = body as Record<string, unknown> | null | undefined;
+    if (typeof input !== 'object' || input === null || Array.isArray(input) || Object.keys(input).some((k) => k !== 'activaEsperadaId')
+      || !('activaEsperadaId' in input) || (input.activaEsperadaId !== null && typeof input.activaEsperadaId !== 'string')) {
+      return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    }
+    const season = this.seasons.find((s) => s.id === id);
+    if (!season) return this.error(404, 'TEMPORADA_NO_ENCONTRADA', 'La temporada no existe.');
+    if (season.activa) return { status: 200, body: { ...season } };
+    const current = this.seasons.find((s) => s.activa)?.id ?? null;
+    if (current !== input.activaEsperadaId) return this.error(409, 'EDICION_DESACTUALIZADA', 'La temporada activa cambió.');
+    this.activateSeasonBehindTheScenes(id);
+    return { status: 200, body: { ...season } };
   }
 
   /** The sports data an athlete already has in a season. */
@@ -1071,6 +1119,9 @@ export class FakeBackend {
       return { status: 200, body: this.athleteDetail(athlete) };
     }
     if (method === 'get' && path === '/admin/temporadas') return { status: 200, body: this.seasonPage(params) };
+    if (method === 'post' && path === '/admin/temporadas') return this.createSeason(body);
+    const seasonActivation = /^\/admin\/temporadas\/([^/]+)\/activar$/.exec(path);
+    if (method === 'post' && seasonActivation) return this.activateSeason(seasonActivation[1]!, body);
     const sports = this.sportsRoute(method, path, body);
     if (sports) return sports;
     const athleteWrite = /^\/admin\/deportistas\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);

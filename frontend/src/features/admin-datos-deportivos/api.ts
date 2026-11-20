@@ -53,17 +53,28 @@ const MAX_SEASON_PAGES = 50;
 /**
  * GET /api/admin/temporadas through EVERY page: the listing is paged, so the first page is not assumed to be all of it. It stops when
  * what was read reaches `totalElementos`; a page that comes back empty before that, or never reaching it, is a malformed answer.
+ * The pages are read at different moments, so the result is accepted only as ONE coherent snapshot: the total must not change between
+ * pages, no season may appear twice and at most one may be active (the backend guarantees it at any single moment). Anything else is a
+ * malformed answer, never drawn: an administrator must not decide, nor build an activation intent, from a mix of two states.
  */
 export async function listAllSeasons(): Promise<Season[]> {
   const seasons: Season[] = [];
+  let total: number | null = null;
   for (let page = 0; page < MAX_SEASON_PAGES; page += 1) {
     const result = parse(seasonPageSchema, await apiGet(`/admin/temporadas?page=${page}&size=${SEASON_PAGE_SIZE}`));
+    if (total !== null && result.totalElementos !== total) throw incoherentSeasons();
+    total = result.totalElementos;
     seasons.push(...result.contenido);
-    if (seasons.length >= result.totalElementos) return seasons;
+    if (seasons.length >= result.totalElementos) {
+      if (seasons.length !== result.totalElementos || new Set(seasons.map((s) => s.id)).size !== seasons.length || seasons.filter((s) => s.activa).length > 1) throw incoherentSeasons();
+      return seasons;
+    }
     if (result.contenido.length === 0) break;
   }
   throw new ApiError('server', 'El servidor respondió con un listado de temporadas incompleto.');
 }
+
+const incoherentSeasons = () => new ApiError('server', 'El servidor respondió con un listado de temporadas incoherente.');
 
 /**
  * POST /api/admin/deportistas/{id}/temporadas. It carries no revision (a new row has none). Never retried (apiWrite): a failed write
