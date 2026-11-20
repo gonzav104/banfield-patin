@@ -37,6 +37,9 @@ class SupabaseAlmacenLecturaTest {
 	private final List<Map<String, String>> cabeceras = new CopyOnWriteArrayList<>();
 	private final CountDownLatch liberar = new CountDownLatch(1);
 	private final AtomicLong enviadosSinFin = new AtomicLong();
+	/** El doble notó que el cliente cerró la conexión mientras goteaba el cuerpo. */
+	private final CountDownLatch cerradaPorElCliente = new CountDownLatch(1);
+	private volatile long retrasoBucketMs;
 	private ServerSocket servidor;
 	private volatile String bucket = "{\"public\":false}";
 	private volatile Objeto objeto = salida -> responder(salida, 200, "application/pdf", CONTENIDO);
@@ -83,6 +86,7 @@ class SupabaseAlmacenLecturaTest {
 			peticiones.add(linea.toString().split(" ")[0] + " " + ruta);
 			cabeceras.add(h);
 			if (ruta.startsWith("/storage/v1/bucket/")) {
+				dormir(retrasoBucketMs);
 				responder(out, 200, "application/json", bucket.getBytes(StandardCharsets.UTF_8));
 			} else {
 				objeto.escribir(out);
@@ -101,6 +105,11 @@ class SupabaseAlmacenLecturaTest {
 		salida.write(cuerpo);
 	}
 
+	private static void dormir(long ms) {
+		try { Thread.sleep(ms); }
+		catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+	}
+
 	private void esperar() {
 		try { liberar.await(5, TimeUnit.SECONDS); }
 		catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
@@ -111,6 +120,11 @@ class SupabaseAlmacenLecturaTest {
 	private SupabaseAlmacenDocumentos adaptador() {
 		return new SupabaseAlmacenDocumentos(new StoragePropiedades(url(), "privado", "secreto-sintetico",
 				Duration.ofSeconds(1), RESPUESTA));
+	}
+
+	private SupabaseAlmacenDocumentos adaptador(Duration respuesta, Duration plazoTotal) {
+		return new SupabaseAlmacenDocumentos(new StoragePropiedades(url(), "privado", "secreto-sintetico",
+				Duration.ofSeconds(1), respuesta), plazoTotal);
 	}
 
 	private static DestinoPreparado destino() { return DestinoPreparado.desdeRegistro("privado", UUID.randomUUID()); }
@@ -285,5 +299,66 @@ class SupabaseAlmacenLecturaTest {
 		for (long max : new long[] {0, -1, 50_000_001L, Long.MAX_VALUE})
 			fallaCon(() -> almacen.leer(destino(), max), FalloAlmacenDocumentos.Codigo.ENTRADA_INVALIDA);
 		assertThat(peticiones).isEmpty();
+	}
+
+	/**
+	 * Gotea un byte cada 50 ms: cada lectura llega muy dentro del plazo de respuesta, pero el cuerpo
+	 * (declarado o no) tardaría minutos en completarse.
+	 */
+	private Objeto goteo(boolean conLongitud) {
+		return salida -> {
+			salida.write(("HTTP/1.1 200 X\r\nContent-Type: application/pdf\r\nConnection: close\r\n"
+					+ (conLongitud ? "Content-Length: 100000\r\n" : "") + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+			try {
+				for (int i = 0; i < 2000 && liberar.getCount() > 0; i++) {
+					salida.write('x');
+					salida.flush();
+					dormir(50);
+				}
+			} catch (IOException ex) {
+				cerradaPorElCliente.countDown();
+				throw ex;
+			}
+		};
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = {true, false})
+	void unaLecturaLentaVenceElPlazoTotalYCierraLaConexion(boolean conLongitud) throws InterruptedException {
+		objeto = goteo(conLongitud);
+		Duration plazo = Duration.ofMillis(500);
+		// Plazo de respuesta holgado: sólo el plazo total puede cortar esta lectura antes de 3 s.
+		var almacen = adaptador(Duration.ofSeconds(3), plazo);
+		long inicio = System.nanoTime();
+		assertThatThrownBy(() -> almacen.leer(destino(), 200_000)).isInstanceOfSatisfying(FalloAlmacenDocumentos.class, ex -> {
+			assertThat(ex.codigo()).isEqualTo(FalloAlmacenDocumentos.Codigo.TIMEOUT);
+			assertThat(ex.resultadoIncierto()).isTrue();
+			assertThat(ex.getCause()).isNull();
+		});
+		assertThat(Duration.ofNanos(System.nanoTime() - inicio)).isGreaterThanOrEqualTo(plazo)
+				.isLessThan(Duration.ofMillis(1500));
+		// La E/S se abortó de verdad: el proveedor ve la conexión cerrada, no una espera abandonada.
+		assertThat(cerradaPorElCliente.await(3, TimeUnit.SECONDS)).isTrue();
+		assertThat(SupabaseAlmacenDocumentos.plazosPendientes()).isZero();
+	}
+
+	@Test
+	void elPlazoTotalCuentaDesdeElInicioYNoEmpiezaElGetSiYaVencio() {
+		retrasoBucketMs = 700;
+		fallaCon(() -> adaptador(Duration.ofSeconds(3), Duration.ofMillis(500)).leer(destino(), CONTENIDO.length),
+				FalloAlmacenDocumentos.Codigo.TIMEOUT);
+		assertThat(peticiones).containsExactly("GET /storage/v1/bucket/privado");
+		assertThat(SupabaseAlmacenDocumentos.plazosPendientes()).isZero();
+	}
+
+	@Test
+	void elPlazoTotalEsElPlazoMaximoPorOperacionYNoDejaTemporizadoresPendientes() {
+		var propiedades = new StoragePropiedades(url(), "privado", "secreto-sintetico", Duration.ofSeconds(1), RESPUESTA);
+		var almacen = new SupabaseAlmacenDocumentos(propiedades);
+		assertThat(almacen.plazoLectura()).isEqualTo(propiedades.plazoMaximoPorOperacion());
+		for (int i = 0; i < 20; i++) assertThat(almacen.leer(destino(), CONTENIDO.length).contenido()).isEqualTo(CONTENIDO);
+		objeto = salida -> responder(salida, 500, "text/plain", new byte[0]);
+		fallaCon(() -> almacen.leer(destino(), CONTENIDO.length), FalloAlmacenDocumentos.Codigo.RESPUESTA_INESPERADA);
+		assertThat(SupabaseAlmacenDocumentos.plazosPendientes()).isZero();
 	}
 }

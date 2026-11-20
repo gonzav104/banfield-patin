@@ -74,6 +74,9 @@ class DescargaDocumentoHttpDbTest {
 	static final AtomicInteger LECTURAS = new AtomicInteger();
 	static final AtomicInteger ESTADO = new AtomicInteger(200);
 	static final AtomicReference<Runnable> HOOK = new AtomicReference<>(() -> {});
+	/** Storage lento: declara el objeto y lo gotea byte a byte hasta que el adaptador corta. */
+	static final java.util.concurrent.atomic.AtomicBoolean GOTEO = new java.util.concurrent.atomic.AtomicBoolean();
+	static final CountDownLatch[] GOTEO_CORTADO = { new CountDownLatch(1) };
 	static final String CREDENCIAL = "credencial-solo-sintetica";
 
 	static {
@@ -105,6 +108,21 @@ class DescargaDocumentoHttpDbTest {
 					}
 					x.getResponseHeaders().set("Content-Type", "application/octet-stream");
 					x.sendResponseHeaders(200, cuerpo.length);
+					if (GOTEO.get()) {
+						try {
+							for (int i = 0; i < cuerpo.length; i++) {
+								x.getResponseBody().write(cuerpo[i]);
+								x.getResponseBody().flush();
+								Thread.sleep(100);
+							}
+						} catch (IOException ex) {
+							GOTEO_CORTADO[0].countDown();
+							throw ex;
+						} catch (InterruptedException ex) {
+							Thread.currentThread().interrupt();
+						}
+						return;
+					}
 					x.getResponseBody().write(cuerpo);
 				} catch (IOException ex) {
 					// El adaptador puede cortar la lectura: es parte de lo que se prueba.
@@ -153,6 +171,8 @@ class DescargaDocumentoHttpDbTest {
 		LECTURAS.set(0);
 		ESTADO.set(200);
 		HOOK.set(() -> {});
+		GOTEO.set(false);
+		GOTEO_CORTADO[0] = new CountDownLatch(1);
 		org.mockito.Mockito.reset(auditoria);
 		var d = new DatosDb(jdbc);
 		escuela = d.escuela("descarga-" + UUID.randomUUID());
@@ -360,6 +380,47 @@ class DescargaDocumentoHttpDbTest {
 		assertThat(codigo(corto)).isEqualTo("INTEGRIDAD_FALLIDA");
 		sinContenido(corto, p);
 		assertThat(auditadas(p.id())).containsExactly("DOCUMENTO_INTEGRIDAD_FALLIDA", "DOCUMENTO_INTEGRIDAD_FALLIDA");
+	}
+
+	@Test
+	void unFalloSecundarioAlAuditarLaIntegridadConservaEl502SinContenido(CapturedOutput salida) throws Exception {
+		var p = publicar(atleta, "DNI_DEPORTISTA_FRENTE", "image/jpeg", bytes("JPEG-ORIGINAL-", 40));
+		byte[] alterado = p.bytes().clone();
+		alterado[0] ^= 1;
+		OBJETOS.put(p.clave(), alterado);
+		org.mockito.Mockito.doThrow(new IllegalStateException("registro secundario caido")).when(auditoria)
+				.registrarFallo(org.mockito.ArgumentMatchers.any());
+		var r = descargar(atleta, p.id());
+		assertThat(r.statusCode()).isEqualTo(502);
+		assertThat(codigo(r)).isEqualTo("INTEGRIDAD_FALLIDA");
+		sinContenido(r, p);
+		assertThat(auditadas(p.id())).isEmpty();
+		assertThat(salida.getAll()).contains("fase=auditoria-integridad")
+				.doesNotContain("registro secundario caido", p.clave(), CREDENCIAL);
+		// El permiso (concurrencia 1) quedó libre.
+		OBJETOS.put(p.clave(), p.bytes());
+		assertThat(descargar(atleta, p.id()).statusCode()).isEqualTo(200);
+	}
+
+	@Test
+	void unStorageLentoVenceSinEntregarBytesYLaCapacidadSeRecupera() throws Exception {
+		var p = publicar(atleta, "OTRO", "application/pdf", bytes("%PDF-LENTO-", 200));
+		GOTEO.set(true);
+		long inicio = System.nanoTime();
+		var lenta = descargar(atleta, p.id());
+		assertThat(Duration.ofNanos(System.nanoTime() - inicio)).isLessThan(Duration.ofSeconds(15));
+		assertThat(lenta.statusCode()).isEqualTo(503);
+		assertThat(codigo(lenta)).isEqualTo("DESCARGA_NO_DISPONIBLE");
+		sinContenido(lenta, p);
+		// La lectura se abortó de verdad: Storage ve la conexión cerrada.
+		assertThat(GOTEO_CORTADO[0].await(5, TimeUnit.SECONDS)).isTrue();
+		assertThat(auditadas(p.id())).isEmpty();
+		GOTEO.set(false);
+		// Concurrencia 1: si el permiso no se hubiera liberado, sería 429.
+		var siguiente = descargar(atleta, p.id());
+		assertThat(siguiente.statusCode()).isEqualTo(200);
+		assertThat(siguiente.body()).isEqualTo(p.bytes());
+		assertThat(auditadas(p.id())).containsExactly("DOCUMENTO_DESCARGADO");
 	}
 
 	@Test

@@ -85,8 +85,13 @@ public class DescargaDocumentoService {
 			if (contenido.length != documento.tamanioBytes()
 					|| !MessageDigest.isEqual(sha256(contenido), documento.sha256())) {
 				DiagnosticoDescarga.fallo("integridad", null);
-				auditoria.registrarFallo(evento(usuario, deportistaId, documentoId, documento,
-						AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA, datos));
+				try {
+					auditoria.registrarFallo(evento(usuario, deportistaId, documentoId, documento,
+							AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA, datos));
+				} catch (RuntimeException ex) {
+					// Un fallo secundario al auditar no reemplaza el 502 original; nunca se entregan los bytes.
+					DiagnosticoDescarga.fallo("auditoria-integridad", ex);
+				}
 				throw new ExcepcionNegocio(HttpStatus.BAD_GATEWAY, "INTEGRIDAD_FALLIDA",
 						"El documento almacenado no coincide con el registrado.");
 			}

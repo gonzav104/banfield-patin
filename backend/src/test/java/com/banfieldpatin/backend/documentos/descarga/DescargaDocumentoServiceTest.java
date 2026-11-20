@@ -251,6 +251,60 @@ class DescargaDocumentoServiceTest {
 	}
 
 	@Test
+	void unFalloSecundarioAlAuditarLaIntegridadNoReemplazaEl502(CapturedOutput salida) {
+		byte[] alterado = CONTENIDO.clone();
+		alterado[0] ^= 1;
+		when(almacen.leer(any(), anyLong())).thenReturn(new ContenidoLeido(alterado, "image/jpeg"));
+		doThrow(new IllegalStateException("auditoria caida " + CLAVE)).when(auditoria).registrarFallo(any());
+		var s = servicio(1);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()), HttpStatus.BAD_GATEWAY,
+				"INTEGRIDAD_FALLIDA");
+		assertThat(entregas).isEmpty();
+		verify(auditoria).registrarFallo(any());
+		verify(auditoria, never()).registrar(any());
+		assertThat(s.permisosDisponibles()).isEqualTo(1);
+		assertThat(salida.getAll()).contains("fase=auditoria-integridad", "causa=IllegalStateException")
+				.doesNotContain("auditoria caida", CLAVE.toString(), escuela.toString(), documento.toString(),
+						"BYTES-DOCUMENTALES");
+		// El permiso quedó libre: la siguiente descarga íntegra se entrega.
+		when(almacen.leer(any(), anyLong())).thenReturn(new ContenidoLeido(CONTENIDO.clone(), "image/jpeg"));
+		s.descargar(admin, deportista, documento, datos, registrarEntrega());
+		assertThat(entregas).hasSize(1);
+	}
+
+	@Test
+	void conElRegistroDeFallosCaidoLaAuditoriaObligatoriaSigueSiendoFailClosed() {
+		doThrow(new IllegalStateException("auditoria caida")).when(auditoria).registrarFallo(any());
+		doThrow(new IllegalStateException("base caida")).when(auditoria).registrar(any());
+		var s = servicio(1);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.SERVICE_UNAVAILABLE, "DESCARGA_NO_DISPONIBLE");
+		assertThat(entregas).isEmpty();
+		assertThat(s.permisosDisponibles()).isEqualTo(1);
+	}
+
+	@Test
+	void unaLecturaLentaQueVenceEsNoDisponibleYLaCapacidadSeRecupera() throws Exception {
+		var constructor = FalloAlmacenDocumentos.class.getDeclaredConstructor(FalloAlmacenDocumentos.Codigo.class, boolean.class);
+		constructor.setAccessible(true);
+		var vencida = constructor.newInstance(FalloAlmacenDocumentos.Codigo.TIMEOUT, true);
+		var s = servicio(1);
+		AtomicInteger disponiblesDuranteLectura = new AtomicInteger(-1);
+		when(almacen.leer(any(), anyLong())).thenAnswer(i -> {
+			disponiblesDuranteLectura.set(s.permisosDisponibles());
+			Thread.sleep(200);
+			throw vencida;
+		}).thenReturn(new ContenidoLeido(CONTENIDO.clone(), "image/jpeg"));
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.SERVICE_UNAVAILABLE, "DESCARGA_NO_DISPONIBLE");
+		assertThat(disponiblesDuranteLectura).hasValue(0);
+		assertThat(entregas).isEmpty();
+		assertThat(s.permisosDisponibles()).isEqualTo(1);
+		s.descargar(admin, deportista, documento, datos, registrarEntrega());
+		assertThat(entregas).containsExactly("image/jpeg|dni-frente.jpg|BYTES-DOCUMENTALES-SINTETICOS");
+	}
+
+	@Test
 	void siLaAuditoriaNoSeConfirmaNoSeEntregaNingunByte() {
 		doThrow(new IllegalStateException("base caida")).when(auditoria).registrar(any());
 		var s = servicio(2);
