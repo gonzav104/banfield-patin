@@ -19,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 /** Adaptador interno sin endpoints, transacciones DB, URLs públicas ni borrados por ruta arbitraria. */
 public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 	private static final int MAX_RESPUESTA = 16_384;
+	/** Tope absoluto de una lectura: el máximo configurable de la carga documental (50 MB). */
+	static final long MAX_LECTURA = 50_000_000L;
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/** Para el cuerpo de ausencia: una clave repetida no es el formato verificado. */
 	private static final JsonMapper JSON_ESTRICTO = JsonMapper.builder()
@@ -220,6 +222,93 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 		}
 	}
 
+	/**
+	 * GET autenticado del objeto, con el mismo cliente (plazos, sin redirecciones, credencial) y tras
+	 * confirmar que el bucket es privado. El límite es estricto incluso ante un proveedor malicioso: una
+	 * longitud declarada mayor que {@code maxBytes} se rechaza sin leer el cuerpo; sin longitud, se
+	 * lee contando y se aborta al superar {@code maxBytes} (nunca se retienen más de
+	 * {@code maxBytes + 1} bytes); un cuerpo más corto que lo declarado, cortado o codificado es una
+	 * respuesta inesperada. Ni el cuerpo ni la URI se conservan en el fallo.
+	 */
+	@Override
+	public ContenidoLeido leer(DestinoPreparado destino, long maxBytes) {
+		validarDestino(destino);
+		if (maxBytes < 1 || maxBytes > MAX_LECTURA) throw fallo(ENTRADA_INVALIDA, false);
+		verificarBucketPrivado();
+		long inicio = System.nanoTime();
+		try {
+			// Sin compresión pedida: la longitud declarada es la del objeto. Si el proveedor comprime igual,
+			// el cliente descomprime y el límite se aplica a los bytes descomprimidos.
+			return cliente.get().uri("/object/authenticated/{bucket}/{clave}", destino.bucketInterno(), destino.objetoIdInterno())
+					.header("Accept-Encoding", "identity")
+					.exchange((req, res) -> {
+						try {
+							FalloAlmacenDocumentos error = falloPorEstado(res.getStatusCode().value(), false);
+							if (error != null) throw error;
+							var cabeceras = res.getHeaders();
+							var codificaciones = cabeceras.get("Content-Encoding");
+							if (codificaciones != null && !codificaciones.stream().allMatch("identity"::equalsIgnoreCase))
+								throw fallo(RESPUESTA_INESPERADA, false);
+							long declarado = longitudDeclarada(cabeceras.get("Content-Length"));
+							if (declarado > maxBytes) throw fallo(RESPUESTA_INESPERADA, false);
+							byte[] bytes = leerAcotado(res.getBody(), declarado, maxBytes, inicio);
+							return new ContenidoLeido(bytes, tipoDeclarado(cabeceras.get("Content-Type")));
+						} catch (FalloAlmacenDocumentos ex) {
+							// Cerrar antes de que el cliente drene el resto del cuerpo al liberar la respuesta.
+							try { res.getBody().close(); } catch (java.io.IOException | RuntimeException ignorado) { /* ya falló */ }
+							throw ex;
+						}
+					});
+		} catch (ResourceAccessException ex) {
+			throw errorRed(ex, inicio);
+		}
+	}
+
+	/** -1 si no se declaró; una longitud repetida o ilegible es una respuesta inesperada. */
+	private static long longitudDeclarada(java.util.List<String> valores) {
+		if (valores == null || valores.isEmpty()) return -1;
+		if (valores.size() != 1 || !valores.getFirst().matches("0|[1-9][0-9]{0,18}")) throw fallo(RESPUESTA_INESPERADA, false);
+		try { return Long.parseLong(valores.getFirst()); }
+		catch (NumberFormatException ex) { throw fallo(RESPUESTA_INESPERADA, false); }
+	}
+
+	private static String tipoDeclarado(java.util.List<String> valores) {
+		if (valores == null || valores.size() != 1 || valores.getFirst().length() > 1000) return MediaType.APPLICATION_OCTET_STREAM_VALUE;
+		try {
+			MediaType mime = MediaType.parseMediaType(valores.getFirst());
+			return mime.isConcrete() ? mime.getType() + "/" + mime.getSubtype() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+		} catch (IllegalArgumentException ex) { return MediaType.APPLICATION_OCTET_STREAM_VALUE; }
+	}
+
+	/**
+	 * Lee como máximo {@code maxBytes + 1} bytes. Un corte o error del cuerpo es una respuesta
+	 * inesperada, salvo que ya haya vencido el plazo de respuesta: el cliente cierra el cuerpo al
+	 * vencer, y eso es un timeout.
+	 */
+	private byte[] leerAcotado(java.io.InputStream cuerpo, long declarado, long maxBytes, long inicio) {
+		try {
+			if (cuerpo == null) cuerpo = java.io.InputStream.nullInputStream();
+			if (declarado >= 0) {
+				byte[] bytes = cuerpo.readNBytes((int) declarado);
+				if (bytes.length != declarado || cuerpo.read() != -1) throw fallo(RESPUESTA_INESPERADA, false);
+				return bytes;
+			}
+			var salida = new java.io.ByteArrayOutputStream((int) Math.min(maxBytes, 65_536));
+			byte[] bloque = new byte[8192];
+			long total = 0;
+			while (true) {
+				int n = cuerpo.read(bloque, 0, (int) Math.min(bloque.length, maxBytes + 1 - total));
+				if (n < 0) return salida.toByteArray();
+				total += n;
+				if (total > maxBytes) throw fallo(RESPUESTA_INESPERADA, false);
+				salida.write(bloque, 0, n);
+			}
+		} catch (java.io.IOException ex) {
+			boolean vencido = System.nanoTime() - inicio >= propiedades.respuesta().toNanos();
+			throw fallo(vencido ? TIMEOUT : RESPUESTA_INESPERADA, false);
+		}
+	}
+
 	private void verificarBucketPrivado() {
 		JsonNode bucket;
 		try {
@@ -237,11 +326,8 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
 		long inicio = System.nanoTime();
 		try {
 			return peticion.exchange((req, res) -> {
-				int estado = res.getStatusCode().value();
-				if (estado == 401 || estado == 403) throw fallo(AUTENTICACION, borrado);
-				if (estado == 409) throw fallo(CONFLICTO, borrado);
-				if (estado >= 400 && estado < 500) throw fallo(RECHAZADO, borrado);
-				if (estado != 200) throw fallo(RESPUESTA_INESPERADA, true);
+				FalloAlmacenDocumentos error = falloPorEstado(res.getStatusCode().value(), borrado);
+				if (error != null) throw error;
 				byte[] bytes = res.getBody().readNBytes(MAX_RESPUESTA + 1);
 				if (bytes.length > MAX_RESPUESTA) throw fallo(RESPUESTA_INESPERADA, true);
 				try { return JSON.readTree(bytes); }
@@ -251,6 +337,15 @@ public final class SupabaseAlmacenDocumentos implements AlmacenDocumentos {
             throw errorRed(ex, inicio);
         }
     }
+
+	/** Clasificación común de un estado HTTP; null si es 200. Un estado inesperado siempre es incierto. */
+	private static FalloAlmacenDocumentos falloPorEstado(int estado, boolean incierto) {
+		if (estado == 401 || estado == 403) return fallo(AUTENTICACION, incierto);
+		if (estado == 409) return fallo(CONFLICTO, incierto);
+		if (estado >= 400 && estado < 500) return fallo(RECHAZADO, incierto);
+		if (estado != 200) return fallo(RESPUESTA_INESPERADA, true);
+		return null;
+	}
 
     private FalloAlmacenDocumentos errorRed(ResourceAccessException ex, long inicio) {
         boolean timeout = System.nanoTime() - inicio >= propiedades.respuesta().toNanos();
