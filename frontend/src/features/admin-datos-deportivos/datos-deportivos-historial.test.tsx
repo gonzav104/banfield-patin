@@ -138,7 +138,8 @@ describe('sports history: empty states', () => {
     open(`/admin/deportistas/${athlete.id}/temporadas`);
 
     expect(await screen.findByRole('heading', { name: 'Todavía no hay temporadas' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /crear|nueva|activar|temporada/i })).not.toBeInTheDocument();
+    // The content of the screen offers no link to create anything. The sidebar of the shell now has its own «Temporadas» item (FE-05/U14).
+    expect(within(screen.getByRole('main')).queryByRole('link', { name: /crear|nueva|activar|temporada/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Historial deportivo' })).not.toBeInTheDocument();
   });
 
