@@ -138,7 +138,7 @@ public class OpenApiConfig {
 			entry("POST /api/admin/temporadas", creada("409 TEMPORADA_ANIO_DUPLICADO")),
 			entry("GET /api/admin/temporadas/{id}", ruta(200, "404 TEMPORADA_NO_ENCONTRADA")),
 			entry("POST /api/admin/temporadas/{id}/activar",
-					ruta(200, "404 TEMPORADA_NO_ENCONTRADA", "409 CONFLICTO_CONCURRENCIA")),
+					ruta(200, "404 TEMPORADA_NO_ENCONTRADA", "409 EDICION_DESACTUALIZADA", "409 CONFLICTO_CONCURRENCIA")),
 			// --- Datos deportivos por temporada
 			entry("GET /api/admin/deportistas/{deportistaId}/temporadas", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
 			entry("POST /api/admin/deportistas/{deportistaId}/temporadas",

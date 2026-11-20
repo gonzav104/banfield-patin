@@ -59,6 +59,8 @@ class TemporadaAdminServiceTest {
 
 	private static Temporada temporada(UUID escuela, int anio, boolean activa) {
 		Temporada t = Temporada.crear(escuela, anio);
+		// El id lo asigna JPA al persistir; la comparacion de la intencion del admin necesita ids reales.
+		org.springframework.test.util.ReflectionTestUtils.setField(t, "id", UUID.randomUUID());
 		if (activa) {
 			t.activar();
 		}
@@ -140,7 +142,7 @@ class TemporadaAdminServiceTest {
 		UUID id = UUID.randomUUID();
 		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS))
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.NOT_FOUND, "TEMPORADA_NO_ENCONTRADA"));
 
 		verifyNoInteractions(escuelas, auditoria);
@@ -152,7 +154,7 @@ class TemporadaAdminServiceTest {
 		UUID id = UUID.randomUUID();
 		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.of(new TemporadaVista(id, (short) 2027, true)));
 
-		TemporadaRespuesta respuesta = servicio.activar(admin, id, DATOS);
+		TemporadaRespuesta respuesta = servicio.activar(admin, id, UUID.randomUUID(), DATOS);
 
 		assertThat(respuesta).isEqualTo(new TemporadaRespuesta(id, 2027, true));
 		verifyNoInteractions(escuelas, auditoria);
@@ -170,7 +172,7 @@ class TemporadaAdminServiceTest {
 		when(temporadas.activaDe(escuelaId)).thenReturn(Optional.of(anterior));
 		when(temporadas.saveAndFlush(any(Temporada.class))).thenAnswer(i -> i.getArgument(0));
 
-		TemporadaRespuesta respuesta = servicio.activar(admin, id, DATOS);
+		TemporadaRespuesta respuesta = servicio.activar(admin, id, anterior.getId(), DATOS);
 
 		assertThat(respuesta.anio()).isEqualTo(2027);
 		assertThat(respuesta.activa()).isTrue();
@@ -198,7 +200,7 @@ class TemporadaAdminServiceTest {
 		when(temporadas.activaDe(escuelaId)).thenReturn(Optional.empty());
 		when(temporadas.saveAndFlush(any(Temporada.class))).thenAnswer(i -> i.getArgument(0));
 
-		servicio.activar(admin, id, DATOS);
+		servicio.activar(admin, id, null, DATOS);
 
 		verify(temporadas).saveAndFlush(nueva);
 		assertThat(eventoRegistrado().detalle()).containsEntry("anteriorTemporadaId", null);
@@ -212,7 +214,7 @@ class TemporadaAdminServiceTest {
 		when(escuelas.bloquearParaActivarTemporada(escuelaId)).thenReturn(Optional.of(escuelaId));
 		when(temporadas.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.of(yaActiva));
 
-		TemporadaRespuesta respuesta = servicio.activar(admin, id, DATOS);
+		TemporadaRespuesta respuesta = servicio.activar(admin, id, UUID.randomUUID(), DATOS);
 
 		assertThat(respuesta.activa()).isTrue();
 		verify(temporadas, never()).saveAndFlush(any());
@@ -232,7 +234,7 @@ class TemporadaAdminServiceTest {
 		DataIntegrityViolationException sinNombre = new DataIntegrityViolationException("x");
 		when(temporadas.saveAndFlush(nueva)).thenThrow(sinNombre);
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS)).isSameAs(sinNombre);
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS)).isSameAs(sinNombre);
 
 		verifyNoInteractions(auditoria);
 	}
@@ -252,7 +254,7 @@ class TemporadaAdminServiceTest {
 		when(temporadas.activaDe(escuelaId)).thenReturn(Optional.empty());
 		when(temporadas.saveAndFlush(nueva)).thenThrow(violacionDe("uq_temporada_activa_por_escuela"));
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS))
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS))
 				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "CONFLICTO_CONCURRENCIA"));
 
 		verifyNoInteractions(auditoria);
@@ -275,7 +277,7 @@ class TemporadaAdminServiceTest {
 		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.of(new TemporadaVista(id, (short) 2027, false)));
 		when(escuelas.bloquearParaActivarTemporada(escuelaId)).thenThrow(new CannotAcquireLockException("lock"));
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS)).satisfies(e -> {
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS)).satisfies(e -> {
 			assertError(e, HttpStatus.CONFLICT, "CONFLICTO_CONCURRENCIA");
 			assertThat(e.getMessage()).doesNotContain("deportista").doesNotContain("lock");
 		});
@@ -285,12 +287,117 @@ class TemporadaAdminServiceTest {
 		verifyNoMoreInteractions(auditoria);
 	}
 
+	// ---------- intencion del admin (FE-05/U13) ----------
+
+	private Temporada prepararActivacion(UUID id, Temporada nueva, Temporada activaVigente) {
+		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.of(new TemporadaVista(id, (short) 2027, false)));
+		when(escuelas.bloquearParaActivarTemporada(escuelaId)).thenReturn(Optional.of(escuelaId));
+		when(temporadas.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.of(nueva));
+		when(temporadas.activaDe(escuelaId)).thenReturn(Optional.ofNullable(activaVigente));
+		when(temporadas.saveAndFlush(any(Temporada.class))).thenAnswer(i -> i.getArgument(0));
+		return nueva;
+	}
+
+	@Test
+	void activarConUnaActivaEsperadaDistintaDeLaVigenteDa409EdicionDesactualizadaSinEscribirNiAuditar() {
+		UUID id = UUID.randomUUID();
+		Temporada nueva = temporada(escuelaId, 2027, false);
+		Temporada vigente = temporada(escuelaId, 2026, true);
+		prepararActivacion(id, nueva, vigente);
+
+		assertThatThrownBy(() -> servicio.activar(admin, id, UUID.randomUUID(), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		assertThat(vigente.isActiva()).isTrue();
+		assertThat(nueva.isActiva()).isFalse();
+		verify(temporadas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void activarEsperandoNingunaActivaCuandoYaHayUnaDa409SinEscribirNiAuditar() {
+		UUID id = UUID.randomUUID();
+		Temporada vigente = temporada(escuelaId, 2026, true);
+		prepararActivacion(id, temporada(escuelaId, 2027, false), vigente);
+
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(temporadas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void activarEsperandoUnaActivaCuandoYaNoHayNingunaDa409() {
+		UUID id = UUID.randomUUID();
+		prepararActivacion(id, temporada(escuelaId, 2027, false), null);
+
+		assertThatThrownBy(() -> servicio.activar(admin, id, UUID.randomUUID(), DATOS))
+				.satisfies(e -> assertError(e, HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA"));
+
+		verify(temporadas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void elMensajeDelConflictoDeIntencionNoRevelaIdsNiAnios() {
+		UUID id = UUID.randomUUID();
+		Temporada vigente = temporada(escuelaId, 2026, true);
+		prepararActivacion(id, temporada(escuelaId, 2027, false), vigente);
+
+		assertThatThrownBy(() -> servicio.activar(admin, id, UUID.randomUUID(), DATOS)).satisfies(e -> {
+			assertThat(e.getMessage()).doesNotContain(vigente.getId().toString()).doesNotContain("2026");
+		});
+	}
+
+	@Test
+	void laComparacionDeIntencionOcurreDespuesDelBloqueoDeLaEscuela() {
+		UUID id = UUID.randomUUID();
+		prepararActivacion(id, temporada(escuelaId, 2027, false), temporada(escuelaId, 2026, true));
+
+		assertThatThrownBy(() -> servicio.activar(admin, id, UUID.randomUUID(), DATOS));
+
+		InOrder orden = inOrder(lockTimeout, escuelas, temporadas);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(escuelas).bloquearParaActivarTemporada(escuelaId);
+		orden.verify(temporadas).activaDe(escuelaId);
+	}
+
+	@Test
+	void unaTemporadaYaActivaEsIdempotenteAunqueLaIntencionEsteDesactualizada() {
+		UUID id = UUID.randomUUID();
+		Temporada yaActiva = temporada(escuelaId, 2027, true);
+		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.of(new TemporadaVista(id, (short) 2027, false)));
+		when(escuelas.bloquearParaActivarTemporada(escuelaId)).thenReturn(Optional.of(escuelaId));
+		when(temporadas.findByIdAndEscuelaId(id, escuelaId)).thenReturn(Optional.of(yaActiva));
+
+		TemporadaRespuesta respuesta = servicio.activar(admin, id, UUID.randomUUID(), DATOS);
+
+		assertThat(respuesta.activa()).isTrue();
+		verify(temporadas, never()).saveAndFlush(any());
+		verifyNoInteractions(auditoria);
+	}
+
+	@Test
+	void activarEsperandoLaVigenteCorrectaProcedeYAuditaConLaAnterior() {
+		UUID id = UUID.randomUUID();
+		Temporada nueva = temporada(escuelaId, 2027, false);
+		Temporada vigente = temporada(escuelaId, 2026, true);
+		prepararActivacion(id, nueva, vigente);
+
+		servicio.activar(admin, id, vigente.getId(), DATOS);
+
+		assertThat(nueva.isActiva()).isTrue();
+		assertThat(vigente.isActiva()).isFalse();
+		assertThat(eventoRegistrado().detalle()).containsEntry("anteriorTemporadaId", vigente.getId());
+	}
+
 	@Test
 	void unaEscuelaInexistenteTrasLaLecturaEsUnErrorInternoNoUnConflicto() {
 		UUID id = UUID.randomUUID();
 		when(temporadas.vistaDe(id, escuelaId)).thenReturn(Optional.of(new TemporadaVista(id, (short) 2027, false)));
 		when(escuelas.bloquearParaActivarTemporada(escuelaId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> servicio.activar(admin, id, DATOS)).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> servicio.activar(admin, id, null, DATOS)).isInstanceOf(IllegalStateException.class);
 	}
 }

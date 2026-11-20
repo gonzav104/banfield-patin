@@ -283,7 +283,7 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		UUID otra = datos.temporada(escuelaA, 2028, false);
 		alta(d1, otra, null);
 
-		try (Retencion a = new Retencion(() -> temporadasAdmin.activar(admin, aActivar, DATOS))) {
+		try (Retencion a = new Retencion(() -> temporadasAdmin.activar(admin, aActivar, null, DATOS))) {
 			Future<Object> altaNueva = enOtroHilo(() -> alta(d2, otra, "5"));
 			Future<Object> edicion = enOtroHilo(() -> dts.actualizar(admin, d1, otra, cambio(d1, otra, "Sub 16", null), DATOS));
 

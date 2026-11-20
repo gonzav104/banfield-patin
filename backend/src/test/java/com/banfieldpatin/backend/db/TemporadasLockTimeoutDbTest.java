@@ -30,8 +30,8 @@ class TemporadasLockTimeoutDbTest extends BaseTemporadasDb {
 		UUID t1 = datos.temporada(escuelaA, 2026, false);
 		UUID t2 = datos.temporada(escuelaA, 2027, false);
 
-		try (Retencion a = new Retencion(() -> servicio.activar(admin, t1, DATOS))) {
-			Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t2, DATOS));
+		try (Retencion a = new Retencion(() -> servicio.activar(admin, t1, null, DATOS))) {
+			Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t2, null, DATOS));
 
 			assertThat(b.get(10, TimeUnit.SECONDS)).isInstanceOfSatisfying(ExcepcionNegocio.class, e -> {
 				assertThat(e.getEstado()).isEqualTo(HttpStatus.CONFLICT);
