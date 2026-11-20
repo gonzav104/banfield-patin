@@ -128,7 +128,7 @@ describe('athletes of a family: what the administrator sees', () => {
     expect(await within(athletes).findByText('Esta familia todavía no tiene deportistas vinculados.')).toBeInTheDocument();
     expect(within(athletes).queryByRole('list')).not.toBeInTheDocument();
     expect(within(athletes).queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
-    expect(within(athletes).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(athletes).getByRole('button', { name: 'Vincular deportistas' })).toBeEnabled();
     expect(within(athletes).queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -290,14 +290,14 @@ describe('athletes of a family: navigation', () => {
   });
 });
 
-describe('athletes of a family: strictly read-only and private', () => {
-  it('the section has no button but «Reintentar», no control to link, revoke or change anything, and only reads are sent', async () => {
+describe('athletes of a family: read-only consultation and private opt-in linking', () => {
+  it('the closed selector only offers linking and consultation still sends no writes', async () => {
     const { family } = seedFamily();
     open(familyPath(family.id));
     await screen.findByRole('heading', { level: 3, name: 'Vínculos activos' });
 
     const athletes = within(await section());
-    expect(athletes.queryAllByRole('button')).toEqual([]);
+    expect(athletes.getAllByRole('button').map((b) => b.textContent)).toEqual(['Vincular deportistas']);
     expect(athletes.queryAllByRole('checkbox')).toEqual([]);
     expect(athletes.queryAllByRole('textbox')).toEqual([]);
     expect(athletes.queryAllByRole('combobox')).toEqual([]);

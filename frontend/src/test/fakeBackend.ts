@@ -770,6 +770,38 @@ export class FakeBackend {
    * surname and name; 404 FAMILIA_NO_ENCONTRADA). Writes also mirror the revocar/principal commands with aggregate revision checks.
    */
   private linksRoute(method: string, path: string, body: unknown): { status: number; body?: unknown } | null {
+    const batch = /^\/admin\/familias\/([^/]+)\/deportistas$/.exec(path);
+    if (method === 'post' && batch) {
+      const family = this.families.find((f) => f.id === batch[1]);
+      if (!family) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'No existe.');
+      if (!family.activa) return this.error(409, 'FAMILIA_INACTIVA', 'Familia inactiva.');
+      const items = (body as { deportistas?: { deportistaId: string; versionEsperada: string }[] })?.deportistas;
+      if (!Array.isArray(items) || items.length < 1 || items.length > 50 || items.some((e) => !e || typeof e.deportistaId !== 'string' || typeof e.versionEsperada !== 'string' || !/^[0-9]{1,19}$/.test(e.versionEsperada) || BigInt(e.versionEsperada) > 9223372036854775807n)) return this.error(400, 'VALIDACION', 'Lote inválido.');
+      const unique = new Map<string, string>();
+      for (const item of items) {
+        if (unique.has(item.deportistaId) && unique.get(item.deportistaId) !== item.versionEsperada) return this.error(400, 'VALIDACION', 'Revisiones diferentes.');
+        unique.set(item.deportistaId, item.versionEsperada);
+      }
+      const indexedError = (code: string, index: number) => ({ status: 409, body: { codigo: code, mensaje: 'El lote no se aplicó.', detalles: [{ campo: `deportistas[${index}]`, mensaje: code }] } });
+      // Validate the WHOLE batch before changing a single link or revision.
+      for (const [index, item] of items.entries()) {
+        const athlete = this.adminAthletes.find((a) => a.id === item.deportistaId);
+        if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'No existe.');
+        if (item.versionEsperada !== String(this.adminLinkVersions.get(athlete.id) ?? athlete.version)) return indexedError('EDICION_DESACTUALIZADA', index);
+      }
+      for (const [index, item] of items.entries()) if (!this.adminAthletes.find((a) => a.id === item.deportistaId)!.activo) return indexedError('DEPORTISTA_INACTIVO', index);
+      const resultados = [...unique.keys()].map((id) => {
+        let link = this.adminLinks.find((l) => l.familyId === family.id && l.athleteId === id);
+        const resultado = !link ? 'CREADO' : link.estado === 'ACTIVO' ? 'SIN_CAMBIOS' : 'REACTIVADO';
+        if (resultado !== 'SIN_CAMBIOS') {
+          const principal = !this.adminLinks.some((l) => l.athleteId === id && l.estado === 'ACTIVO' && l.esPrincipal);
+          if (!link) link = this.addAdminLink(family.id, id);
+          this.changeAdminLinkBehindTheScenes(link.id, { estado: 'ACTIVO', esPrincipal: principal });
+        }
+        return { vinculo: this.linkView(link!), resultado };
+      });
+      return { status: 200, body: { resultados } };
+    }
     const write = /^\/admin\/familias\/([^/]+)\/deportistas\/([^/]+)\/(revocar|principal)$/.exec(path);
     if (method === 'post' && write) {
       const family = this.families.find((f) => f.id === write[1]);

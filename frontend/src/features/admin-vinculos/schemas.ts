@@ -39,3 +39,9 @@ export type AthleteLinks = z.infer<typeof athleteLinksSchema>;
 
 /** GET /api/admin/familias/{id}/deportistas: the links of ONE family (every state), an unpaged list. */
 export const familyAthletesSchema = z.array(linkRowSchema);
+
+/** Whole atomic batch: an incomplete or unknown result is not a confirmed success. */
+export const linkBatchResultSchema = z.object({
+  resultados: z.array(z.object({ vinculo: linkRowSchema, resultado: z.enum(['CREADO', 'REACTIVADO', 'SIN_CAMBIOS']) })).min(1).max(50),
+});
+export type LinkBatchResult = z.infer<typeof linkBatchResultSchema>;

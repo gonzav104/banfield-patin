@@ -186,7 +186,8 @@ test.describe('athletes of a family (real backend)', () => {
     await expect(previous.first()).toContainText(fullName(A));
     await expect(previous.first()).toContainText('Vínculo revocado');
     await expect(previous.first()).not.toContainText('Principal de este deportista');
-    await expect(section.getByRole('button')).toHaveCount(0);
+    await expect(section.getByRole('button', { name: 'Vincular deportistas' })).toBeEnabled();
+    await expect(section.getByRole('button')).toHaveCount(1);
     expect(await section.innerText()).not.toMatch(/dni|cuil|revisi[oó]n|versi[oó]n/i);
   });
 
