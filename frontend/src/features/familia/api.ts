@@ -67,16 +67,23 @@ export function isAthleteNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404 && error.code === 'DEPORTISTA_NO_ENCONTRADO';
 }
 
-/** The two DNI sides of the athlete, the only types this screen uploads. */
+/** The two DNI sides of the athlete, the only types this screen uploads for an athlete. */
 export const DNI_TYPES = ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'] as const;
-export type DniType = (typeof DNI_TYPES)[number];
+/** The two DNI sides of a tutor (U19), the only types uploaded for a tutor. */
+export const TUTOR_DNI_TYPES = ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'] as const;
+export type DniType = (typeof DNI_TYPES)[number] | (typeof TUTOR_DNI_TYPES)[number];
 
-/** Current documents of one athlete (at most a handful: one page of 100 is enough). */
-export async function fetchAthleteDocuments(athleteId: string): Promise<AthleteDocument[]> {
-  if (!isAthleteId(athleteId)) {
-    throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+/** Whose documents a screen manages: an athlete (default) or a tutor of the family (U19). */
+export type DocumentOwnerKind = 'deportista' | 'tutor';
+const ownerPath = (kind: DocumentOwnerKind, id: string) => `/familia/${kind === 'tutor' ? 'tutores' : 'deportistas'}/${id}`;
+const ownerLabel = (kind: DocumentOwnerKind) => (kind === 'tutor' ? 'del tutor' : 'del deportista');
+
+/** Current documents of one athlete or tutor (at most a handful: one page of 100 is enough). */
+export async function fetchAthleteDocuments(ownerId: string, kind: DocumentOwnerKind = 'deportista'): Promise<AthleteDocument[]> {
+  if (!isAthleteId(ownerId)) {
+    throw new ApiError('validation', `El identificador ${ownerLabel(kind)} no es válido.`, { status: 400, code: 'SOLICITUD_INVALIDA' });
   }
-  return parse(athleteDocumentPageSchema, await apiGet(`/familia/deportistas/${athleteId}/documentos?page=0&size=100`)).contenido;
+  return parse(athleteDocumentPageSchema, await apiGet(`${ownerPath(kind, ownerId)}/documentos?page=0&size=100`)).contenido;
 }
 
 export async function fetchUploadAvailability(): Promise<UploadAvailability> {
@@ -96,15 +103,17 @@ export async function uploadAthleteDocument(input: {
   tipo: DniType;
   prepared: PreparedDocument;
   idempotencyKey: string;
+  kind?: DocumentOwnerKind;
   onProgress?: (fraction: number) => void;
 }): Promise<AthleteDocument> {
+  const kind = input.kind ?? 'deportista';
   if (!isAthleteId(input.athleteId)) {
-    throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+    throw new ApiError('validation', `El identificador ${ownerLabel(kind)} no es válido.`, { status: 400, code: 'SOLICITUD_INVALIDA' });
   }
   const form = new FormData();
   form.append('tipo', input.tipo);
   form.append('archivo', input.prepared.blob, input.prepared.fileName);
-  const data = await apiWrite<unknown>('post', `/familia/deportistas/${input.athleteId}/documentos`, form, undefined, {
+  const data = await apiWrite<unknown>('post', `${ownerPath(kind, input.athleteId)}/documentos`, form, undefined, {
     headers: { 'Idempotency-Key': input.idempotencyKey },
     timeout: UPLOAD_TIMEOUT_MS,
     ...(input.onProgress ? { onUploadProgress: input.onProgress } : {}),
@@ -122,14 +131,16 @@ export async function replaceAthleteDocument(input: {
   documentId: string;
   prepared: PreparedDocument;
   idempotencyKey: string;
+  kind?: DocumentOwnerKind;
   onProgress?: (fraction: number) => void;
 }): Promise<AthleteDocument> {
+  const kind = input.kind ?? 'deportista';
   if (!isAthleteId(input.athleteId) || !isAthleteId(input.documentId)) {
     throw new ApiError('validation', 'El identificador no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
   }
   const form = new FormData();
   form.append('archivo', input.prepared.blob, input.prepared.fileName);
-  const data = await apiWrite<unknown>('post', `/familia/deportistas/${input.athleteId}/documentos/${input.documentId}/reemplazo`, form, undefined, {
+  const data = await apiWrite<unknown>('post', `${ownerPath(kind, input.athleteId)}/documentos/${input.documentId}/reemplazo`, form, undefined, {
     headers: { 'Idempotency-Key': input.idempotencyKey },
     timeout: UPLOAD_TIMEOUT_MS,
     ...(input.onProgress ? { onUploadProgress: input.onProgress } : {}),

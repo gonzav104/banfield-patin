@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.documentos.DocumentoAdminMetadatos;
+import com.banfieldpatin.backend.documentos.EstadoDocumento;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.validation.Valid;
@@ -31,11 +32,24 @@ public class RevisionDocumentoController {
     @PostMapping("/api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision")
     public DocumentoAdminMetadatos revisar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID deportistaId,
             @PathVariable UUID documentoId, @Valid @RequestBody RevisionDocumentoSolicitud solicitud) {
+        return ejecutar(solicitud, (destino, motivo) -> servicio.revisar(UsuarioAutenticado.desde(jwt), deportistaId,
+                documentoId, destino, solicitud.versionEsperada(), motivo));
+    }
+
+    /** Revisión de un DNI de un tutor (U19): mismo cuerpo, mismas reglas y mismas respuestas. */
+    @PostMapping("/api/admin/tutores/{tutorId}/documentos/{documentoId}/revision")
+    public DocumentoAdminMetadatos revisarTutor(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tutorId,
+            @PathVariable UUID documentoId, @Valid @RequestBody RevisionDocumentoSolicitud solicitud) {
+        return ejecutar(solicitud, (destino, motivo) -> servicio.revisarTutor(UsuarioAutenticado.desde(jwt), tutorId,
+                documentoId, destino, solicitud.versionEsperada(), motivo));
+    }
+
+    private DocumentoAdminMetadatos ejecutar(RevisionDocumentoSolicitud solicitud,
+            java.util.function.BiFunction<EstadoDocumento, String, DocumentoAdminMetadatos> revision) {
         var destino = solicitud.destino();
         var motivo = solicitud.motivoPara(destino);
         try {
-            return servicio.revisar(UsuarioAutenticado.desde(jwt), deportistaId, documentoId, destino,
-                    solicitud.versionEsperada(), motivo);
+            return revision.apply(destino, motivo);
         } catch (ExcepcionNegocio | PessimisticLockingFailureException e) {
             throw e;
         } catch (RuntimeException e) {

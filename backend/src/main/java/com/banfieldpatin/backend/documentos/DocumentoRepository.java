@@ -28,8 +28,8 @@ public interface DocumentoRepository extends Repository<Documento, UUID> {
     Page<DocumentoAdminMetadatos> deportistaAdmin(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, Pageable pagina);
 
-    @Query(value = PROYECCION + TUTOR + ORDEN, countQuery = "select count(doc)" + TUTOR)
-    Page<DocumentoMetadatos> tutorAdmin(@Param("escuelaId") UUID escuelaId,
+    @Query(value = PROYECCION_ADMIN + TUTOR + ORDEN, countQuery = "select count(doc)" + TUTOR)
+    Page<DocumentoAdminMetadatos> tutorAdmin(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, Pageable pagina);
 
     @Query(value = PROYECCION + DEPORTISTA_FAMILIA + ORDEN, countQuery = "select count(doc)" + DEPORTISTA_FAMILIA)

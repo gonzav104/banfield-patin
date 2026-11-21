@@ -88,6 +88,59 @@ class RevisionDocumentoWebMvcTest extends BaseOpenApiWebMvc {
                 eq(0L), org.mockito.ArgumentMatchers.isNull());
     }
 
+    // ---- U19: la misma ruta y las mismas reglas para los DNI de un tutor ----
+
+    private static final String RUTA_TUTOR = "/api/admin/tutores/{tutorId}/documentos/{documentoId}/revision";
+
+    private MockHttpServletRequestBuilder pedidoTutor(String cuerpo) {
+        return post(RUTA_TUTOR, deportista, documento).contentType(MediaType.APPLICATION_JSON).content(cuerpo);
+    }
+
+    @Test
+    void laRutaDeTutorSoloAceptaAdminConMfaYCsrfYLlegaAlServicioDeTutor() throws Exception {
+        mvc.perform(conCsrf(pedidoTutor(APROBAR))).andExpect(status().isUnauthorized());
+        for (var cookie : List.of(sesion(Rol.FAMILIA), sesionMfaPendiente())) {
+            mvc.perform(conCsrf(pedidoTutor(APROBAR)).cookie(cookie)).andExpect(status().isForbidden());
+        }
+        mvc.perform(pedidoTutor(APROBAR).cookie(sesion(Rol.ADMIN))).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
+        verifyNoInteractions(revisionDocumentoService);
+
+        when(revisionDocumentoService.revisarTutor(any(), eq(deportista), eq(documento), eq(EstadoDocumento.APROBADO),
+                eq(0L), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(new DocumentoAdminMetadatos(documento, TipoDocumento.DNI_TUTOR_FRENTE,
+                        EstadoDocumento.APROBADO, null, Instant.EPOCH, true, null, null, 1L));
+        mvc.perform(conCsrf(pedidoTutor(APROBAR)).cookie(sesion(Rol.ADMIN))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value("1")).andExpect(jsonPath("$.tipo").value("DNI_TUTOR_FRENTE"));
+        verify(revisionDocumentoService).revisarTutor(any(), eq(deportista), eq(documento), eq(EstadoDocumento.APROBADO),
+                eq(0L), org.mockito.ArgumentMatchers.isNull());
+        // La ruta del deportista no llega al servicio del tutor.
+        verify(revisionDocumentoService, org.mockito.Mockito.never()).revisar(any(), any(), any(), any(), eq(0L), any());
+    }
+
+    @Test
+    void laRutaDeTutorValidaElCuerpoExactamenteComoLaDelDeportista() throws Exception {
+        for (String cuerpo : List.of("""
+                {"estado":"OBSERVADO","versionEsperada":"0"}
+                """, """
+                {"estado":"APROBADO","versionEsperada":0}
+                """, """
+                {"estado":"APROBADO"}
+                """, """
+                {"estado":"APROBADO","versionEsperada":"0","motivoObservacion":"no va"}
+                """, """
+                {"estado":"OTRO","versionEsperada":"0"}
+                """)) {
+            var deDeportista = mvc.perform(conCsrf(pedido(cuerpo)).cookie(sesion(Rol.ADMIN))).andReturn().getResponse();
+            var deTutor = mvc.perform(conCsrf(pedidoTutor(cuerpo)).cookie(sesion(Rol.ADMIN))).andReturn().getResponse();
+            assertThat(deTutor.getStatus()).as(cuerpo).isEqualTo(deDeportista.getStatus()).isEqualTo(400);
+            assertThat(deTutor.getContentAsString()).as(cuerpo).isEqualTo(deDeportista.getContentAsString());
+        }
+        mvc.perform(conCsrf(post(RUTA_TUTOR, "no-uuid", documento).contentType(MediaType.APPLICATION_JSON)
+                .content(APROBAR)).cookie(sesion(Rol.ADMIN))).andExpect(status().isBadRequest());
+        verifyNoInteractions(revisionDocumentoService);
+    }
+
     @Test
     void rechazaCoercionesVersionAusenteYTextosInvalidosSinEco() throws Exception {
         for (String cuerpo : List.of(

@@ -187,4 +187,68 @@ class RevisionDocumentoDbTest extends BaseVinculosDb {
                 .param("estado", estado).param("vigente", vigente).param("autor", adminId).param("v", version)
                 .query(UUID.class).single();
     }
+
+    private UUID tutor(String nombre) {
+        return new DatosDb(jdbc).tutor(escuelaA, new DatosDb(jdbc).familia(escuelaA, "Familia " + nombre, true), nombre, "Sintético");
+    }
+
+    private UUID semillaTutor(UUID tutor, String tipo, String estado, boolean vigente, long version) {
+        return jdbc.sql("""
+                INSERT INTO gestion_patin.documento(escuela_id,tutor_id,tipo,nombre_original,storage_key,
+                    mime_type,tamanio_bytes,estado,vigente,cargado_por,motivo_observacion,version)
+                VALUES (:e,:t,:tipo,'semilla.pdf',:key,'application/pdf',100,:estado,:vigente,:autor,
+                    CASE WHEN :estado='OBSERVADO' THEN 'motivo semilla' ELSE NULL END,:v) RETURNING id
+                """).param("e", escuelaA).param("t", tutor).param("tipo", tipo).param("key", UUID.randomUUID().toString())
+                .param("estado", estado).param("vigente", vigente).param("autor", adminId).param("v", version)
+                .query(UUID.class).single();
+    }
+
+    @Test
+    void laRevisionDeUnDniDeTutorTieneLasMismasTransicionesVersionYAuditoria() {
+        UUID tutor = tutor("Revisión");
+        UUID frente = semillaTutor(tutor, "DNI_TUTOR_FRENTE", "CARGADO", true, 0);
+        UUID dorso = semillaTutor(tutor, "DNI_TUTOR_DORSO", "CARGADO", true, 9007199254740993L);
+        String sinRevision = instantanea(frente, true);
+
+        assertThat(revision.revisarTutor(admin, tutor, frente, APROBADO, 0, null).version()).isEqualTo("1");
+        assertThat(revision.revisarTutor(admin, tutor, frente, OBSERVADO, 1, "Imagen ilegible").version()).isEqualTo("2");
+        assertThat(revision.revisarTutor(admin, tutor, dorso, OBSERVADO, 9007199254740993L, "Recorte").version())
+                .isEqualTo("9007199254740994");
+        assertThat(instantanea(frente, true)).isEqualTo(sinRevision);
+        // Protección optimista y transiciones: la misma versión dos veces, o salir de OBSERVADO, es un 409.
+        falla("EDICION_DESACTUALIZADA", () -> revision.revisarTutor(admin, tutor, frente, APROBADO, 1, null));
+        falla("TRANSICION_DOCUMENTO_NO_PERMITIDA", () -> revision.revisarTutor(admin, tutor, frente, APROBADO, 2, null));
+        var eventos = jdbc.sql("""
+                SELECT detalle::text FROM gestion_patin.auditoria
+                WHERE escuela_id=:e AND usuario_id=:u AND recurso_id=:id AND accion='DOCUMENTO_REVISADO'
+                """).param("e", escuelaA).param("u", adminId).param("id", frente).query(String.class).list();
+        assertThat(eventos).hasSize(2).allSatisfy(e -> assertThat(e).contains("estadoAnterior", "estadoNuevo")
+                .doesNotContain("Imagen ilegible", "storage"));
+    }
+
+    @Test
+    void laRevisionDeTutorSoloAlcanzaDnisVigentesDeEseTutorYEscuelaYNoSeCruzaConElDeportista() {
+        UUID tutor = tutor("Alcance");
+        UUID otro = tutor("Otro");
+        UUID atleta = deportista("Cruce");
+        UUID propio = semillaTutor(tutor, "DNI_TUTOR_FRENTE", "CARGADO", true, 0);
+        UUID deOtro = semillaTutor(otro, "DNI_TUTOR_FRENTE", "CARGADO", true, 0);
+        UUID otroTipo = semillaTutor(tutor, "OTRO", "CARGADO", true, 0);
+        UUID historico = semillaTutor(tutor, "DNI_TUTOR_DORSO", "CARGADO", false, 0);
+        UUID deDeportista = semilla(atleta, "DNI_DEPORTISTA_FRENTE", "CARGADO", true, 0);
+        for (UUID id : List.of(deOtro, otroTipo, deDeportista, UUID.randomUUID()))
+            falla("DOCUMENTO_NO_ENCONTRADO", () -> revision.revisarTutor(admin, tutor, id, APROBADO, 0, null));
+        falla("DOCUMENTO_NO_VIGENTE", () -> revision.revisarTutor(admin, tutor, historico, APROBADO, 0, null));
+        // La ruta del deportista no alcanza al tutor ni al revés; un ADMIN de otra escuela ve el mismo 404.
+        falla("DOCUMENTO_NO_ENCONTRADO", () -> revision.revisar(admin, atleta, propio, APROBADO, 0, null));
+        falla("DOCUMENTO_NO_ENCONTRADO", () -> revision.revisarTutor(admin, atleta, deDeportista, APROBADO, 0, null));
+        var adminB = new UsuarioAutenticado(UUID.randomUUID(), escuelaB, null, Rol.ADMIN);
+        falla("DOCUMENTO_NO_ENCONTRADO", () -> revision.revisarTutor(adminB, tutor, propio, APROBADO, 0, null));
+        // Una FAMILIA no revisa.
+        var familiar = new UsuarioAutenticado(UUID.randomUUID(), escuelaA, UUID.randomUUID(), Rol.FAMILIA);
+        falla("ACCESO_DENEGADO", () -> revision.revisarTutor(familiar, tutor, propio, APROBADO, 0, null));
+        assertThat(jdbc.sql("SELECT version FROM gestion_patin.documento WHERE id=:id").param("id", propio)
+                .query(Long.class).single()).isZero();
+        assertThat(contarAuditoria("DOCUMENTO_REVISADO")).isZero();
+    }
 }

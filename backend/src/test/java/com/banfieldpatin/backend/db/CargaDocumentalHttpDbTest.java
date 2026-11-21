@@ -2497,4 +2497,339 @@ class CargaDocumentalHttpDbTest {
     assertThat(r.body()).contains(NO_ENCONTRADO);
     assertThat(POSTS.get()).isZero();
   }
+
+  // ---- U19: documentos de tutores ----------------------------------------------------------------------
+
+  UUID tutorA;
+
+  @BeforeEach
+  void reiniciarTutorDeLaPrueba() {
+    tutorA = null; // cada prueba tiene su propia escuela y familia
+  }
+
+  /** Un tutor activo de la familia del usuario de la prueba (creado a demanda). */
+  UUID tutorPropio() {
+    if (tutorA == null) tutorA = nuevoTutor(familia);
+    return tutorA;
+  }
+
+  UUID nuevoTutor(UUID deFamilia) {
+    return new DatosDb(jdbc).tutor(escuela, deFamilia, "Tutor" + UUID.randomUUID().toString().substring(0, 4), "Sintético");
+  }
+
+  HttpResponse<String> enviarTutor(
+      String ruta, UUID key, byte[] bytes, String sesion, boolean csrf, String partes) throws Exception {
+    var client = HttpClient.newHttpClient();
+    var c =
+        client.send(
+            HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + "/api/auth/csrf")).GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+    String header = JsonPath.read(c.body(), "$.headerName");
+    String cookie =
+        c.headers().allValues("set-cookie").stream()
+            .map(x -> x.split(";", 2)[0])
+            .filter(x -> x.startsWith("XSRF-TOKEN="))
+            .findFirst()
+            .orElseThrow();
+    String boundary = "sintetico-boundary";
+    var body = new ByteArrayOutputStream();
+    body.write(
+        (partes
+                + "--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"sintetico.png\""
+                + "\r\nContent-Type: image/png\r\n\r\n")
+            .getBytes());
+    body.write(bytes);
+    body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+    var request =
+        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + ruta))
+            .timeout(java.time.Duration.ofSeconds(20))
+            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+            .header("Idempotency-Key", key.toString())
+            .header("Cookie", cookie + "; BP_SESION=" + sesion);
+    if (csrf) request.header(header, cookie.substring(cookie.indexOf('=') + 1));
+    return client.send(
+        request.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  HttpResponse<String> cargarTutor(UUID tutor, String tipo, UUID key, byte[] bytes) throws Exception {
+    return enviarTutor("/api/familia/tutores/" + tutor + "/documentos", key, bytes, token, true, parteTexto("tipo", tipo));
+  }
+
+  HttpResponse<String> reemplazarTutor(UUID tutor, Object predecesor, UUID key, byte[] bytes) throws Exception {
+    return enviarTutor(
+        "/api/familia/tutores/" + tutor + "/documentos/" + predecesor + "/reemplazo", key, bytes, token, true, "");
+  }
+
+  UUID documentoTutor(UUID tutor, String tipo, String estado, boolean vigente) {
+    return documentoTutor(escuela, usuario, tutor, tipo, estado, vigente);
+  }
+
+  UUID documentoTutor(UUID escuelaId, UUID autor, UUID tutor, String tipo, String estado, boolean vigente) {
+    return jdbc.sql(
+            """
+            INSERT INTO gestion_patin.documento(escuela_id,tutor_id,tipo,nombre_original,storage_key,mime_type,
+              tamanio_bytes,estado,motivo_observacion,vigente,cargado_por)
+            VALUES(:e,:t,:tipo,'documento',:k,'image/png',10,:s,CASE WHEN :s='OBSERVADO' THEN 'Imagen ilegible' END,:v,:a)
+            RETURNING id
+            """)
+        .param("e", escuelaId).param("t", tutor).param("tipo", tipo).param("k", UUID.randomUUID().toString())
+        .param("s", estado).param("v", vigente).param("a", autor).query(UUID.class).single();
+  }
+
+  int operacionesDeTutor(UUID tutor) {
+    return jdbc.sql("SELECT count(*) FROM gestion_patin.operacion_carga_documental WHERE tutor_id=:t")
+        .param("t", tutor).query(Integer.class).single();
+  }
+
+  @Test
+  void cargaDeLosDosDniDeUnTutorPublicaUnaRaizPorLadoYLaRepeticionEsIdempotente() throws Exception {
+    UUID tutor = tutorPropio();
+    var kf = UUID.randomUUID();
+    byte[] file = png();
+    var r = cargarTutor(tutor, "DNI_TUTOR_FRENTE", kf, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    sinFugas(r);
+    UUID doc = idDe(r);
+    assertThat(fila(doc)).containsEntry("tutor_id", tutor).containsEntry("deportista_id", null)
+        .containsEntry("vigente", true).containsEntry("estado", "CARGADO").containsEntry("serie_id", doc)
+        .containsEntry("documento_anterior_id", null).containsEntry("cargado_por", usuario);
+    assertThat(fase(kf)).isEqualTo("PUBLICADA");
+    assertThat(auditoriasDeCarga()).isEqualTo(1);
+    assertThat(cargarTutor(tutor, "DNI_TUTOR_DORSO", UUID.randomUUID(), file).statusCode()).isEqualTo(201);
+    var repetida = cargarTutor(tutor, "DNI_TUTOR_FRENTE", kf, file);
+    assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(200);
+    assertThat(idDe(repetida)).isEqualTo(doc);
+    assertThat(POSTS.get()).isEqualTo(2);
+    // Otro DNI vigente del mismo lado con otra clave: conflicto definitivo (como el del deportista).
+    var otra = cargarTutor(tutor, "DNI_TUTOR_FRENTE", UUID.randomUUID(), file);
+    assertThat(otra.statusCode()).as(otra.body()).isEqualTo(409);
+    assertThat(otra.body()).contains(NO_REPETIBLE);
+    assertThat(POSTS.get()).isEqualTo(2);
+  }
+
+  @Test
+  void laRutaDeTutorSoloAdmiteLosDniDelTutorYNoLaTemporada() throws Exception {
+    UUID tutor = tutorPropio();
+    for (String tipo : List.of("OTRO", "DNI_DEPORTISTA_FRENTE", "APTO_FISICO", "CERTIFICADO_WADA")) {
+      var r = cargarTutor(tutor, tipo, UUID.randomUUID(), png());
+      assertThat(r.statusCode()).as(tipo + " " + r.body()).isEqualTo(422);
+    }
+    var conTemporada =
+        enviarTutor("/api/familia/tutores/" + tutor + "/documentos", UUID.randomUUID(), png(), token, true,
+            parteTexto("tipo", "DNI_TUTOR_FRENTE") + parteTexto("temporadaId", UUID.randomUUID().toString()));
+    assertThat(conTemporada.statusCode()).as(conTemporada.body()).isEqualTo(422);
+    assertThat(operacionesDeTutor(tutor)).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void unTutorAjenoInexistenteOInactivoEsSiempreElMismo404ySinEfectos() throws Exception {
+    var datos = new DatosDb(jdbc);
+    UUID otraFamilia = datos.familia(escuela, "Otra familia", true);
+    UUID deOtraFamilia = nuevoTutor(otraFamilia);
+    UUID otraEscuela = datos.escuela("otra-" + UUID.randomUUID());
+    UUID tutorOtraEscuela = datos.tutor(otraEscuela, datos.familia(otraEscuela, "Ajena", true), "Aje", "Na");
+    UUID inactivo = nuevoTutor(familia);
+    datos.desactivarTutor(inactivo);
+    String cuerpo = null;
+    for (UUID candidato : List.of(UUID.randomUUID(), deOtraFamilia, tutorOtraEscuela, inactivo, atleta)) {
+      var r = cargarTutor(candidato, "DNI_TUTOR_FRENTE", UUID.randomUUID(), png());
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+      assertThat(r.body()).contains("TUTOR_NO_ENCONTRADO");
+      if (cuerpo == null) cuerpo = r.body();
+      assertThat(r.body()).as("cuerpo uniforme").isEqualTo(cuerpo);
+      sinFugas(r);
+    }
+    assertThat(POSTS.get()).isZero();
+    assertThat(
+            jdbc.sql("SELECT count(*) FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e")
+                .param("e", escuela).query(Integer.class).single())
+        .isZero();
+  }
+
+  @Test
+  void conLaFamiliaInactivaLaSesionYaNoValeIgualQueEnLaCargaDelDeportista() throws Exception {
+    UUID tutor = tutorPropio();
+    new DatosDb(jdbc).desactivarFamilia(familia);
+    var r = cargarTutor(tutor, "DNI_TUTOR_FRENTE", UUID.randomUUID(), png());
+    var d = cargar(UUID.randomUUID(), png());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(d.statusCode());
+    assertThat(r.statusCode()).isEqualTo(401);
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void adminSinSesionYSinCsrfNoPuedenCargarDocumentosDeTutores() throws Exception {
+    UUID tutor = tutorPropio();
+    String admin = tokens.emitir(new DatosDb(jdbc).admin(escuela, "admin3@example.invalid", true), Rol.ADMIN, escuela, null);
+    String ruta = "/api/familia/tutores/" + tutor + "/documentos";
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), admin, true, parteTexto("tipo", "DNI_TUTOR_FRENTE")).statusCode())
+        .isEqualTo(403);
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), "invalido", true, parteTexto("tipo", "DNI_TUTOR_FRENTE")).statusCode())
+        .isEqualTo(401);
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), token, false, parteTexto("tipo", "DNI_TUTOR_FRENTE")).statusCode())
+        .isEqualTo(403);
+    assertThat(operacionesDeTutor(tutor)).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void reemplazoDeUnDniObservadoDeTutorHeredaLaSerieConservaAlPredecesorYAudita() throws Exception {
+    UUID tutor = tutorPropio();
+    UUID predecesor = documentoTutor(tutor, "DNI_TUTOR_DORSO", "OBSERVADO", true);
+    var antes = fila(predecesor);
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var r = reemplazarTutor(tutor, predecesor, key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    sinFugas(r);
+    UUID sucesor = idDe(r);
+    assertThat(fila(sucesor)).containsEntry("documento_anterior_id", predecesor)
+        .containsEntry("serie_id", antes.get("serie_id")).containsEntry("tutor_id", tutor)
+        .containsEntry("vigente", true).containsEntry("tipo", "DNI_TUTOR_DORSO");
+    assertThat(fila(predecesor)).containsEntry("estado", "OBSERVADO").containsEntry("motivo_observacion", "Imagen ilegible")
+        .containsEntry("vigente", false);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).isZero();
+    var repetida = reemplazarTutor(tutor, predecesor, key, file);
+    assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(200);
+    assertThat(idDe(repetida)).isEqualTo(sucesor);
+    assertThat(POSTS.get()).isEqualTo(1);
+    // Ya reemplazado: otra clave es un conflicto definitivo.
+    var tarde = reemplazarTutor(tutor, predecesor, UUID.randomUUID(), file);
+    assertThat(tarde.statusCode()).as(tarde.body()).isEqualTo(409);
+    assertThat(tarde.body()).contains(NO_REPETIBLE);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void elPredecesorDeUnTutorDebeSerDeEseTutorYUnDniObservado() throws Exception {
+    UUID tutor = tutorPropio();
+    UUID deOtro = documentoTutor(nuevoTutor(familia), "DNI_TUTOR_FRENTE", "OBSERVADO", true);
+    UUID deDeportista = documentoDe(atleta, "DNI_DEPORTISTA_FRENTE", "OBSERVADO", true);
+    UUID otroTipo = documentoTutor(tutor, "OTRO", "OBSERVADO", true);
+    for (UUID candidato : List.of(UUID.randomUUID(), deOtro, deDeportista, otroTipo)) {
+      var r = reemplazarTutor(tutor, candidato, UUID.randomUUID(), png());
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+      assertThat(r.body()).contains(NO_ENCONTRADO);
+    }
+    for (String estado : List.of("CARGADO", "APROBADO")) {
+      UUID p = documentoTutor(tutor, "DNI_TUTOR_FRENTE", estado, true);
+      var r = reemplazarTutor(tutor, p, UUID.randomUUID(), png());
+      assertThat(r.statusCode()).as(estado + r.body()).isEqualTo(409);
+      assertThat(r.body()).contains(NO_REPETIBLE);
+      jdbc.sql("UPDATE gestion_patin.documento SET vigente=false WHERE id=:id").param("id", p).update();
+    }
+    assertThat(POSTS.get()).isZero();
+    // La ruta del deportista no alcanza documentos de un tutor, ni al revés.
+    var cruzada = reemplazar(UUID.randomUUID(), png(), deOtro, token, true, "");
+    assertThat(cruzada.statusCode()).as(cruzada.body()).isEqualTo(404);
+    var inversa = reemplazarTutor(tutor, deDeportista, UUID.randomUUID(), png());
+    assertThat(inversa.statusCode()).as(inversa.body()).isEqualTo(404);
+  }
+
+  @Test
+  void dosReemplazosConcurrentesDelMismoDniDeTutorTienenUnSoloGanador() throws Exception {
+    UUID tutor = tutorPropio();
+    UUID predecesor = documentoTutor(tutor, "DNI_TUTOR_FRENTE", "OBSERVADO", true);
+    byte[] file = png();
+    var salida = new CyclicBarrier(2);
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<HttpResponse<String>> intento =
+          () -> {
+            salida.await(5, TimeUnit.SECONDS);
+            return reemplazarTutor(tutor, predecesor, UUID.randomUUID(), file);
+          };
+      var a = pool.submit(intento);
+      var b = pool.submit(intento);
+      var ra = a.get(25, TimeUnit.SECONDS);
+      var rb = b.get(25, TimeUnit.SECONDS);
+      assertThat(List.of(ra.statusCode(), rb.statusCode())).as(ra.body() + rb.body())
+          .containsExactlyInAnyOrder(201, 409);
+    }
+    assertThat(POSTS.get()).as("el perdedor nunca transfiere").isEqualTo(1);
+    assertThat(
+            jdbc.sql("SELECT count(*) FROM gestion_patin.documento WHERE tutor_id=:t AND vigente AND tipo='DNI_TUTOR_FRENTE'")
+                .param("t", tutor).query(Integer.class).single())
+        .isEqualTo(1);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  @Test
+  void otroReemplazoActivoDelMismoDniDeTutorEsTransitorio() throws Exception {
+    UUID tutor = tutorPropio();
+    UUID predecesor = documentoTutor(tutor, "DNI_TUTOR_FRENTE", "OBSERVADO", true);
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          entered.countDown();
+          try {
+            if (!release.await(7, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    byte[] file = png();
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var primero = pool.submit(() -> reemplazarTutor(tutor, predecesor, UUID.randomUUID(), file));
+      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+      var r = reemplazarTutor(tutor, predecesor, UUID.randomUUID(), file);
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+      assertThat(r.body()).contains(EN_CURSO);
+      assertThat(POSTS.get()).isZero();
+      release.countDown();
+      assertThat(primero.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
+    } finally {
+      release.countDown();
+    }
+  }
+
+  @Test
+  void elReemplazoDeTutorNoAlcanzaATutoresAjenosInactivosNiAOtraEscuelaYPideSesionYCsrf() throws Exception {
+    var datos = new DatosDb(jdbc);
+    UUID propio = tutorPropio();
+    UUID predecesor = documentoTutor(propio, "DNI_TUTOR_FRENTE", "OBSERVADO", true);
+    UUID deOtraFamilia = nuevoTutor(datos.familia(escuela, "Otra familia", true));
+    UUID observadoAjeno = documentoTutor(deOtraFamilia, "DNI_TUTOR_FRENTE", "OBSERVADO", true);
+    UUID otraEscuela = datos.escuela("otra-" + UUID.randomUUID());
+    UUID tutorOtraEscuela = datos.tutor(otraEscuela, datos.familia(otraEscuela, "Ajena", true), "Aje", "Na");
+    UUID inactivo = nuevoTutor(familia);
+    UUID observadoInactivo = documentoTutor(inactivo, "DNI_TUTOR_DORSO", "OBSERVADO", true);
+    datos.desactivarTutor(inactivo);
+    String cuerpo = null;
+    for (var par : List.of(
+        Map.entry(deOtraFamilia, observadoAjeno), Map.entry(tutorOtraEscuela, predecesor),
+        Map.entry(inactivo, observadoInactivo), Map.entry(UUID.randomUUID(), predecesor))) {
+      var r = reemplazarTutor(par.getKey(), par.getValue(), UUID.randomUUID(), png());
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+      assertThat(r.body()).contains("TUTOR_NO_ENCONTRADO");
+      if (cuerpo == null) cuerpo = r.body();
+      assertThat(r.body()).isEqualTo(cuerpo);
+    }
+    String admin = tokens.emitir(datos.admin(escuela, "admin4@example.invalid", true), Rol.ADMIN, escuela, null);
+    String ruta = "/api/familia/tutores/" + propio + "/documentos/" + predecesor + "/reemplazo";
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), admin, true, "").statusCode()).isEqualTo(403);
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), "invalido", true, "").statusCode()).isEqualTo(401);
+    assertThat(enviarTutor(ruta, UUID.randomUUID(), png(), token, false, "").statusCode()).isEqualTo(403);
+    assertThat(POSTS.get()).isZero();
+    for (UUID t : List.of(propio, deOtraFamilia, inactivo)) assertThat(operacionesDeTutor(t)).isZero();
+    assertThat((Boolean) fila(predecesor).get("vigente")).isTrue();
+  }
+
+  @Test
+  void unPredecesorDelOtroLadoDelMismoTutorNoSeReemplazaPorLaRutaDelOtroLadoYElDorsoSiSeReemplaza() throws Exception {
+    UUID tutor = tutorPropio();
+    UUID dorso = documentoTutor(tutor, "DNI_TUTOR_DORSO", "OBSERVADO", true);
+    UUID frente = documentoTutor(tutor, "DNI_TUTOR_FRENTE", "APROBADO", true);
+    // El reemplazo del dorso no toca el frente y publica un dorso: el tipo sale del predecesor.
+    var r = reemplazarTutor(tutor, dorso, UUID.randomUUID(), png());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat((String) JsonPath.read(r.body(), "$.tipo")).isEqualTo("DNI_TUTOR_DORSO");
+    assertThat(fila(frente)).containsEntry("vigente", true).containsEntry("estado", "APROBADO");
+    assertThat(operacionesDe(frente)).isZero();
+  }
 }

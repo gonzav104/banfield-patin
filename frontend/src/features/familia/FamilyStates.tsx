@@ -43,6 +43,11 @@ export function AthleteNotFoundNotice() {
   return <Notice title={SHEET_NOT_FOUND_TITLE}>{SHEET_NOT_FOUND_TEXT}</Notice>;
 }
 
+/** One screen for a tutor that is not in the family or does not exist (U19): it never says which. */
+export function TutorNotFoundNotice() {
+  return <Notice title="No encontramos este tutor">Volvé a tu familia y elegí un tutor de la lista.</Notice>;
+}
+
 export function LoadingBlock({ label }: { label: string }) {
   return (
     <p role="status" className="flex items-center gap-3 rounded-2xl border border-line bg-white p-5 text-sm text-muted">

@@ -3,7 +3,7 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { StatusBadge, type BadgeTone } from '@/features/familia/StatusBadge';
 import type { DocumentStatus } from '@/features/familia/schemas';
-import { DOCUMENT_LOADING, DOCUMENTS_EMPTY, DOCUMENTS_LOADING, DOCUMENTS_NOTE, DOCUMENTS_TITLE, documentTypeLabel, PDF_READY } from './messages';
+import { DOCUMENT_LOADING, DOCUMENTS_EMPTY, DOCUMENTS_LOADING, DOCUMENTS_NOTE, DOCUMENTS_TITLE, documentTypeLabel, PDF_READY, TUTOR_DOCUMENTS_EMPTY } from './messages';
 import type { DocumentReviewAction } from './api';
 import { canReview } from './use-document-review';
 import type { AdminDocument } from './schemas';
@@ -24,9 +24,9 @@ export function uploadDate(iso: string): string | null {
   return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
 }
 
-function DocumentRow({ document, busy, onOpen, rowRef, reviewDisabled, onReview }: {
+function DocumentRow({ document, busy, onOpen, rowRef, reviewDisabled, onReview, owner }: {
   document: AdminDocument; busy: boolean; onOpen: () => void; rowRef: (node: HTMLLIElement | null) => void;
-  reviewDisabled: boolean; onReview: (action: DocumentReviewAction) => void;
+  reviewDisabled: boolean; onReview: (action: DocumentReviewAction) => void; owner: 'deportista' | 'tutor';
 }) {
   const label = documentTypeLabel(document.tipo);
   const status = STATUS[document.estado];
@@ -46,10 +46,10 @@ function DocumentRow({ document, busy, onOpen, rowRef, reviewDisabled, onReview 
         <Button variant="outline" disabled={busy} onClick={onOpen} aria-label={`Abrir documento: ${label}`}>
           Abrir documento
         </Button>
-        {canReview(document, 'APROBADO') ? (
+        {canReview(document, 'APROBADO', owner) ? (
           <Button disabled={reviewDisabled} onClick={() => onReview('APROBADO')} aria-label={`Aprobar documento: ${label}`}>Aprobar</Button>
         ) : null}
-        {canReview(document, 'OBSERVADO') ? (
+        {canReview(document, 'OBSERVADO', owner) ? (
           <Button variant="outline" disabled={reviewDisabled} onClick={() => onReview('OBSERVADO')} aria-label={`Observar documento: ${label}`}>Observar</Button>
         ) : null}
       </div>
@@ -94,11 +94,13 @@ export interface AthleteDocumentsViewProps {
   onOpen: (document: AdminDocument) => void;
   onClose: () => void;
   onDownload: () => void;
+  /** Whose documents these are: only the text of the empty list changes (U19). */
+  owner?: 'deportista' | 'tutor';
 }
 
 /** Presentational: the list of current documents with one «Abrir documento» per row, and the single open document. */
 export function AthleteDocumentsView({ documents, loading, listError, onRetryList, viewer, onOpen, onClose, onDownload,
-  reviewDisabled, reviewFeedback, onReview }: AthleteDocumentsViewProps) {
+  reviewDisabled, reviewFeedback, onReview, owner = 'deportista' }: AthleteDocumentsViewProps) {
   const rows = useRef(new Map<string, HTMLLIElement>());
   const lastOpened = useRef<string | null>(null);
   const busy = viewer.status === 'loading';
@@ -132,7 +134,7 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
           </Button>
         </div>
       ) : null}
-      {documents && documents.length === 0 ? <p className="text-sm">{DOCUMENTS_EMPTY}</p> : null}
+      {documents && documents.length === 0 ? <p className="text-sm">{owner === 'tutor' ? TUTOR_DOCUMENTS_EMPTY : DOCUMENTS_EMPTY}</p> : null}
       {documents && documents.length > 0 ? (
         <ul className="space-y-3">
           {documents.map((document) => (
@@ -141,6 +143,7 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
               document={document}
               busy={busy}
               reviewDisabled={reviewDisabled}
+              owner={owner}
               onReview={(action) => onReview(document, action)}
               onOpen={() => onOpen(document)}
               rowRef={(node) => {

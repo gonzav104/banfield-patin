@@ -33,6 +33,17 @@ public class DescargaDocumentoController {
 		this.csrf = csrf;
 	}
 
+	/** Descarga auditada de un DNI de un tutor (U19): mismas reglas (MFA, CSRF por cabecera, sin HEAD) y respuestas. */
+	@GetMapping("/tutores/{tutorId}/documentos/{documentoId}/archivo")
+	public void archivoTutor(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tutorId,
+			@PathVariable UUID documentoId, HttpServletRequest request, HttpServletResponse response)
+			throws HttpRequestMethodNotSupportedException {
+		if ("HEAD".equalsIgnoreCase(request.getMethod())) throw new HttpRequestMethodNotSupportedException("HEAD", Set.of("GET"));
+		CsrfDescarga.exigir(request, csrf);
+		servicio.descargarTutor(UsuarioAutenticado.desde(jwt), tutorId, documentoId, DatosSolicitud.de(request),
+				(mime, nombre, contenido) -> escribir(response, mime, nombre, contenido));
+	}
+
 	@GetMapping("/deportistas/{deportistaId}/documentos/{documentoId}/archivo")
 	public void archivo(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID deportistaId,
 			@PathVariable UUID documentoId, HttpServletRequest request, HttpServletResponse response)

@@ -5,6 +5,7 @@ import { PublicOnly, RequireMfaPending, RequireRole } from '@/features/auth/guar
 import { AdminHomePage } from '@/features/auth/HomePages';
 import { AthletesPage } from '@/features/familia/AthletesPage';
 import { AthleteSheetPage } from '@/features/familia/AthleteSheetPage';
+import { TutorDocumentsPage } from '@/features/familia/TutorDocumentsPage';
 import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminFamiliaDetallePage } from '@/features/admin-familias/AdminFamiliaDetallePage';
@@ -68,6 +69,7 @@ export function AppRoutes() {
           <Route path="/familia" element={<FamilyDashboardPage />} />
           <Route path="/familia/deportistas" element={<AthletesPage />} />
           <Route path="/familia/deportistas/:deportistaId" element={<AthleteSheetPage />} />
+          <Route path="/familia/tutores/:tutorId" element={<TutorDocumentsPage />} />
           <Route path="/familia/*" element={<Navigate to="/familia" replace />} />
         </Route>
       </Route>

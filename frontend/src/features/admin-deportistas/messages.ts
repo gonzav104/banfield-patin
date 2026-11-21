@@ -169,6 +169,7 @@ export const DOCUMENTS_TITLE = 'Documentos';
 export const DOCUMENTS_NOTE =
   'Cada vez que se abre o se descarga un documento, el sistema de la escuela lo registra. Al descargar un PDF se guarda una copia en este dispositivo.';
 export const DOCUMENTS_EMPTY = 'Este deportista no tiene documentos vigentes.';
+export const TUTOR_DOCUMENTS_EMPTY = 'Este tutor no tiene documentos vigentes.';
 export const DOCUMENTS_LOADING = 'Cargando los documentos…';
 export const DOCUMENT_LOADING = 'Abriendo el documento…';
 export const PDF_READY = 'PDF listo. Para verlo hay que descargarlo: queda una copia en este dispositivo.';

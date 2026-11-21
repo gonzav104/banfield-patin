@@ -67,11 +67,24 @@ public class DescargaDocumentoService {
 
 	public void descargar(UsuarioAutenticado usuario, UUID deportistaId, UUID documentoId, DatosSolicitud datos,
 			Entrega entrega) {
+		descargar(usuario, false, deportistaId, documentoId, datos, entrega);
+	}
+
+	/** Descarga auditada de un DNI de un tutor (U19): el mismo camino, con la consulta y la auditoría del tutor. */
+	public void descargarTutor(UsuarioAutenticado usuario, UUID tutorId, UUID documentoId, DatosSolicitud datos,
+			Entrega entrega) {
+		descargar(usuario, true, tutorId, documentoId, datos, entrega);
+	}
+
+	/** {@code deportistaId} es el id del dueño de la ruta: un deportista o, si {@code tutor}, un tutor. */
+	private void descargar(UsuarioAutenticado usuario, boolean tutor, UUID deportistaId, UUID documentoId,
+			DatosSolicitud datos, Entrega entrega) {
 		if (usuario.rol() != Rol.ADMIN) {
 			throw new ExcepcionNegocio(HttpStatus.FORBIDDEN, "ACCESO_DENEGADO", "Acceso denegado.");
 		}
 		DocumentoDescargable documento = lectura
-				.execute(s -> consulta.buscar(usuario.escuelaId(), deportistaId, documentoId))
+				.execute(s -> tutor ? consulta.buscarTutor(usuario.escuelaId(), deportistaId, documentoId)
+						: consulta.buscar(usuario.escuelaId(), deportistaId, documentoId))
 				.orElseThrow(DescargaDocumentoService::noEncontrado);
 		if (documento.sha256() == null || !TIPOS_SERVIBLES.contains(documento.mime())) throw noVerificable();
 		DestinoPreparado destino = destino(documento);
@@ -88,14 +101,14 @@ public class DescargaDocumentoService {
 			} catch (RuntimeException ex) {
 				DiagnosticoDescarga.fallo("lectura", ex);
 				if (tamanioDistintoConfirmado(almacen, destino, documento.tamanioBytes(), ex))
-					throw integridadFallida(usuario, deportistaId, documentoId, documento, datos);
+					throw integridadFallida(usuario, tutor, deportistaId, documentoId, documento, datos);
 				throw noDisponible();
 			}
 			if (contenido.length != documento.tamanioBytes()
 					|| !MessageDigest.isEqual(sha256(contenido), documento.sha256()))
-				throw integridadFallida(usuario, deportistaId, documentoId, documento, datos);
+				throw integridadFallida(usuario, tutor, deportistaId, documentoId, documento, datos);
 			try {
-				auditada.executeWithoutResult(s -> auditoria.registrar(evento(usuario, deportistaId, documentoId,
+				auditada.executeWithoutResult(s -> auditoria.registrar(evento(usuario, tutor, deportistaId, documentoId,
 						documento, AccionAuditoria.DOCUMENTO_DESCARGADO, datos)));
 			} catch (RuntimeException ex) {
 				DiagnosticoDescarga.fallo("auditoria", ex);
@@ -142,11 +155,11 @@ public class DescargaDocumentoService {
 	}
 
 	/** Audita el fallo de integridad (un fallo secundario no reemplaza el 502) y devuelve el 502; nunca hay bytes. */
-	private ExcepcionNegocio integridadFallida(UsuarioAutenticado usuario, UUID deportistaId, UUID documentoId,
+	private ExcepcionNegocio integridadFallida(UsuarioAutenticado usuario, boolean tutor, UUID deportistaId, UUID documentoId,
 			DocumentoDescargable documento, DatosSolicitud datos) {
 		DiagnosticoDescarga.fallo("integridad", null);
 		try {
-			auditoria.registrarFallo(evento(usuario, deportistaId, documentoId, documento,
+			auditoria.registrarFallo(evento(usuario, tutor, deportistaId, documentoId, documento,
 					AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA, datos));
 		} catch (RuntimeException ex) {
 			// Un fallo secundario al auditar no reemplaza el 502 original; nunca se entregan los bytes.
@@ -156,10 +169,10 @@ public class DescargaDocumentoService {
 				"El documento almacenado no coincide con el registrado.");
 	}
 
-	private static EventoAuditoria evento(UsuarioAutenticado usuario, UUID deportistaId, UUID documentoId,
+	private static EventoAuditoria evento(UsuarioAutenticado usuario, boolean tutor, UUID duenoId, UUID documentoId,
 			DocumentoDescargable documento, AccionAuditoria accion, DatosSolicitud datos) {
 		return new EventoAuditoria(usuario.escuelaId(), usuario.id(), accion, "DOCUMENTO", documentoId,
-				Map.of("deportistaId", deportistaId.toString(), "tipo", documento.tipo(),
+				Map.of(tutor ? "tutorId" : "deportistaId", duenoId.toString(), "tipo", documento.tipo(),
 						"tamanioBytes", documento.tamanioBytes()), datos);
 	}
 

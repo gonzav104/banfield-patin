@@ -25,7 +25,7 @@ import tools.jackson.databind.JsonNode;
 class OpenApiRutasTest extends BaseOpenApiWebMvc {
 
 	/** Rutas que responden 201 (se verifican contra los controladores en OpenApiEstadosRealesTest). */
-	static final Set<String> CREAN = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/invitaciones", "POST /api/auth/registro/invitacion",
+	static final Set<String> CREAN = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/invitaciones", "POST /api/auth/registro/invitacion",
 			"POST /api/admin/familias", "POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas",
 			"POST /api/admin/temporadas", "POST /api/admin/deportistas/{deportistaId}/temporadas");
 	/** Rutas que responden 204 sin cuerpo. */
@@ -73,13 +73,13 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 		}));
 
 		exitos.forEach((operacion, codigos) -> {
-			String esperado = operacion.equals("POST /api/familia/deportistas/{id}/documentos") || operacion.equals("POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo") ? "200,201" : CREAN.contains(operacion) ? "201" : SIN_CONTENIDO.contains(operacion) ? "204" : "200";
+			String esperado = operacion.equals("POST /api/familia/deportistas/{id}/documentos") || operacion.equals("POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo") || operacion.equals("POST /api/familia/tutores/{id}/documentos") || operacion.equals("POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo") ? "200,201" : CREAN.contains(operacion) ? "201" : SIN_CONTENIDO.contains(operacion) ? "204" : "200";
 			assertThat(codigos).as("codigo de exito de " + operacion).isEqualTo(esperado);
 		});
 		// Los 201 llevan Location (salvo el registro, que responde 201 sin Location); los 204 no tienen cuerpo.
 		for (String operacion : CREAN) {
 			assertThat(operacionDe(documento, operacion).path("responses").path("201").path("headers").has("Location"))
-					.as("Location en " + operacion).isEqualTo(!java.util.Set.of("POST /api/auth/registro/invitacion", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo").contains(operacion));
+					.as("Location en " + operacion).isEqualTo(!java.util.Set.of("POST /api/auth/registro/invitacion", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo").contains(operacion));
 		}
 		for (String operacion : SIN_CONTENIDO) {
 			assertThat(operacionDe(documento, operacion).path("responses").path("204").has("content"))
@@ -165,7 +165,8 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 			Set<String> exigidos = new TreeSet<>();
 			operacionDe(documento, operacion).path("security").forEach(r -> r.propertyNames().forEach(exigidos::add));
 			// La descarga administrativa (U16, D2) es la unica lectura que exige la cabecera CSRF.
-			boolean escribe = !operacion.startsWith("GET ") || operacion.equals(OpenApiConfig.DESCARGA_ADMIN);
+			boolean escribe = !operacion.startsWith("GET ") || operacion.equals(OpenApiConfig.DESCARGA_ADMIN)
+					|| operacion.equals(OpenApiConfig.DESCARGA_TUTOR); // U19: la descarga del DNI de un tutor, igual
 			assertThat(exigidos.contains("sesionCookie")).as("sesion en " + operacion)
 					.isEqualTo(!PUBLICAS.contains(operacion));
 			assertThat(exigidos.contains("csrfHeader")).as("csrf en " + operacion).isEqualTo(escribe);

@@ -76,6 +76,32 @@ class DescargaDocumentoWebMvcTest extends BaseOpenApiWebMvc {
 		assertThat(identidad.getValue()).isEqualTo(new UsuarioAutenticado(usuario, escuela, null, Rol.ADMIN));
 	}
 
+	// ---- U19: la descarga de un DNI de un tutor tiene las mismas reglas de acceso ----
+
+	private String rutaTutor() { return "/api/admin/tutores/" + deportista + "/documentos/" + documento + "/archivo"; }
+
+	@Test
+	void laDescargaDeTutorExigeAdminConMfaYCsrfYNuncaUsaLaRutaDelDeportista() throws Exception {
+		doAnswer(i -> {
+			i.<DescargaDocumentoService.Entrega>getArgument(4).escribir("image/png", "dni-frente.png", CONTENIDO);
+			return null;
+		}).when(descargaDocumentoService).descargarTutor(any(), any(), any(), any(), any());
+		mvc.perform(conCsrf(get(rutaTutor()))).andExpect(status().isUnauthorized());
+		mvc.perform(conCsrf(get(rutaTutor())).cookie(sesion(Rol.FAMILIA))).andExpect(status().isForbidden());
+		mvc.perform(conCsrf(get(rutaTutor())).cookie(sesionMfaPendiente())).andExpect(status().isForbidden());
+		mvc.perform(get(rutaTutor()).cookie(sesion(Rol.ADMIN), xsrf)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
+		mvc.perform(conCsrf(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head(rutaTutor())).cookie(sesion(Rol.ADMIN))).andExpect(status().isMethodNotAllowed());
+		verifyNoInteractions(descargaDocumentoService);
+		var r = mvc.perform(conCsrf(get(rutaTutor())).cookie(sesion(Rol.ADMIN))).andExpect(status().isOk())
+				.andReturn().getResponse();
+		assertThat(r.getContentAsByteArray()).isEqualTo(CONTENIDO);
+		assertThat(r.getHeaders("Cache-Control")).containsExactly("no-store");
+		assertThat(r.getHeader("Content-Security-Policy")).isEqualTo("sandbox; default-src 'none'");
+		verify(descargaDocumentoService).descargarTutor(any(), eq(deportista), eq(documento), any(), any());
+		verify(descargaDocumentoService, org.mockito.Mockito.never()).descargar(any(), any(), any(), any(), any());
+	}
+
 	@Test
 	void sinSesionEs401YNoConsulta() throws Exception {
 		mvc.perform(conCsrf(get(ruta()))).andExpect(status().isUnauthorized());
