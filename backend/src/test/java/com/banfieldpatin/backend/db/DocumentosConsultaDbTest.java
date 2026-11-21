@@ -68,6 +68,26 @@ class DocumentosConsultaDbTest extends BaseVinculosDb {
   assertThat(fila.version()).isEqualTo("9223372036854775807");
   assertThat(fila.motivoObservacion()).isNull();
  }
+ @Test void laProyeccionAdminDelTutorLeeLaVersionYSoloVeVigentesDeSuEscuela() {
+  var vigente=documento(escuelaA,tutorA,true,true,"OBSERVADO");
+  documento(escuelaA,tutorA,true,false,"OBSERVADO"); // historial: no se lista
+  jdbc.sql("UPDATE gestion_patin.documento SET version=:v WHERE id=:id")
+   .param("v",Long.MAX_VALUE).param("id",vigente).update();
+  var pagina=documentos.tutorAdmin(admin,tutorA,Pagina.pedir(0,20),DATOS);
+  assertThat(pagina.totalElementos()).isEqualTo(1);
+  var fila=pagina.contenido().getFirst();
+  assertThat(fila.id()).isEqualTo(vigente);
+  assertThat(fila.version()).isEqualTo("9223372036854775807");
+  assertThat(fila.motivoObservacion()).isEqualTo("MOTIVO_FICTICIO");
+  // El ADMIN de otra escuela no ve al tutor: el mismo 404 que un id inexistente.
+  var adminB=new UsuarioAutenticado(UUID.randomUUID(),escuelaB,null,Rol.ADMIN);
+  assertThatThrownBy(()->documentos.tutorAdmin(adminB,tutorA,Pagina.pedir(0,20),DATOS))
+   .isInstanceOfSatisfying(ExcepcionNegocio.class,e->assertThat(e.getCodigo()).isEqualTo("TUTOR_NO_ENCONTRADO"));
+  // La FAMILIA no puede usar la variante administrativa.
+  var familiar=new UsuarioAutenticado(UUID.randomUUID(),escuelaA,familiaA,Rol.FAMILIA);
+  assertThatThrownBy(()->documentos.tutorAdmin(familiar,tutorA,Pagina.pedir(0,20),DATOS))
+   .isInstanceOfSatisfying(ExcepcionNegocio.class,e->assertThat(e.getEstado().value()).isEqualTo(403));
+ }
  @Test void consultaAmbosPropietariosSinMezclarEscuelasFamiliasNiHistorial() {
   var d=documento(escuelaA,deportistaA,false,true,"CARGADO");
   var t=documento(escuelaA,tutorA,true,true,"OBSERVADO");

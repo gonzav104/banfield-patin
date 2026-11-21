@@ -30,8 +30,8 @@ public class DocumentoAdminController {
     }
 
     @GetMapping("/tutores/{id}/documentos")
-    public Pagina<DocumentoMetadatos> tutor(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    public Pagina<DocumentoAdminMetadatos> tutor(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, HttpServletRequest request) {
-        return servicio.tutor(UsuarioAutenticado.desde(jwt), id, Pagina.pedir(page, size), DatosSolicitud.de(request));
+        return servicio.tutorAdmin(UsuarioAutenticado.desde(jwt), id, Pagina.pedir(page, size), DatosSolicitud.de(request));
     }
 }

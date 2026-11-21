@@ -89,19 +89,37 @@ public class DocumentoConsultaService {
     @Transactional
     public Pagina<DocumentoMetadatos> tutor(UsuarioAutenticado usuario, UUID id, Pageable pagina,
             DatosSolicitud datos) {
-        boolean admin = esAdmin(usuario);
-        if (!admin && usuario.familiaId() == null) {
+        if (esAdmin(usuario)) {
+            return respuesta(usuario, id, "TUTOR", buscarTutorAdmin(usuario, id, pagina)
+                    .map(DocumentoAdminMetadatos::sinVersion), datos);
+        }
+        if (usuario.familiaId() == null) {
             throw TutorAdminService.tutorNoEncontrado();
         }
-        Page<DocumentoMetadatos> resultado = admin
-                ? documentos.tutorAdmin(usuario.escuelaId(), id, pagina)
-                : documentos.tutorFamilia(usuario.escuelaId(), id, usuario.familiaId(), pagina);
-        if (resultado.isEmpty() && !(admin
-                ? tutores.existsByIdAndEscuelaId(id, usuario.escuelaId())
-                : tutores.tutorEnAlcance(usuario.familiaId(), usuario.escuelaId(), id).isPresent())) {
+        Page<DocumentoMetadatos> resultado =
+                documentos.tutorFamilia(usuario.escuelaId(), id, usuario.familiaId(), pagina);
+        if (resultado.isEmpty() && tutores.tutorEnAlcance(usuario.familiaId(), usuario.escuelaId(), id).isEmpty()) {
             throw TutorAdminService.tutorNoEncontrado();
         }
         return respuesta(usuario, id, "TUTOR", resultado, datos);
+    }
+
+    /** Listado administrativo de los documentos vigentes de un tutor, con la versión de cada uno (U19). */
+    @Transactional
+    public Pagina<DocumentoAdminMetadatos> tutorAdmin(UsuarioAutenticado usuario, UUID id, Pageable pagina,
+            DatosSolicitud datos) {
+        if (!esAdmin(usuario)) {
+            throw new ExcepcionNegocio(HttpStatus.FORBIDDEN, "ACCESO_DENEGADO", "Acceso denegado.");
+        }
+        return respuesta(usuario, id, "TUTOR", buscarTutorAdmin(usuario, id, pagina), datos);
+    }
+
+    private Page<DocumentoAdminMetadatos> buscarTutorAdmin(UsuarioAutenticado usuario, UUID id, Pageable pagina) {
+        Page<DocumentoAdminMetadatos> resultado = documentos.tutorAdmin(usuario.escuelaId(), id, pagina);
+        if (resultado.isEmpty() && !tutores.existsByIdAndEscuelaId(id, usuario.escuelaId())) {
+            throw TutorAdminService.tutorNoEncontrado();
+        }
+        return resultado;
     }
 
     private <T> Pagina<T> respuesta(UsuarioAutenticado usuario, UUID id, String tipo,

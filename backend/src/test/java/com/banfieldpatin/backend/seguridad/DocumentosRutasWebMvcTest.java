@@ -31,6 +31,8 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
    .thenReturn(new Pagina<>(List.of(filaAdmin),0,20,1));
   when(documentoConsultaService.deportista(any(),any(),any(),any())).thenReturn(pagina);
   when(documentoConsultaService.tutor(any(),any(),any(),any())).thenReturn(pagina);
+  when(documentoConsultaService.tutorAdmin(any(),any(),any(),any()))
+   .thenReturn(new Pagina<>(List.of(filaAdmin),0,20,1));
  }
  @Test void adminPuedeConsultarMetadatosDeAmbosPropietarios() throws Exception { comprobar(Rol.ADMIN); }
  @Test void versionAdministrativaEsDecimalSinPerderPrecision() throws Exception {
@@ -39,6 +41,15 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   var version=new JsonMapper().readTree(respuesta).path("contenido").get(0).path("version");
   assertThat(version.isString()).isTrue();
   assertThat(version.asString()).isEqualTo("9223372036854775807");
+ }
+ @Test void versionAdministrativaDeTutorEsDecimalYLaDeFamiliaNoLaTrae() throws Exception {
+  var admin=new JsonMapper().readTree(mvc.perform(get(ruta("admin","tutores")).cookie(sesion(Rol.ADMIN)))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("contenido").get(0).path("version");
+  assertThat(admin.isString()).isTrue();
+  assertThat(admin.asString()).isEqualTo("9223372036854775807");
+  var familia=new JsonMapper().readTree(mvc.perform(get(ruta("familia","tutores")).cookie(sesion(Rol.FAMILIA)))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("contenido").get(0);
+  assertThat(familia.has("version")).isFalse();
  }
  @Test void familiaPuedeConsultarMetadatosDeAmbosPropietarios() throws Exception { comprobar(Rol.FAMILIA); }
  private void comprobar(Rol rol) throws Exception {
@@ -50,7 +61,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
    var campos=new JsonMapper().readTree(respuesta).path("contenido").get(0).propertyNames();
    var permitidos=new java.util.ArrayList<>(List.of("id","tipo","estado","temporadaId","creadoEn","vigente",
     "fechaVencimiento","motivoObservacion"));
-   if (rol==Rol.ADMIN && p.equals("deportistas")) permitidos.add("version");
+   if (rol==Rol.ADMIN) permitidos.add("version"); // U17 (deportista) y U19 (tutor): el ADMIN recibe la versión decimal
    assertThat(campos).containsExactlyInAnyOrderElementsOf(permitidos);
   }
  }
@@ -79,6 +90,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   when(documentoConsultaService.deportistaAdmin(any(),any(),any(),any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
   when(documentoConsultaService.deportista(any(),any(),any(),any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
   when(documentoConsultaService.tutor(any(),any(),any(),any())).thenThrow(TutorAdminService.tutorNoEncontrado());
+  when(documentoConsultaService.tutorAdmin(any(),any(),any(),any())).thenThrow(TutorAdminService.tutorNoEncontrado());
   for(String rol:List.of("admin","familia")) for(String p:List.of("deportistas","tutores"))
    mvc.perform(get(ruta(rol,p)).cookie(sesion(Rol.valueOf(rol.toUpperCase())))).andExpect(status().isNotFound())
     .andExpect(jsonPath("$.codigo").value(p.equals("tutores")?"TUTOR_NO_ENCONTRADO":"DEPORTISTA_NO_ENCONTRADO"));

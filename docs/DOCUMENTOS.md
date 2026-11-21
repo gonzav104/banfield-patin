@@ -374,6 +374,14 @@ No hay ningún índice único sobre las operaciones por predecesor (ver V12): la
 
 **Verificación de U18 en el E2E real** (`documentos-dni.real.spec.ts`, mismo doble de Storage y de clamd que U15): la familia sube un DNI, el club lo observa por la API real con CSRF, la familia lo reemplaza por la interfaz (la ruta propia, una única parte `archivo`, `201`), y se comprueba en la base la cadena (`documento_anterior_id`, `serie_id` heredada, predecesor `OBSERVADO` no vigente con su motivo), dos operaciones, ambos objetos en Storage, la lista familiar con un solo documento y que la descarga administrativa (U16) sirve al sucesor y responde `404` para el reemplazado. Esa ejecución local (Chromium de escritorio, 360 × 800 px, dobles de prueba) no sustituye la validación en dispositivos reales ni contra Supabase y ClamAV reales.
 
+## Documentos de tutores (U19)
+
+Alcance: **solo `DNI_TUTOR_FRENTE` y `DNI_TUTOR_DORSO`**. Carga, reemplazo de un DNI `OBSERVADO`, revisión y descarga administrativa, sobre el mismo pipeline que los DNI del deportista. La obligatoriedad según edad y parentesco queda **fuera**: `tutor.parentesco` es texto libre sin validación y no se usa para reglas (U20 define requisitos e identificación confiable de vínculos; U22 aplica las validaciones de empadronamiento).
+
+**Permiso por familia, no por titular.** `tutor.usuario_id` existe en la base pero la aplicación no lo mapea ni lo gestiona: no hay vínculo entre un usuario y un tutor. Por eso un usuario FAMILIA activo gestiona la documentación de los tutores **activos** de su familia (activa) y de su escuela, con el mismo 404 uniforme que el deportista. Ese permiso **no acredita la identidad** del titular del documento.
+
+**V13 (corte 1).** El `CHECK` de tipo de `predecesor_id` y el contexto del predecesor que el trigger valida al reservar (V12) pasan a admitir los DNI de un tutor: mismo escuela, mismo `tutor_id` y mismo tipo (un predecesor de otro tutor, de un deportista o de otro tipo es `23514`). Para los DNI del deportista el comportamiento es el de V12. V5 (`uq_documento_dni_tutor`, FK de la cadena por tutor) y V6 (operación con `tutor_id` y comparación al publicar) ya cubrían el resto del esquema. El listado administrativo de los documentos de un tutor (`GET /api/admin/tutores/{id}/documentos`) devuelve ahora `version` como cadena decimal (como el del deportista, U17); el listado familiar no la trae.
+
 ## Descarga auditada para ADMIN (U16)
 
 `GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo` entrega el archivo de un documento **vigente** del deportista. Es la única lectura del puerto `AlmacenDocumentos` y es aditiva: `ContenidoLeido leer(DestinoPreparado destino, long maxBytes)` no cambia creación, inspección ni compensación.
