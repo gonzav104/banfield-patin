@@ -75,8 +75,8 @@ function Preview({ title, prepared, previewUrl }: { title: string; prepared: Pre
 }
 
 /**
- * One DNI side: its current state as the server reports it and, when the slot is empty and uploads are offered, the
- * upload flow (choose → preview → send → retry). Presentational: the attempt is owned by `useDocumentUpload`.
+ * One DNI side: its current state as the server reports it and, when the slot is empty (or its document is OBSERVED and
+ * can be replaced) and uploads are offered, the upload flow (choose → preview → send → retry). Presentational: the attempt is owned by `useDocumentUpload`.
  */
 export function DniSlot(props: {
   title: string;
@@ -107,7 +107,11 @@ export function DniSlot(props: {
           <p>
             <span className="font-semibold">Motivo:</span> {document.motivoObservacion ?? 'Sin detalle.'}
           </p>
-          <p className="mt-1">Comunicate con el club para resolverlo.</p>
+          {upload ? (
+            state?.step === 'sent' ? null : <p className="mt-1">Subí un archivo nuevo para reemplazarlo.</p>
+          ) : (
+            <p className="mt-1">Comunicate con el club para resolverlo.</p>
+          )}
         </Alert>
       ) : null}
 
@@ -115,7 +119,7 @@ export function DniSlot(props: {
 
       {/* Shown even when the list now reports a document (for example after a 409 refreshed it). */}
       {state?.step === 'idle' && state.notice ? <Alert tone="error">{state.notice}</Alert> : null}
-      {!document && upload && state ? (
+      {(!document || document.estado === 'OBSERVADO') && upload && state ? (
         <div className="space-y-3">
           {state.step === 'idle' ? <Pickers title={title} onFile={upload.choose} /> : null}
           {state.step === 'preparing' ? <p role="status" className="text-sm text-muted">Preparando la imagen…</p> : null}

@@ -9,6 +9,8 @@ import { ApiError } from '@/lib/api-error';
  * - `choose-other-file`: the file itself was rejected (size, format, content or the virus scan). The attempt is dropped.
  * - `refresh`: any other 409 (the operation cannot be repeated with that key: it is closed, does not match, or the
  *   document already exists; also an unknown 409 code) or 404. The attempt is dropped and the document list is reloaded.
+ *   While replacing an OBSERVED document (U18) a 409 and a 404 DOCUMENTO_NO_ENCONTRADO have their own message; the
+ *   original upload is unchanged.
  * - `session-expired` / `stop`: no session, or no permission. Nothing to retry.
  * The server message is never shown: every text here is written for the family.
  */
@@ -22,7 +24,7 @@ export interface UploadFailure {
 const UNCONFIRMED =
   'No pudimos confirmar si el documento se guardó. Tocá «Reintentar»: si ya se había guardado, no se va a duplicar.';
 
-export function uploadFailure(error: unknown, maxBytes: number | null = null): UploadFailure {
+export function uploadFailure(error: unknown, maxBytes: number | null = null, replacing = false): UploadFailure {
   const failure = ApiError.from(error);
   const { status, code } = failure;
 
@@ -55,11 +57,20 @@ export function uploadFailure(error: unknown, maxBytes: number | null = null): U
       message: 'La carga anterior todavía se está procesando. Esperá unos minutos y tocá «Reintentar»: no se va a duplicar.',
     };
   }
+  if (status === 409 && replacing) {
+    return {
+      action: 'refresh',
+      message: 'Este documento ya fue reemplazado o cambió de estado. Actualizamos la información: si sigue observado, volvé a elegir el archivo.',
+    };
+  }
   if (status === 409) {
     return {
       action: 'refresh',
       message: 'No se pudo completar esta carga porque cambió el estado del documento. Actualizamos la información: si todavía falta, volvé a elegir el archivo.',
     };
+  }
+  if (replacing && code === 'DOCUMENTO_NO_ENCONTRADO') {
+    return { action: 'refresh', message: 'Este documento ya no está disponible. Actualizamos la información.' };
   }
   if (status === 404) return { action: 'refresh', message: 'No encontramos este deportista. Volvé al listado.' };
   if (status !== null && status >= 500) return { action: 'retry-same', message: UNCONFIRMED };

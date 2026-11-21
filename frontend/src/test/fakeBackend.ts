@@ -52,6 +52,8 @@ export interface FakeDocumentUpload {
   size: number;
   blob: Blob;
   status: number;
+  /** The id of the OBSERVED document this upload replaces (POST .../reemplazo), absent for a first upload. */
+  replaces?: string;
 }
 
 /** One read of a document file by an administrator (the mock's view of the DOCUMENTO_DESCARGADO audit). */
@@ -236,7 +238,7 @@ export class FakeBackend {
   private portalFamilies = new Map<string, PortalFamily>();
   private athletes = new Map<string, FakeAthlete>();
   private documents = new Map<string, FakeDocument[]>();
-  private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string }>();
+  private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string; replaces?: string }>();
   /** The bytes of a stored document, by document id (an upload stores what it received). */
   private documentFiles = new Map<string, { file: Blob; disposition: string | null }>();
   /** Every upload that reached the (mock) server, in order. */
@@ -1390,6 +1392,57 @@ export class FakeBackend {
     return { status: 201, body: created };
   }
 
+  /**
+   * Mirrors POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo (U18): only `archivo`; the type comes from
+   * the OBSERVED document it replaces. The same key with the same document, size and type returns the SAME successor (200)
+   * even though the predecessor is no longer current; any other reuse of the key is a 409. A predecessor that is not an
+   * OBSERVED DNI of this athlete is a 404 (not found) or a 409 (not OBSERVADO). On success the predecessor stops being current.
+   */
+  private replaceDocument(athleteId: string, documentId: string, body: unknown, key: string | null, family: PortalFamily | undefined): { status: number; body?: unknown } {
+    if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
+    if (!key || !UUID_FORMAT.test(key) || !(body instanceof FormData)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (!UUID_FORMAT.test(athleteId) || !UUID_FORMAT.test(documentId)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (!family || family.links.get(athleteId) !== true) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    const archivo = body.get('archivo');
+    if (!(archivo instanceof Blob) || body.getAll('archivo').length !== 1 || [...body.keys()].some((name) => name !== 'archivo')) {
+      return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    }
+    const record = (status: number, tipo: string) =>
+      this.documentUploads.push({
+        athleteId, tipo, idempotencyKey: key, fileName: archivo instanceof File ? archivo.name : '', type: archivo.type, size: archivo.size, blob: archivo, status, replaces: documentId,
+      });
+    if (archivo.size > this.documentUpload.maxBytes) {
+      record(413, '');
+      return this.error(413, 'ARCHIVO_DEMASIADO_GRANDE', 'El archivo supera el límite permitido.');
+    }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(archivo.type)) {
+      record(422, '');
+      return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    }
+    const previous = this.uploadKeys.get(key);
+    if (previous) {
+      const same = previous.athleteId === athleteId && previous.replaces === documentId && previous.size === archivo.size && previous.type === archivo.type;
+      const stored = this.documentsOf(athleteId).find((d) => d.id === previous.documentId);
+      record(same && stored ? 200 : 409, previous.tipo);
+      return same && stored ? { status: 200, body: stored } : this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    const predecessor = this.documentsOf(athleteId).find((d) => d.id === documentId && (d.tipo === 'DNI_DEPORTISTA_FRENTE' || d.tipo === 'DNI_DEPORTISTA_DORSO'));
+    if (!predecessor) {
+      record(404, '');
+      return this.error(404, 'DOCUMENTO_NO_ENCONTRADO', 'Documento no encontrado.');
+    }
+    if (predecessor.estado !== 'OBSERVADO') {
+      record(409, predecessor.tipo);
+      return this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    this.documents.set(athleteId, this.documentsOf(athleteId).filter((d) => d.id !== predecessor.id));
+    const created = this.seedDocument(athleteId, { tipo: predecessor.tipo, estado: 'CARGADO', creadoEn: new Date().toISOString() });
+    this.attachDocumentFile(created.id, archivo);
+    this.uploadKeys.set(key, { athleteId, tipo: predecessor.tipo, size: archivo.size, type: archivo.type, documentId: created.id, replaces: documentId });
+    record(201, predecessor.tipo);
+    return { status: 201, body: created };
+  }
+
   private portalRoute(
     method: string,
     path: string,
@@ -1408,6 +1461,8 @@ export class FakeBackend {
 
     const documents = /^\/familia\/deportistas\/([^/]+)\/documentos$/.exec(path);
     if (documents && method === 'post') return this.uploadDocument(documents[1]!, body, idempotencyKey, family);
+    const replacement = /^\/familia\/deportistas\/([^/]+)\/documentos\/([^/]+)\/reemplazo$/.exec(path);
+    if (replacement && method === 'post') return this.replaceDocument(replacement[1]!, replacement[2]!, body, idempotencyKey, family);
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
     if (path === '/familia/documentos/disponibilidad') {
