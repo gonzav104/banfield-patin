@@ -2,6 +2,8 @@ package com.banfieldpatin.backend.compartido.auditoria;
 
 public enum AccionAuditoria {
     DOCUMENTO_CARGADO,
+	/** Reemplazo familiar de un documento OBSERVADO (U18): el detalle solo lleva el id del documento anterior. */
+	DOCUMENTO_REEMPLAZADO,
 	/** Descarga administrativa autorizada y verificada, registrada antes de transmitir el primer byte. */
 	DOCUMENTO_DESCARGADO,
 	/** Descarga rechazada porque el objeto leído no coincide con el tamaño o el SHA-256 del manifiesto. */

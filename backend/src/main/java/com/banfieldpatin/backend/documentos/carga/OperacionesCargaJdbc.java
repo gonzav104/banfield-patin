@@ -35,7 +35,22 @@ final class OperacionesCargaJdbc {
       DestinoPreparado destino,
       byte[] sha,
       String mime,
-      long bytes) {
+      long bytes,
+      UUID predecesor) {
+    Operacion(
+        UUID id,
+        long version,
+        String estado,
+        UUID atleta,
+        String tipo,
+        UUID temporada,
+        DestinoPreparado destino,
+        byte[] sha,
+        String mime,
+        long bytes) {
+      this(id, version, estado, atleta, tipo, temporada, destino, sha, mime, bytes, null);
+    }
+
     @Override
     public String toString() {
       return "OperacionCarga[privada]";
@@ -157,10 +172,35 @@ final class OperacionesCargaJdbc {
       UUID idem,
       DestinoPreparado destino,
       ArchivoPreparado a) {
+    return reservar(c, atleta, tipo, temporada, null, idem, destino, a);
+  }
+
+  /**
+   * Reemplazo de un DNI OBSERVADO (U18). El tipo sale del predecesor; la temporada nunca aplica. Es la
+   * misma reserva que la carga original, con el predecesor como parte de la identidad idempotente.
+   */
+  Reserva reservarReemplazo(
+      ContextoCarga c, UUID atleta, UUID predecesor, UUID idem, DestinoPreparado destino, ArchivoPreparado a) {
+    return reservar(c, atleta, null, null, predecesor, idem, destino, a);
+  }
+
+  private Reserva reservar(
+      ContextoCarga c,
+      UUID atleta,
+      TipoDocumento tipoSolicitado,
+      UUID temporada,
+      UUID predecesor,
+      UUID idem,
+      DestinoPreparado destino,
+      ArchivoPreparado a) {
     return tx.execute(
         s -> {
           autorizar(c, atleta);
           var u = c.usuario();
+          // Orden de bloqueos (V12, R3): ...deportista (autorizar) -> predecesor -> operación. Todo el que pueda
+          // llegar a INSERT/PUBLICADA de un reemplazo toma el predecesor ANTES de la fila de la operación.
+          final TipoDocumento tipo =
+              predecesor == null ? tipoSolicitado : bloquearPredecesor(u.escuelaId(), atleta, predecesor);
           if (!EnumSet.of(
                       TipoDocumento.DNI_DEPORTISTA_FRENTE,
                       TipoDocumento.DNI_DEPORTISTA_DORSO,
@@ -181,8 +221,9 @@ final class OperacionesCargaJdbc {
               jdbc.sql(
                       """
                       INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tipo,temporada_id,
-                        storage_bucket,objeto_id,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta)
-                      VALUES(:id,:e,:u,:d,:tipo,CAST(:t AS uuid),:b,:o,:k,:sha,:m,:n,clock_timestamp()+(:ms * interval '1 millisecond'))
+                        storage_bucket,objeto_id,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta,predecesor_id)
+                      VALUES(:id,:e,:u,:d,:tipo,CAST(:t AS uuid),:b,:o,:k,:sha,:m,:n,clock_timestamp()+(:ms * interval '1 millisecond'),
+                        CAST(:pre AS uuid))
                       ON CONFLICT(escuela_id,solicitante_id,idempotencia) DO NOTHING RETURNING id
                       """)
                   .param("id", id)
@@ -198,6 +239,7 @@ final class OperacionesCargaJdbc {
                   .param("m", a.mime)
                   .param("n", a.bytes)
                   .param("ms", p.reserva().toMillis())
+                  .param("pre", predecesor)
                   .query(UUID.class)
                   .optional()
                   .isPresent();
@@ -215,6 +257,7 @@ final class OperacionesCargaJdbc {
               || !Objects.equals(op.temporada(), temporada)
               || op.bytes() != a.bytes
               || !op.mime().equals(a.mime)
+              || !Objects.equals(op.predecesor(), predecesor)
               || !MessageDigest.isEqual(op.sha(), a.sha)) throw ErrorCarga.conflicto();
           // El manifiesto ya coincide: sólo entonces un reintento puede retomar la operación.
           boolean retomada = false;
@@ -225,8 +268,10 @@ final class OperacionesCargaJdbc {
                 conEstado(op, op.estado().equals("TRANSFIRIENDO") ? "RECONCILIANDO" : op.estado());
             retomada = true;
           }
-          if (nueva || retomada && op.estado().equals("RESERVADA"))
-            comprobarPrimera(u.escuelaId(), atleta, tipo.name());
+          if (nueva || retomada && op.estado().equals("RESERVADA")) {
+            if (predecesor == null) comprobarPrimera(u.escuelaId(), atleta, tipo.name());
+            else comprobarReemplazo(op, predecesor);
+          }
           return new Reserva(op, nueva || retomada ? null : metadatos(op.id()), retomada);
         });
   }
@@ -270,6 +315,44 @@ final class OperacionesCargaJdbc {
             .isPresent();
   }
 
+  /**
+   * Bloquea el predecesor y devuelve su tipo. Solo los DNI del deportista, de esta escuela y de este
+   * deportista son reemplazables: cualquier otro caso es el mismo 404 (sin distinguir ajeno de inexistente).
+   */
+  private TipoDocumento bloquearPredecesor(UUID escuela, UUID atleta, UUID predecesor) {
+    return jdbc.sql(
+            "SELECT tipo FROM gestion_patin.documento WHERE id=:p AND escuela_id=:e AND deportista_id=:d"
+                + " AND tipo IN ('DNI_DEPORTISTA_FRENTE','DNI_DEPORTISTA_DORSO') FOR UPDATE")
+        .param("p", predecesor)
+        .param("e", escuela)
+        .param("d", atleta)
+        .query((r, n) -> TipoDocumento.valueOf(r.getString(1)))
+        .optional()
+        .orElseThrow(ErrorCarga::documentoNoEncontrado);
+  }
+
+  /**
+   * Con el predecesor bloqueado: un predecesor que ya no es vigente (ya reemplazado) o no está OBSERVADO es un
+   * conflicto definitivo; otra operación de OTRA clave con la reserva todavía vigente es transitoria. Una
+   * operación cerrada, abandonada o con la reserva vencida no bloquea: no hay índice único sobre ellas.
+   */
+  private void comprobarReemplazo(Operacion op, UUID predecesor) {
+    var doc =
+        jdbc.sql("SELECT estado, vigente FROM gestion_patin.documento WHERE id=:p")
+            .param("p", predecesor)
+            .query((r, n) -> new boolean[] {r.getString(1).equals("OBSERVADO"), r.getBoolean(2)})
+            .single();
+    if (!doc[0] || !doc[1]) throw ErrorCarga.conflicto();
+    if (jdbc.sql(
+            "SELECT 1 FROM gestion_patin.operacion_carga_documental WHERE predecesor_id=:p AND id<>:o"
+                + " AND estado NOT IN ('PUBLICADA','CERRADA') AND reserva_hasta > clock_timestamp()")
+        .param("p", predecesor)
+        .param("o", op.id())
+        .query(Integer.class)
+        .optional()
+        .isPresent()) throw ErrorCarga.enCurso();
+  }
+
   Operacion iniciar(ContextoCarga c, Operacion o) {
     return tx.execute(
         s -> {
@@ -292,38 +375,95 @@ final class OperacionesCargaJdbc {
         s -> {
           autorizar(c, o.atleta());
           var u = c.usuario();
-          comprobarPrimera(u.escuelaId(), o.atleta(), o.tipo());
-          // El id de Documento y la raíz de su serie son la identidad durable de la operación.
-          jdbc.sql(
-                  """
-                  INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,temporada_id,tipo,nombre_original,
-                      storage_bucket,storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,version)
-                  VALUES(:id,:e,:d,CAST(:t AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:id,0)
-                  """)
-              .param("id", o.id())
-              .param("e", u.escuelaId())
-              .param("d", o.atleta())
-              .param("t", o.temporada())
-              .param("tipo", o.tipo())
-              .param("b", o.destino().bucketInterno())
-              .param("k", o.destino().objetoIdInterno().toString())
-              .param("m", o.mime())
-              .param("n", o.bytes())
-              .param("u", u.id())
-              .update();
-          cambiar(o, "PUBLICADA", true);
-          auditoria.registrar(
-              new EventoAuditoria(
-                  u.escuelaId(),
-                  u.id(),
-                  AccionAuditoria.DOCUMENTO_CARGADO,
-                  "DOCUMENTO",
-                  o.id(),
-                  Map.of(),
-                  datos));
+          if (o.predecesor() == null) {
+            comprobarPrimera(u.escuelaId(), o.atleta(), o.tipo());
+            // El id de Documento y la raíz de su serie son la identidad durable de la operación.
+            jdbc.sql(
+                    """
+                    INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,temporada_id,tipo,nombre_original,
+                        storage_bucket,storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,version)
+                    VALUES(:id,:e,:d,CAST(:t AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:id,0)
+                    """)
+                .param("id", o.id())
+                .param("e", u.escuelaId())
+                .param("d", o.atleta())
+                .param("t", o.temporada())
+                .param("tipo", o.tipo())
+                .param("b", o.destino().bucketInterno())
+                .param("k", o.destino().objetoIdInterno().toString())
+                .param("m", o.mime())
+                .param("n", o.bytes())
+                .param("u", u.id())
+                .update();
+            cambiar(o, "PUBLICADA", true);
+            auditoria.registrar(
+                new EventoAuditoria(
+                    u.escuelaId(),
+                    u.id(),
+                    AccionAuditoria.DOCUMENTO_CARGADO,
+                    "DOCUMENTO",
+                    o.id(),
+                    Map.of(),
+                    datos));
+          } else {
+            publicarReemplazo(u, o, datos);
+          }
           vigente(c);
           return metadatos(o.id());
         });
+  }
+
+  /**
+   * Publicación atómica de un reemplazo: bloquea y revalida el predecesor ANTES de tocar la operación, retira su
+   * vigencia ANTES de insertar al sucesor (los índices únicos de vigencia se validan de inmediato), hereda la serie,
+   * cierra la operación y audita, todo en esta transacción. El predecesor conserva estado y motivo de observación.
+   */
+  private void publicarReemplazo(
+      com.banfieldpatin.backend.seguridad.UsuarioAutenticado u, Operacion o, DatosSolicitud datos) {
+    var anterior =
+        jdbc.sql(
+                "SELECT estado, vigente, serie_id FROM gestion_patin.documento WHERE id=:p AND escuela_id=:e"
+                    + " AND deportista_id=:d FOR UPDATE")
+            .param("p", o.predecesor())
+            .param("e", u.escuelaId())
+            .param("d", o.atleta())
+            .query((r, n) -> new Object[] {r.getString(1), r.getBoolean(2), r.getObject(3, UUID.class)})
+            .optional()
+            .orElseThrow(ErrorCarga::conflicto);
+    if (!"OBSERVADO".equals(anterior[0]) || !(boolean) anterior[1]) throw ErrorCarga.conflicto();
+    if (jdbc.sql(
+                "UPDATE gestion_patin.documento SET vigente=false,version=version+1 WHERE id=:p AND vigente")
+            .param("p", o.predecesor())
+            .update()
+        != 1) throw ErrorCarga.conflicto();
+    jdbc.sql(
+            """
+            INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,tipo,nombre_original,storage_bucket,
+                storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,documento_anterior_id,version)
+            VALUES(:id,:e,:d,:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:serie,:p,0)
+            """)
+        .param("id", o.id())
+        .param("e", u.escuelaId())
+        .param("d", o.atleta())
+        .param("tipo", o.tipo())
+        .param("b", o.destino().bucketInterno())
+        .param("k", o.destino().objetoIdInterno().toString())
+        .param("m", o.mime())
+        .param("n", o.bytes())
+        .param("u", u.id())
+        .param("serie", anterior[2])
+        .param("p", o.predecesor())
+        .update();
+    cambiar(o, "PUBLICADA", true);
+    auditoria.registrar(
+        new EventoAuditoria(
+            u.escuelaId(),
+            u.id(),
+            AccionAuditoria.DOCUMENTO_REEMPLAZADO,
+            "DOCUMENTO",
+            o.id(),
+            Map.of("documentoAnteriorId", o.predecesor().toString()),
+            datos));
   }
 
   void cerrarAntesDeTransferir(Operacion o) {
@@ -438,7 +578,8 @@ final class OperacionesCargaJdbc {
         o.destino(),
         o.sha(),
         o.mime(),
-        o.bytes());
+        o.bytes(),
+        o.predecesor());
   }
 
   private static Operacion leer(ResultSet r, int n) throws SQLException {
@@ -453,7 +594,8 @@ final class OperacionesCargaJdbc {
             r.getString("storage_bucket"), r.getObject("objeto_id", UUID.class)),
         r.getBytes("sha256_archivo"),
         r.getString("mime_type"),
-        r.getLong("tamanio_bytes"));
+        r.getLong("tamanio_bytes"),
+        r.getObject("predecesor_id", UUID.class));
   }
 
   private DocumentoMetadatos metadatos(UUID id) {

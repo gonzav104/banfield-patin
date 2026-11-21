@@ -45,4 +45,34 @@ public class CargaDocumentalController {
     return ResponseEntity.status(resultado.repetida() ? HttpStatus.OK : HttpStatus.CREATED)
         .body(resultado.documento());
   }
+
+  /**
+   * Reemplazo por FAMILIA de un DNI vigente y OBSERVADO (U18). Una única parte multipart, {@code archivo}: el
+   * tipo sale del predecesor ({@code documentoId}) y no hay temporada. Misma seguridad, CSRF e idempotencia que la
+   * carga; el contrato de la carga original no cambia.
+   */
+  @PostMapping(path = "/{documentoId}/reemplazo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ResponseEntity<DocumentoMetadatos> reemplazar(
+      @PathVariable UUID id,
+      @PathVariable UUID documentoId,
+      @RequestHeader("Idempotency-Key") UUID idempotencia,
+      @RequestPart("archivo") MultipartFile archivo,
+      HttpServletRequest request)
+      throws Exception {
+    var servicio = servicios.getIfAvailable();
+    if (servicio == null) throw ErrorCarga.indisponible();
+    if (!(request.getAttribute(PreautorizacionCargaFiltro.CONTEXTO)
+        instanceof ContextoCarga contexto)) throw ErrorCarga.indisponible();
+    var conteos = new HashMap<String, Integer>();
+    for (var part : request.getParts()) conteos.merge(part.getName(), 1, Integer::sum);
+    if (!Set.of("archivo").containsAll(conteos.keySet())
+        || conteos.getOrDefault("archivo", 0) != 1
+        || Collections.list(request.getHeaders("Idempotency-Key")).size() != 1)
+      throw ErrorCarga.invalido();
+    var resultado =
+        servicio.reemplazar(
+            contexto, id, documentoId, idempotencia, archivo, DatosSolicitud.de(request));
+    return ResponseEntity.status(resultado.repetida() ? HttpStatus.OK : HttpStatus.CREATED)
+        .body(resultado.documento());
+  }
 }

@@ -108,7 +108,7 @@ class RutasDocumentadasTest {
 						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/tutores/{id}/documentos", "GET /api/familia/deportistas/{deportistaId}/temporadas",
 						"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "GET /api/familia/deportistas/{deportistaId}/ficha",
 						"GET /api/familia/documentos/disponibilidad",
-						"POST /api/familia/deportistas/{id}/documentos");
+						"POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo");
 	}
 
 	@Test

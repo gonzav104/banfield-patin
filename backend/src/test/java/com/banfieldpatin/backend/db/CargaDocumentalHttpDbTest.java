@@ -908,13 +908,21 @@ class CargaDocumentalHttpDbTest {
 
   UUID operacionPrevia(UUID key, byte[] file, String estado, boolean vencida, String tipo)
       throws Exception {
+    return operacionPrevia(key, file, estado, vencida, tipo, null);
+  }
+
+  UUID operacionPrevia(
+      UUID key, byte[] file, String estado, boolean vencida, String tipo, UUID predecesor)
+      throws Exception {
     UUID id = UUID.randomUUID();
     jdbc.sql(
             """
             INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tipo,
-              storage_bucket,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta)
-            VALUES(:id,:e,:u,:d,:tipo,'privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes')
+              storage_bucket,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta,predecesor_id)
+            VALUES(:id,:e,:u,:d,:tipo,'privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes',
+              CAST(:pre AS uuid))
             """)
+        .param("pre", predecesor)
         .param("id", id)
         .param("e", escuela)
         .param("u", usuario)
@@ -1928,6 +1936,565 @@ class CargaDocumentalHttpDbTest {
     assertThat(fase(key)).isEqualTo("CERRADA");
     assertThat(INFOS.get()).isEqualTo(2);
     assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  // ---- U18: reemplazo de un DNI observado -------------------------------------------------------------
+
+  static final String NO_ENCONTRADO = "\"codigo\":\"DOCUMENTO_NO_ENCONTRADO\"";
+
+  HttpResponse<String> reemplazar(UUID key, byte[] bytes, UUID predecesor) throws Exception {
+    return reemplazar(key, bytes, predecesor, token, true, "");
+  }
+
+  /** {@code partesExtra}: partes multipart adicionales ya serializadas (para probar la lista cerrada). */
+  HttpResponse<String> reemplazar(
+      UUID key, byte[] bytes, Object predecesor, String sesion, boolean csrf, String partesExtra)
+      throws Exception {
+    var client = HttpClient.newHttpClient();
+    var c =
+        client.send(
+            HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + "/api/auth/csrf"))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    String value = JsonPath.read(c.body(), "$.token"),
+        header = JsonPath.read(c.body(), "$.headerName");
+    String cookie =
+        c.headers().allValues("set-cookie").stream()
+            .map(x -> x.split(";", 2)[0])
+            .filter(x -> x.startsWith("XSRF-TOKEN="))
+            .findFirst()
+            .orElseThrow();
+    String boundary = "sintetico-boundary";
+    var body = new ByteArrayOutputStream();
+    body.write(
+        (partesExtra
+                + "--"
+                + boundary
+                + "\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"sintetico.png\""
+                + "\r\nContent-Type: image/png\r\n\r\n")
+            .getBytes());
+    body.write(bytes);
+    body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+    var request =
+        HttpRequest.newBuilder(
+                URI.create(
+                    "http://127.0.0.1:"
+                        + puerto
+                        + "/api/familia/deportistas/"
+                        + atleta
+                        + "/documentos/"
+                        + predecesor
+                        + "/reemplazo"))
+            .timeout(java.time.Duration.ofSeconds(20))
+            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+            .header("Idempotency-Key", key.toString())
+            .header("Cookie", cookie + "; BP_SESION=" + sesion);
+    if (csrf) request.header(header, cookie.substring(cookie.indexOf('=') + 1));
+    return client.send(
+        request.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  static String parteTexto(String nombre, String valor) {
+    return "--sintetico-boundary\r\nContent-Disposition: form-data; name=\"" + nombre + "\"\r\n\r\n"
+        + valor + "\r\n";
+  }
+
+  UUID documentoDe(UUID deportista, String tipo, String estado, boolean vigente) {
+    return documentoDe(escuela, usuario, deportista, tipo, estado, vigente);
+  }
+
+  UUID documentoDe(
+      UUID escuelaId, UUID autor, UUID deportista, String tipo, String estado, boolean vigente) {
+    return jdbc.sql(
+            """
+            INSERT INTO gestion_patin.documento(escuela_id,deportista_id,tipo,nombre_original,storage_key,
+              mime_type,tamanio_bytes,estado,motivo_observacion,vigente,cargado_por)
+            VALUES(:e,:d,:t,'documento',:k,'image/png',10,:s,CASE WHEN :s='OBSERVADO' THEN 'Imagen ilegible' END,
+              :v,:a) RETURNING id
+            """)
+        .param("e", escuelaId)
+        .param("d", deportista)
+        .param("t", tipo)
+        .param("k", UUID.randomUUID().toString())
+        .param("s", estado)
+        .param("v", vigente)
+        .param("a", autor)
+        .query(UUID.class)
+        .single();
+  }
+
+  UUID observado() {
+    return documentoDe(atleta, "DNI_DEPORTISTA_FRENTE", "OBSERVADO", true);
+  }
+
+  Map<String, Object> fila(UUID documento) {
+    return jdbc.sql("SELECT * FROM gestion_patin.documento WHERE id=:id")
+        .param("id", documento)
+        .query()
+        .singleRow();
+  }
+
+  int operacionesDe(UUID predecesor) {
+    return jdbc.sql(
+            "SELECT count(*) FROM gestion_patin.operacion_carga_documental WHERE predecesor_id=:p")
+        .param("p", predecesor)
+        .query(Integer.class)
+        .single();
+  }
+
+  int auditorias(String accion) {
+    return jdbc.sql(
+            "SELECT count(*) FROM gestion_patin.auditoria WHERE escuela_id=:e AND accion=:a")
+        .param("e", escuela)
+        .param("a", accion)
+        .query(Integer.class)
+        .single();
+  }
+
+  UUID idDe(HttpResponse<String> r) {
+    return UUID.fromString(JsonPath.read(r.body(), "$.id"));
+  }
+
+  @Test
+  void reemplazoPublicaAlSucesorHeredaLaSerieYConservaAlPredecesor() throws Exception {
+    UUID predecesor = observado();
+    var antes = fila(predecesor);
+    var key = UUID.randomUUID();
+    var r = reemplazar(key, png(), predecesor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    sinFugas(r);
+    UUID sucesor = idDe(r);
+    assertThat(sucesor).isNotEqualTo(predecesor);
+    assertThat((String) JsonPath.read(r.body(), "$.tipo")).isEqualTo("DNI_DEPORTISTA_FRENTE");
+    assertThat((String) JsonPath.read(r.body(), "$.estado")).isEqualTo("CARGADO");
+    assertThat((Boolean) JsonPath.read(r.body(), "$.vigente")).isTrue();
+
+    var nuevo = fila(sucesor);
+    assertThat(nuevo)
+        .containsEntry("documento_anterior_id", predecesor)
+        .containsEntry("serie_id", antes.get("serie_id"))
+        .containsEntry("vigente", true)
+        .containsEntry("cargado_por", usuario);
+    var viejo = fila(predecesor);
+    assertThat(viejo)
+        .containsEntry("estado", "OBSERVADO")
+        .containsEntry("motivo_observacion", "Imagen ilegible")
+        .containsEntry("vigente", false)
+        .containsEntry("serie_id", antes.get("serie_id"));
+    assertThat(((Number) viejo.get("version")).longValue())
+        .isEqualTo(((Number) antes.get("version")).longValue() + 1);
+    assertThat(
+            jdbc.sql(
+                    "SELECT count(*) FROM gestion_patin.documento WHERE serie_id=:s AND vigente")
+                .param("s", antes.get("serie_id"))
+                .query(Integer.class)
+                .single())
+        .isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    assertThat(operacionesDe(predecesor)).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+    assertThat(auditoriasDeCarga()).as("sin DOCUMENTO_CARGADO").isZero();
+    assertThat(
+            jdbc.sql(
+                    "SELECT detalle::text FROM gestion_patin.auditoria WHERE escuela_id=:e AND"
+                        + " accion='DOCUMENTO_REEMPLAZADO'")
+                .param("e", escuela)
+                .query(String.class)
+                .single())
+        .contains(predecesor.toString())
+        .doesNotContain("Imagen ilegible", "storage", "sintetico.png");
+  }
+
+  @Test
+  void repeticionDeUnReemplazoPublicadoEsIdempotenteAunqueElPredecesorYaNoSeaVigente() throws Exception {
+    UUID predecesor = observado();
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    var primera = reemplazar(key, file, predecesor);
+    assertThat(primera.statusCode()).as(primera.body()).isEqualTo(201);
+    assertThat((Boolean) fila(predecesor).get("vigente")).isFalse();
+
+    var repetida = reemplazar(key, file, predecesor);
+    assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(200);
+    assertThat(idDe(repetida)).isEqualTo(idDe(primera));
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(2);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  @Test
+  void laMismaClaveConOtroPredecesorOtraRutaOArchivoDistintoEsDefinitiva() throws Exception {
+    UUID predecesor = observado();
+    UUID dorso = documentoDe(atleta, "DNI_DEPORTISTA_DORSO", "OBSERVADO", true);
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    assertThat(reemplazar(key, file, predecesor).statusCode()).isEqualTo(201);
+    long version = version(key);
+    var otroPredecesor = reemplazar(key, file, dorso);
+    assertThat(otroPredecesor.statusCode()).as(otroPredecesor.body()).isEqualTo(409);
+    assertThat(otroPredecesor.body()).contains(NO_REPETIBLE);
+    var otroArchivo = reemplazar(key, png(40), predecesor);
+    assertThat(otroArchivo.statusCode()).as(otroArchivo.body()).isEqualTo(409);
+    assertThat(otroArchivo.body()).contains(NO_REPETIBLE);
+    // La misma clave por la ruta de la carga original tampoco es la misma operación.
+    var original =
+        cargarArchivo(key, file, token, true, "sintetico.png", "image/png", "DNI_DEPORTISTA_FRENTE");
+    assertThat(original.statusCode()).as(original.body()).isEqualTo(409);
+    assertThat(original.body()).contains(NO_REPETIBLE);
+    assertThat(version(key)).isEqualTo(version);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(operacionesDe(dorso)).isZero();
+  }
+
+  @Test
+  void unPredecesorInexistenteAjenoOFueraDeAlcanceEsSiempreElMismo404() throws Exception {
+    var datos = new DatosDb(jdbc);
+    UUID otroAtleta = datos.deportista(escuela, "SINTETICO-2", "Otro", "Atleta");
+    UUID otraEscuela = datos.escuela("otra-" + UUID.randomUUID());
+    UUID otroAdmin = datos.admin(otraEscuela, "otra@example.invalid", true);
+    UUID atletaOtraEscuela = datos.deportista(otraEscuela, "SINTETICO-3", "Ajeno", "Escuela");
+    var candidatos =
+        List.of(
+            UUID.randomUUID(),
+            documentoDe(otroAtleta, "DNI_DEPORTISTA_FRENTE", "OBSERVADO", true),
+            documentoDe(atleta, "OTRO", "OBSERVADO", true),
+            documentoDe(
+                otraEscuela, otroAdmin, atletaOtraEscuela, "DNI_DEPORTISTA_FRENTE", "OBSERVADO", true));
+    for (UUID candidato : candidatos) {
+      var r = reemplazar(UUID.randomUUID(), png(), candidato);
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+      assertThat(r.body()).contains(NO_ENCONTRADO);
+      sinFugas(r);
+    }
+    assertThat(POSTS.get()).isZero();
+    assertThat(
+            jdbc.sql(
+                    "SELECT count(*) FROM gestion_patin.operacion_carga_documental WHERE"
+                        + " escuela_id=:e")
+                .param("e", escuela)
+                .query(Integer.class)
+                .single())
+        .as("un rechazo no deja operaciones")
+        .isZero();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"CARGADO", "APROBADO", "VENCIDO"})
+  void unPredecesorQueNoEstaObservadoEsConflictoDefinitivo(String estado) throws Exception {
+    UUID predecesor = documentoDe(atleta, "DNI_DEPORTISTA_FRENTE", estado, true);
+    var r = reemplazar(UUID.randomUUID(), png(), predecesor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE).doesNotContain("OPERACION_EN_CURSO");
+    assertThat(operacionesDe(predecesor)).isZero();
+    assertThat(POSTS.get()).isZero();
+    assertThat((Boolean) fila(predecesor).get("vigente")).isTrue();
+  }
+
+  @Test
+  void unPredecesorYaReemplazadoEsDefinitivoParaOtraClave() throws Exception {
+    UUID predecesor = observado();
+    assertThat(reemplazar(UUID.randomUUID(), png(), predecesor).statusCode()).isEqualTo(201);
+    var segunda = reemplazar(UUID.randomUUID(), png(), predecesor);
+    assertThat(segunda.statusCode()).as(segunda.body()).isEqualTo(409);
+    assertThat(segunda.body()).contains(NO_REPETIBLE).doesNotContain("OPERACION_EN_CURSO");
+    assertThat(operacionesDe(predecesor)).as("la rechazada no deja operación").isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void otroReemplazoActivoDelMismoPredecesorEsTransitorioYNoTransfiere() throws Exception {
+    UUID predecesor = observado();
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    HOOK_SCANNER.set(
+        () -> {
+          entered.countDown();
+          try {
+            if (!release.await(7, TimeUnit.SECONDS)) throw new IllegalStateException();
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException();
+          }
+        });
+    var primera = UUID.randomUUID();
+    byte[] file = png();
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var primero = pool.submit(() -> reemplazar(primera, file, predecesor));
+      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+      var segunda = UUID.randomUUID();
+      var r = reemplazar(segunda, file, predecesor);
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+      assertThat(r.body()).contains(EN_CURSO).doesNotContain("OPERACION_NO_REPETIBLE");
+      sinFugas(r);
+      assertThat(operacionesDe(predecesor)).as("el rechazo no deja operación").isEqualTo(1);
+      assertThat(POSTS.get()).isZero();
+      release.countDown();
+      assertThat(primero.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
+      // Ya reemplazado: ahora la misma segunda clave es un conflicto DEFINITIVO.
+      var tardia = reemplazar(segunda, file, predecesor);
+      assertThat(tardia.statusCode()).as(tardia.body()).isEqualTo(409);
+      assertThat(tardia.body()).contains(NO_REPETIBLE);
+    } finally {
+      release.countDown();
+    }
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(2);
+  }
+
+  @Test
+  void operacionesCerradasAbandonadasOVencidasNoBloqueanUnReemplazoValido() throws Exception {
+    UUID predecesor = observado();
+    byte[] file = png();
+    var cerrada = UUID.randomUUID();
+    var abandonada = UUID.randomUUID();
+    var transfiriendo = UUID.randomUUID();
+    operacionPrevia(cerrada, file, "CERRADA", false, "DNI_DEPORTISTA_FRENTE", predecesor);
+    operacionPrevia(abandonada, file, "RESERVADA", true, "DNI_DEPORTISTA_FRENTE", predecesor);
+    operacionPrevia(transfiriendo, file, "TRANSFIRIENDO", true, "DNI_DEPORTISTA_FRENTE", predecesor);
+
+    var nueva = UUID.randomUUID();
+    var r = reemplazar(nueva, file, predecesor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(fase(cerrada)).isEqualTo("CERRADA");
+    assertThat(fase(abandonada)).isEqualTo("RESERVADA");
+    assertThat(fase(transfiriendo)).isEqualTo("TRANSFIRIENDO");
+    // Si alguien retoma la abandonada, el predecesor ya fue reemplazado: conflicto definitivo, sin transferir.
+    var retomada = reemplazar(abandonada, file, predecesor);
+    assertThat(retomada.statusCode()).as(retomada.body()).isEqualTo(409);
+    assertThat(retomada.body()).contains(NO_REPETIBLE);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void unaOperacionActivaDeOtroPredecesorNoBloquea() throws Exception {
+    UUID uno = observado();
+    UUID otro = documentoDe(atleta, "DNI_DEPORTISTA_DORSO", "OBSERVADO", true);
+    byte[] file = png();
+    operacionPrevia(UUID.randomUUID(), file, "RESERVADA", false, "DNI_DEPORTISTA_DORSO", otro);
+    var r = reemplazar(UUID.randomUUID(), file, uno);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+  }
+
+  @Test
+  void dosReemplazosConcurrentesDelMismoPredecesorTienenUnSoloGanador() throws Exception {
+    UUID predecesor = observado();
+    byte[] file = png();
+    var salida = new CyclicBarrier(2);
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<HttpResponse<String>> intento =
+          () -> {
+            salida.await(5, TimeUnit.SECONDS);
+            return reemplazar(UUID.randomUUID(), file, predecesor);
+          };
+      var a = pool.submit(intento);
+      var b = pool.submit(intento);
+      var ra = a.get(20, TimeUnit.SECONDS);
+      var rb = b.get(20, TimeUnit.SECONDS);
+      var codigos = List.of(ra.statusCode(), rb.statusCode());
+      assertThat(codigos).as(ra.body() + rb.body()).containsExactlyInAnyOrder(201, 409);
+      var perdedor = ra.statusCode() == 409 ? ra : rb;
+      assertThat(perdedor.body()).matches(m -> m.contains(EN_CURSO) || m.contains(NO_REPETIBLE));
+    }
+    assertThat(POSTS.get()).as("el perdedor nunca transfiere").isEqualTo(1);
+    assertThat(documentos()).isEqualTo(2);
+    assertThat(
+            jdbc.sql(
+                    "SELECT count(*) FROM gestion_patin.documento WHERE escuela_id=:e AND vigente"
+                        + " AND tipo='DNI_DEPORTISTA_FRENTE'")
+                .param("e", escuela)
+                .query(Integer.class)
+                .single())
+        .isEqualTo(1);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  /**
+   * Dos solicitudes con la MISMA clave sobre una ALMACENADA vencida (una publica mientras la otra reserva), a la vez.
+   * Debe haber un único ganador y ningún error de infraestructura (deadlock o timeout de bloqueo: 5xx). Nota: no
+   * discrimina el orden predecesor→operación por sí sola, porque {@code autorizar} toma el deportista FOR UPDATE al
+   * comienzo de toda reserva y publicación y ya las serializa; ese orden es defensa en profundidad.
+   */
+  @RepeatedTest(8)
+  void publicacionYReservaConcurrentesDelMismoPredecesorNoSeCruzan() throws Exception {
+    UUID predecesor = documentoDe(atleta, "DNI_DEPORTISTA_FRENTE", "OBSERVADO", true);
+    byte[] file = png();
+    var almacenada = UUID.randomUUID();
+    operacionPrevia(almacenada, file, "ALMACENADA", true, "DNI_DEPORTISTA_FRENTE", predecesor);
+    var salida = new CyclicBarrier(2);
+    try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+      var claves = List.of(almacenada, almacenada);
+      var respuestas = new ArrayList<Future<HttpResponse<String>>>();
+      for (UUID clave : claves)
+        respuestas.add(
+            pool.submit(
+                () -> {
+                  salida.await(5, TimeUnit.SECONDS);
+                  return reemplazar(clave, file, predecesor);
+                }));
+      var codigos = new ArrayList<Integer>();
+      var cuerpos = new StringBuilder();
+      for (var f : respuestas) {
+        var r = f.get(30, TimeUnit.SECONDS);
+        codigos.add(r.statusCode());
+        cuerpos.append(r.body());
+      }
+      assertThat(codigos).as(cuerpos.toString()).allMatch(c -> c == 200 || c == 201 || c == 409);
+      assertThat(codigos.stream().filter(c -> c == 201).count()).as(codigos.toString()).isEqualTo(1);
+    }
+    assertThat(
+            jdbc.sql(
+                    "SELECT count(*) FROM gestion_patin.documento WHERE escuela_id=:e AND vigente"
+                        + " AND tipo='DNI_DEPORTISTA_FRENTE'")
+                .param("e", escuela)
+                .query(Integer.class)
+                .single())
+        .isEqualTo(1);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  @Test
+  void unaOperacionCerradaSinPublicarPermiteUnNuevoIntentoMientrasElPredecesorSigaObservado()
+      throws Exception {
+    UUID predecesor = observado();
+    byte[] file = png();
+    var primera = UUID.randomUUID();
+    UUID op = operacionPrevia(primera, file, "RECONCILIANDO", true, "DNI_DEPORTISTA_FRENTE", predecesor);
+    MODO_HEAD.set("ausente");
+    var cierre = reemplazar(primera, file, predecesor);
+    assertThat(cierre.statusCode()).as(cierre.body()).isEqualTo(409);
+    assertThat(cierre.body()).contains(NO_REPETIBLE);
+    assertThat(fase(primera)).isEqualTo("CERRADA");
+    var intacto = fila(predecesor);
+    assertThat(intacto).containsEntry("vigente", true).containsEntry("estado", "OBSERVADO");
+    assertThat(op).isNotNull();
+    // Nuevo intento válido, con otra clave: el predecesor sigue vigente y OBSERVADO.
+    var otra = reemplazar(UUID.randomUUID(), file, predecesor);
+    assertThat(otra.statusCode()).as(otra.body()).isEqualTo(201);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void fallaLaAuditoriaDelReemplazoYSeRevierteTodoSinPerderElObjeto() throws Exception {
+    org.mockito.Mockito.doAnswer(
+            inv -> {
+              var e =
+                  inv.getArgument(
+                      0, com.banfieldpatin.backend.compartido.auditoria.EventoAuditoria.class);
+              if (e.accion()
+                  == com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria
+                      .DOCUMENTO_REEMPLAZADO)
+                throw new org.springframework.dao.DataAccessResourceFailureException(
+                    "SENSIBLE-SINTETICO-NO-LOG");
+              return inv.callRealMethod();
+            })
+        .when(auditoria)
+        .registrar(org.mockito.ArgumentMatchers.any());
+    UUID predecesor = observado();
+    var antes = fila(predecesor);
+    var key = UUID.randomUUID();
+    var r = reemplazar(key, png(), predecesor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(503);
+    sinFugas(r);
+    assertThat(fila(predecesor)).as("el predecesor no cambia").isEqualTo(antes);
+    assertThat(documentos()).as("ningún sucesor").isEqualTo(1);
+    assertThat(fase(key)).isEqualTo("ALMACENADA");
+    assertThat(reservaLibre(key)).isTrue();
+    assertThat(POSTS.get()).isEqualTo(1);
+    // Con la auditoría restablecida, el reintento publica sin repetir la transferencia.
+    org.mockito.Mockito.reset(auditoria);
+    var reintento = reemplazar(key, png(), predecesor);
+    assertThat(reintento.statusCode()).as(reintento.body()).isEqualTo(201);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat((Boolean) fila(predecesor).get("vigente")).isFalse();
+  }
+
+  @Test
+  void elReemplazoExigeCsrfYUnaUnicaParteArchivo() throws Exception {
+    UUID predecesor = observado();
+    var sinCsrf = reemplazar(UUID.randomUUID(), png(), predecesor, token, false, "");
+    assertThat(sinCsrf.statusCode()).as(sinCsrf.body()).isEqualTo(403);
+    for (String extra : List.of(parteTexto("tipo", "DNI_DEPORTISTA_FRENTE"), parteTexto("temporadaId", UUID.randomUUID().toString()))) {
+      var r = reemplazar(UUID.randomUUID(), png(), predecesor, token, true, extra);
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(422);
+    }
+    assertThat(operacionesDe(predecesor)).isZero();
+    assertThat(POSTS.get()).isZero();
+    assertThat((Boolean) fila(predecesor).get("vigente")).isTrue();
+  }
+
+  @Test
+  void unaSesionSinPermisoNoPuedeReemplazar() throws Exception {
+    UUID predecesor = observado();
+    var otraFamilia = new DatosDb(jdbc).familia(escuela, "Otra familia", true);
+    var ajeno = new DatosDb(jdbc).usuarioFamilia(escuela, otraFamilia, "ajeno@example.invalid");
+    String sesion = tokens.emitir(ajeno, Rol.FAMILIA, escuela, otraFamilia);
+    var r = reemplazar(UUID.randomUUID(), png(), predecesor, sesion, true, "");
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(404); // el deportista no está en su alcance
+    assertThat(POSTS.get()).isZero();
+    assertThat((Boolean) fila(predecesor).get("vigente")).isTrue();
+  }
+
+  @Test
+  void unaAlmacenadaRetomadaConElPredecesorYaReemplazadoSeCierraSinPublicar() throws Exception {
+    UUID predecesor = observado();
+    byte[] file = png();
+    var vieja = UUID.randomUUID();
+    operacionPrevia(vieja, file, "ALMACENADA", true, "DNI_DEPORTISTA_FRENTE", predecesor);
+    assertThat(reemplazar(UUID.randomUUID(), file, predecesor).statusCode()).isEqualTo(201);
+    var r = reemplazar(vieja, file, predecesor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE);
+    assertThat(fase(vieja)).isEqualTo("CERRADA");
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(documentos()).isEqualTo(2);
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  @Test
+  void laRutaDeReemplazoSoloAtiendeASesionesDeFamilia() throws Exception {
+    UUID predecesor = observado();
+    String admin =
+        tokens.emitir(new DatosDb(jdbc).admin(escuela, "admin2@example.invalid", true), Rol.ADMIN, escuela, null);
+    assertThat(reemplazar(UUID.randomUUID(), png(), predecesor, admin, true, "").statusCode()).isEqualTo(403);
+    assertThat(reemplazar(UUID.randomUUID(), png(), predecesor, "token-invalido", true, "").statusCode())
+        .isEqualTo(401);
+    assertThat(operacionesDe(predecesor)).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void unDocumentoIdQueNoEsUuidSeRechazaAntesDeLeerElCuerpo() throws Exception {
+    var r = reemplazar(UUID.randomUUID(), png(), "no-es-un-uuid", token, true, "");
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(400);
+    assertThat(r.body()).contains("SOLICITUD_INVALIDA");
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void elDniDeUnTutorNoEsReemplazablePorEstaRuta() throws Exception {
+    var datos = new DatosDb(jdbc);
+    UUID tutor = datos.tutor(escuela, familia, "Tutor", "Sintético");
+    UUID dniTutor =
+        jdbc.sql(
+                """
+                INSERT INTO gestion_patin.documento(escuela_id,tutor_id,tipo,nombre_original,storage_key,
+                  mime_type,tamanio_bytes,estado,motivo_observacion,cargado_por)
+                VALUES(:e,:t,'DNI_TUTOR_FRENTE','documento',:k,'image/png',10,'OBSERVADO','Ilegible',:a)
+                RETURNING id
+                """)
+            .param("e", escuela)
+            .param("t", tutor)
+            .param("k", UUID.randomUUID().toString())
+            .param("a", usuario)
+            .query(UUID.class)
+            .single();
+    var r = reemplazar(UUID.randomUUID(), png(), dniTutor);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+    assertThat(r.body()).contains(NO_ENCONTRADO);
     assertThat(POSTS.get()).isZero();
   }
 }

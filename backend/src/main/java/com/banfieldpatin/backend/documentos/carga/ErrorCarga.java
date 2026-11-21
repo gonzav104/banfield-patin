@@ -20,6 +20,12 @@ final class ErrorCarga {
         "La carga documental no está disponible.");
   }
 
+  /** Predecesor inexistente, ajeno, de otro deportista o de un tipo que el reemplazo no admite: siempre el mismo 404. */
+  static ExcepcionNegocio documentoNoEncontrado() {
+    return new ExcepcionNegocio(
+        HttpStatus.NOT_FOUND, "DOCUMENTO_NO_ENCONTRADO", "Documento no encontrado.");
+  }
+
   static ExcepcionNegocio conflicto() {
     return new ExcepcionNegocio(
         HttpStatus.CONFLICT,

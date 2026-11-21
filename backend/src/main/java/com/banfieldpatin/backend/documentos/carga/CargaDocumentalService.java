@@ -72,7 +72,23 @@ public final class CargaDocumentalService {
       DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, atleta, tipo, temporada, idem, archivo, datos);
+      return procesar(c, atleta, tipo, temporada, null, idem, archivo, datos);
+    } finally {
+      cupos.release();
+    }
+  }
+
+  /** Reemplazo de un DNI OBSERVADO (U18): el mismo pipeline, con el predecesor como parte de la reserva. */
+  Resultado reemplazar(
+      ContextoCarga c,
+      UUID atleta,
+      UUID predecesor,
+      UUID idem,
+      MultipartFile archivo,
+      DatosSolicitud datos) {
+    if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
+    try {
+      return procesar(c, atleta, null, null, predecesor, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -83,6 +99,7 @@ public final class CargaDocumentalService {
       UUID atleta,
       TipoDocumento tipo,
       UUID temporada,
+      UUID predecesor,
       UUID idem,
       MultipartFile archivo,
       DatosSolicitud datos) {
@@ -96,7 +113,10 @@ public final class CargaDocumentalService {
       try (var a = preparador.preparar(archivo)) {
         fase = "reservar";
         var reserva =
-            operaciones.reservar(c, atleta, tipo, temporada, idem, almacen.prepararDestino(), a);
+            predecesor == null
+                ? operaciones.reservar(c, atleta, tipo, temporada, idem, almacen.prepararDestino(), a)
+                : operaciones.reservarReemplazo(
+                    c, atleta, predecesor, idem, almacen.prepararDestino(), a);
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
         if (reserva.retomada()) DiagnosticoCarga.retomada(op.id(), op.estado());

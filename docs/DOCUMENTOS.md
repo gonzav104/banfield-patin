@@ -347,6 +347,29 @@ El backend arranca con `DOCUMENTOS_CARGA_HABILITADA=true`, `DOCUMENTOS_STORAGE_H
 
 **Navegadores efectivamente probados:** solo Chromium de escritorio mediante Playwright (con vista de 360 × 800 px). Quedan **pendientes de validación en dispositivos reales**: Safari en iOS (cámara, HEIC, orientación y memoria con fotos grandes), Chrome en Android (fotos Ultra HDR y Motion Photo reales, cámara), Firefox y navegadores de gama baja con poca memoria.
 
+## Reemplazo de un DNI observado (U18)
+
+`POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo` (FAMILIA, CSRF, `Idempotency-Key`). Reemplaza un `DNI_DEPORTISTA_FRENTE` o `DNI_DEPORTISTA_DORSO` **vigente y `OBSERVADO`** del deportista. Es una ruta propia: el contrato de la carga original (`POST …/documentos`) no cambia. Lleva **una única parte multipart, `archivo`**; el tipo sale del predecesor (`documentoId`) y no hay temporada. `PreautorizacionCargaFiltro` y `CsrfCargaFiltro` comparten una misma expresión de ruta, así que el reemplazo recibe la misma seguridad previa al cuerpo, la cuota de recepciones y el CSRF; el `documentoId` se valida (UUID) antes de leer el cuerpo.
+
+**Mismo pipeline.** Preparar, reservar, escanear, transferir, confirmar y publicar reutilizan U4–U6 y la corrección del 409 de U15. El predecesor entra a la identidad idempotente de la operación (V12): la misma clave con otro predecesor, archivo o tipo es `409 OPERACION_NO_REPETIBLE`.
+
+**Orden de bloqueos.** `autorizar` toma escuela, usuario y familia `FOR SHARE` y el deportista `FOR UPDATE` (`lock_timeout` de 2 s) al comienzo de **toda** reserva y publicación: esa fila serializa las transacciones de un mismo deportista, y es la serialización principal. Después viene el **predecesor `FOR UPDATE`** y, por último, la operación. Toda transacción que pueda llegar a `INSERT` o a `PUBLICADA` de un reemplazo toma el predecesor antes de la fila de la operación, como defensa en profundidad: el trigger de V12 bloquea el documento nuevo y el predecesor cuando la operación ya está bloqueada, y un orden inverso se cruza (deadlock demostrado con dos sesiones SQL). La revisión de U17 solo bloquea el documento (y nunca revisa un `OBSERVADO`): no forma ciclo.
+
+**Clasificación al reservar** (bajo el bloqueo del predecesor, antes de transferir nada):
+
+| Situación | Respuesta |
+|---|---|
+| Predecesor inexistente, ajeno, de otro deportista o que no es DNI del deportista | `404 DOCUMENTO_NO_ENCONTRADO` (uniforme) |
+| Misma clave y misma operación `PUBLICADA` | `200` idempotente, **aunque el predecesor ya no sea vigente** |
+| Misma clave con operación activa propia | `409 OPERACION_EN_CURSO` (mecanismo del 409 de U15) |
+| Predecesor ya reemplazado (no vigente) o no `OBSERVADO` | `409 OPERACION_NO_REPETIBLE` |
+| Otra clave con otra operación del mismo predecesor, no terminal y con la reserva vigente | `409 OPERACION_EN_CURSO` (transitorio: acotado por la reserva) |
+| Otra operación `CERRADA`, abandonada o con la reserva vencida | no bloquea: se permite un nuevo intento válido |
+
+No hay ningún índice único sobre las operaciones por predecesor (ver V12): la exclusión es el bloqueo más la consulta de reservas vigentes con el reloj de PostgreSQL. Si la reserva se rechaza, la transacción se revierte y no queda ninguna operación residual.
+
+**Publicación atómica** (una transacción): bloquear y revalidar el predecesor, retirar su vigencia (`version + 1`; conserva estado y `motivo_observacion`), insertar el sucesor (`CARGADO`, vigente, `documento_anterior_id` y `serie_id` del predecesor), cerrar la operación y auditar `DOCUMENTO_REEMPLAZADO` (el detalle solo lleva `documentoAnteriorId`). Si el predecesor dejó de ser reemplazable entre la reserva y la publicación, es un conflicto definitivo y la operación se cierra como hoy (objeto huérfano sin publicar). El predecesor deja de ser descargable (U16 exige un documento vigente); sigue en la base y en Storage, enlazado por la cadena.
+
 ## Descarga auditada para ADMIN (U16)
 
 `GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo` entrega el archivo de un documento **vigente** del deportista. Es la única lectura del puerto `AlmacenDocumentos` y es aditiva: `ContenidoLeido leer(DestinoPreparado destino, long maxBytes)` no cambia creación, inspección ni compensación.
