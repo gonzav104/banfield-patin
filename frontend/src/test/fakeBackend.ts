@@ -39,6 +39,7 @@ export interface FakeDocument {
   estado: FakeDocumentStatus;
   creadoEn: string;
   motivoObservacion: string | null;
+  version?: string;
 }
 
 /** What the server received in one document upload (the mock's view, for assertions). */
@@ -1279,9 +1280,10 @@ export class FakeBackend {
   }
 
   /** Mirrors the list of current documents (GET /familia/... and GET /admin/deportistas/{id}/documentos): motivo only for OBSERVADO. */
-  private currentDocumentsPage(athleteId: string, params: URLSearchParams) {
-    const contenido = this.documentsOf(athleteId).map((d) => ({
+  private currentDocumentsPage(athleteId: string, params: URLSearchParams, admin = false) {
+    const contenido = this.documentsOf(athleteId).map(({ version, ...d }) => ({
       ...d,
+      ...(admin ? { version: version ?? '0' } : {}),
       temporadaId: null,
       vigente: true,
       fechaVencimiento: null,
@@ -1301,16 +1303,35 @@ export class FakeBackend {
     params: URLSearchParams,
     current: FakeUser | undefined,
     csrfHeader: string | null,
+    body: unknown,
   ): { status: number; body?: unknown; headers?: Record<string, string> } | null {
     const list = /^\/admin\/deportistas\/([^/]+)\/documentos$/.exec(path);
     const file = /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
-    if (method !== 'get' || (!list && !file)) return null;
-    if (file && (!csrfHeader || csrfHeader !== this.csrfToken)) return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
+    const review = /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/revision$/.exec(path);
+    if (!(method === 'get' && (list || file)) && !(method === 'post' && review)) return null;
+    if ((file || review) && (!csrfHeader || csrfHeader !== this.csrfToken)) return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
     if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
     if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
     if (list) {
       if (!this.adminAthletes.some((a) => a.id === list[1])) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
-      return this.currentDocumentsPage(list[1]!, params);
+      return this.currentDocumentsPage(list[1]!, params, true);
+    }
+    if (review) {
+      const doc = this.documentsOf(review[1]!).find((item) => item.id === review[2]);
+      if (!doc || !['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'].includes(doc.tipo)) {
+        return this.error(404, 'DOCUMENTO_NO_ENCONTRADO');
+      }
+      const decision = body as { estado?: FakeDocumentStatus; versionEsperada?: string; motivoObservacion?: string };
+      const version = doc.version ?? '0';
+      if (decision.versionEsperada !== version) return this.error(409, 'EDICION_DESACTUALIZADA');
+      if (decision.estado !== 'APROBADO' && decision.estado !== 'OBSERVADO') return this.error(400, 'SOLICITUD_INVALIDA');
+      if (doc.estado !== 'CARGADO' && !(doc.estado === 'APROBADO' && decision.estado === 'OBSERVADO')) {
+        return this.error(409, 'TRANSICION_DOCUMENTO_NO_PERMITIDA');
+      }
+      doc.estado = decision.estado;
+      doc.version = String(BigInt(version) + 1n);
+      doc.motivoObservacion = decision.motivoObservacion ?? null;
+      return { status: 200, body: { ...doc, vigente: true } };
     }
     const [, athleteId, documentId] = file!;
     const known = this.adminAthletes.some((a) => a.id === athleteId) && this.documentsOf(athleteId!).some((d) => d.id === documentId);
@@ -1605,7 +1626,7 @@ export class FakeBackend {
     }
 
     const parsed = new URL(url, 'http://fake.local');
-    const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader);
+    const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader, body);
     if (adminDocuments) return adminDocuments;
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);
     if (handled) return handled;

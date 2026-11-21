@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiGetBlob, apiWrite } from '@/lib/http';
 import {
-  adminDocumentPageSchema,
+  adminDocumentPageSchema, adminDocumentSchema,
   athleteDetailSchema, athletePageSchema,
   type AdminDocument,
   type AthleteDetail,
@@ -80,6 +80,23 @@ export const ATHLETE_DOCUMENTS_PAGE_SIZE = 100;
 export async function listAthleteDocuments(athleteId: string): Promise<AdminDocument[]> {
   const query = new URLSearchParams({ page: '0', size: String(ATHLETE_DOCUMENTS_PAGE_SIZE) });
   return parse(adminDocumentPageSchema, await apiGet(`/admin/deportistas/${encodeURIComponent(athleteId)}/documentos?${query.toString()}`)).contenido;
+}
+
+export type DocumentReviewAction = 'APROBADO' | 'OBSERVADO';
+
+export async function reviewAthleteDocument(
+  athleteId: string,
+  documentId: string,
+  decision: { estado: DocumentReviewAction; versionEsperada: string; motivoObservacion?: string },
+  beforeWrite: () => void,
+  signal: AbortSignal,
+): Promise<AdminDocument> {
+  const path = `/admin/deportistas/${encodeURIComponent(athleteId)}/documentos/${encodeURIComponent(documentId)}/revision`;
+  const saved = parse(adminDocumentSchema, await apiWrite('post', path, decision, beforeWrite, { signal }));
+  if (saved.id !== documentId || saved.version === undefined) {
+    throw new ApiError('server', 'El servidor respondió con un formato inesperado.');
+  }
+  return saved;
 }
 
 /**

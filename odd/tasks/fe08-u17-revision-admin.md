@@ -13,8 +13,8 @@ Entrega local en tres commits revisados incrementalmente sobre una única rama d
 
 ## Tasks
 - [x] T1 · S2/S3/S5/S6 · inline · versión administrativa y pruebas · d223192; revisión nativa aprobada y reconocida.
-- [ ] T2 · S1/S3/S5 · inline, verificador independiente · endpoint transaccional con pruebas HTTP/PostgreSQL · riesgo 2 y 4 · commit pendiente.
-- [ ] T3 · S4/S5 · inline, verificación sensible al cierre · UI y E2E/documentación · depende de T1/T2 · commit pendiente.
+- [x] T2 · S1/S3/S5/S6 · inline, verificador independiente · endpoint transaccional con HTTP/PostgreSQL · 8a6226b; revisión nativa aprobada y reconocida.
+- [ ] T3 · S4/S5/S6 · inline, verificación independiente · UI y E2E/documentación; pruebas completas observadas · commit y revisión nativa pendientes.
 
 Los cortes son secuenciales: la escritura y la UI dependen de la versión administrativa; no hay escritor delegado por paralelismo.
 
@@ -190,3 +190,11 @@ La rama de preparación se renombró en el mismo worktree: no se creó una segun
 - Verificación funcional del corte 2: 52 pruebas focales y 85 PostgreSQL real (5 revisión, 8 consulta, 58 U15 y 14 U16), todas verdes después de corregir el timeout. El diferencial independiente para listados y regresiones U15/U16 preservó cuerpos, estados y cabeceras.
 - La suite independiente encontró dos regresiones de esquema (ejemplo OpenAPI prohibido y guard genérico de estado). Se eliminó el ejemplo y se acotó la excepción al esquema de revisión, con campos y destinos exactos. Recheck independiente y spot check: 5/5 en ambos. No se repitió la suite completa tras esta corrección; queda como comprobación final.
 - El corte transaccional supera el objetivo orientativo de 400 líneas por las pruebas de aislamiento, concurrencia y reversión. Se mantiene un solo corte cohesivo, según la estrategia local autorizada: no se recortan pruebas ni se prescinde del presupuesto nativo.
+
+### L6 — Cierre del corte 2 y comienzo del 3
+- `8a6226b`: Gentle AI aprobado/reconocido en cuatro lentes (`review-cb16912cf338efa7`). Dos advertencias no bloqueantes, sin reabrir: mapeo SQL por posición y `maxLength` del esquema sobre el texto bruto frente al conteo normalizado en servidor.
+- T3 RED observado: la prueba UI no encontraba la acción «Aprobar documento: DNI – frente» antes del cambio.
+
+- T3 GREEN: 84 pruebas focales UI/HTTP. Verificación independiente: diferencial 79/79 tanto base como candidato; dos sondas adicionales (409 con refetch fallido y ausencia de versión/vigencia) pasaron. Sin bloqueantes funcionales.
+- Suites finales: backend completo 1426/1426 y perfil PostgreSQL 720/720 sin omisiones; V5OperacionDbTest 11/11. Frontend 1512/1512, 61 archivos con dos workers; typecheck, lint y build pasaron. Primera ejecución con más concurrencia: dos timeouts no reproducidos aisladamente en base ni candidato; se corrigieron cinco errores de lint, sin alterar contratos. Advertencia de build por chunk minificado superior a 500 kB.
+- E2E real focal documental (`auth.real`, `documentos-dni.real`, `documentos-descarga-admin.real`): 18/18 también tras corregir el submit. U17 probó dos sesiones independientes del mismo ADMIN, 409 sin reenvío, revocación confirmada, visibilidad familiar, replay U15 sin nueva carga y SHA intacto en U16. Los dos actores ADMIN distintos y la reversión de auditoría están cubiertos por PostgreSQL. Scratch removido.

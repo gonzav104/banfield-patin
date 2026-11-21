@@ -1,7 +1,9 @@
 import { ApiError } from '@/lib/api-error';
+import { DocumentReviewDialog } from './DocumentReviewDialog';
 import { AthleteDocumentsView } from './AthleteDocumentsView';
 import { useAthleteDocuments } from './hooks';
 import { documentsListErrorMessage } from './messages';
+import { useDocumentReview } from './use-document-review';
 import { useDocumentViewer } from './use-document-viewer';
 
 /**
@@ -11,17 +13,27 @@ import { useDocumentViewer } from './use-document-viewer';
 export function AthleteDocumentsSection({ athleteId }: { athleteId: string }) {
   const documents = useAthleteDocuments(athleteId);
   const viewer = useDocumentViewer(athleteId);
-  const listError = documents.isError && !documents.data ? documentsListErrorMessage(ApiError.from(documents.error)) : null;
+  const review = useDocumentReview(athleteId);
+  const listError = documents.isError ? documentsListErrorMessage(ApiError.from(documents.error)) : null;
   return (
-    <AthleteDocumentsView
-      documents={documents.data}
-      loading={documents.isPending}
-      listError={listError}
-      onRetryList={() => void documents.refetch()}
-      viewer={viewer.state}
-      onOpen={viewer.open}
-      onClose={viewer.close}
-      onDownload={viewer.downloadPdf}
-    />
+    <>
+      <AthleteDocumentsView
+        documents={documents.data}
+        loading={documents.isPending}
+        listError={listError}
+        onRetryList={() => void documents.refetch()}
+        reviewDisabled={review.pending || documents.isFetching || documents.isRefetchError}
+        reviewFeedback={review.feedback}
+        onReview={review.open}
+        viewer={viewer.state}
+        onOpen={viewer.open}
+        onClose={viewer.close}
+        onDownload={viewer.downloadPdf}
+      />
+      {review.selection ? (
+        <DocumentReviewDialog document={review.selection.document} action={review.selection.action}
+          pending={review.pending} onCancel={review.close} onConfirm={review.confirm} />
+      ) : null}
+    </>
   );
 }
