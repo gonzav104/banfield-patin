@@ -111,6 +111,12 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
    var op=spec.path("paths").path("/api/"+rol+"/"+p+"/{id}/documentos").path("get");
    assertThat(op.path("responses").propertyNames()).contains("200","400","401","403","404");
   }
+  var esquemas=spec.path("components").path("schemas");
+  var referencia=spec.path("paths").path("/api/admin/deportistas/{id}/documentos").path("get")
+   .path("responses").path("200").path("content").path("application/json").path("schema").path("$ref").asString();
+  assertThat(referencia).startsWith("#/components/schemas/");
+  assertThat(esquemas.path(referencia.substring(referencia.lastIndexOf('/')+1)).path("properties").path("contenido")
+   .path("items").path("$ref").asString()).isEqualTo("#/components/schemas/DocumentoAdminMetadatos");
   var admin=spec.path("components").path("schemas").path("DocumentoAdminMetadatos").path("properties");
   assertThat(admin.path("version").path("type").asString()).isEqualTo("string");
   assertThat(admin.propertyNames()).containsExactlyInAnyOrder("id","tipo","estado","temporadaId","creadoEn",

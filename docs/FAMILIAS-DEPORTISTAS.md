@@ -30,7 +30,8 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 
 | Ruta | Rol | Solicitud | Respuesta | Errores |
 |---|---|---|---|---|
-| `GET /api/admin/deportistas/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `GET /api/admin/deportistas/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoAdminMetadatos>`; `version` decimal como cadena; solo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |
+| `POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision` | ADMIN con MFA | CSRF de escritura; `estado`, `versionEsperada` como cadena y `motivoObservacion` al observar | `200` `DocumentoAdminMetadatos` actualizado; solo DNI frente/dorso vigente | `400` entrada inválida, `401` sin sesión, `403` acceso o CSRF, `404 DOCUMENTO_NO_ENCONTRADO`, `409` conflicto de revisión; ver `DOCUMENTOS.md` |
 | `GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo` | ADMIN | cabecera `X-XSRF-TOKEN` obligatoria (D2) | `200` archivo binario (PDF, JPEG o PNG) verificado por tamaño y SHA-256, `attachment` con nombre neutro; ver `DOCUMENTOS.md` | `403 CSRF_INVALIDO`, `404 DOCUMENTO_NO_ENCONTRADO`, `409 INTEGRIDAD_NO_VERIFICABLE`, `429 DESCARGA_OCUPADA`, `502 INTEGRIDAD_FALLIDA`, `503 DESCARGA_NO_DISPONIBLE` |
 | `GET /api/admin/tutores/{id}/documentos` | ADMIN | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 TUTOR_NO_ENCONTRADO` |
 | `GET /api/familia/deportistas/{id}/documentos` | FAMILIA | `page`, `size` | `200` `Pagina<DocumentoMetadatos>`; sólo vigentes y alcance del propietario; ver `DOCUMENTOS.md` | `404 DEPORTISTA_NO_ENCONTRADO` |

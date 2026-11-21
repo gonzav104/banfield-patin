@@ -48,6 +48,7 @@ class InventarioRutasTest {
 			"PUT /api/admin/deportistas/{id}",
 			"POST /api/admin/deportistas/{id}/activar",
 			"POST /api/admin/deportistas/{id}/desactivar",
+			"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
 			// Vinculos (slice 5): lote de vinculacion, revocacion y cambio explicito de principal; sin DELETE ni PATCH.
 			"POST /api/admin/familias/{familiaId}/deportistas",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
@@ -134,6 +135,7 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
+				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
@@ -172,7 +174,8 @@ class InventarioRutasTest {
 
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
 				.containsExactlyInAnyOrder("POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
-						"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar");
+						"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
+						"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas", "POST /api/admin/deportistas",
 				"GET /api/admin/deportistas/{id}",
@@ -180,7 +183,8 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias",
 				"GET /api/admin/deportistas/{deportistaId}/vinculos", "GET /api/admin/deportistas/{id}/documentos",
 				// Descarga auditada de un documento (U16): lectura, sin escritura del documento.
-				"GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo");
+				"GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo",
+				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 

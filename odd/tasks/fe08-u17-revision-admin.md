@@ -12,7 +12,7 @@ Entrega local en tres commits revisados incrementalmente sobre una única rama d
 - S6: «Creá una única rama `feat/fe07-u17-revision-documental` para contener los tres cortes.» «No quiero cortes apilados hacia main ni PR independientes para cada parte de U17.» «Si requieren consentimiento, solicitámelo antes de ejecutarlas.»
 
 ## Tasks
-- [ ] T1 · S2/S3/S5 · inline · versión administrativa aditiva, pruebas de contrato; verificación funcional e independiente observada · commit en preparación.
+- [x] T1 · S2/S3/S5/S6 · inline · versión administrativa y pruebas · d223192; revisión nativa aprobada y reconocida.
 - [ ] T2 · S1/S3/S5 · inline, verificador independiente · endpoint transaccional con pruebas HTTP/PostgreSQL · riesgo 2 y 4 · commit pendiente.
 - [ ] T3 · S4/S5 · inline, verificación sensible al cierre · UI y E2E/documentación · depende de T1/T2 · commit pendiente.
 
@@ -183,3 +183,10 @@ Cuando completes los tres cortes y sus verificaciones, presentame el estado de U
 Respondé íntegramente en español.
 
 La rama de preparación se renombró en el mismo worktree: no se creó una segunda rama y el candidato del corte 1 no cambió. Límite de revisión inicial: `96a689b`.
+
+### L5 — Cierre del corte 1 e inicio del corte 2
+- `d223192`: verificación independiente sin bloqueantes y Gentle AI aprobado/reconocido (`review-639478696357074e`); el acuse confirmó autoridad consumida. La advertencia no bloqueante R2-001 se atiende en el corte 2 comprobando la referencia de la respuesta GET en OpenAPI; no se reabrió el candidato.
+- Corte 2: RED MVC observado (el POST ausente respondió 404 frente a 400 por observación sin motivo). PostgreSQL también reprodujo que `JdbcClient` entrega SQLSTATE 55P03 encapsulado en `UncategorizedSQLException`; se acotó la traducción al nuevo comando, sin tocar el manejador global.
+- Verificación funcional del corte 2: 52 pruebas focales y 85 PostgreSQL real (5 revisión, 8 consulta, 58 U15 y 14 U16), todas verdes después de corregir el timeout. El diferencial independiente para listados y regresiones U15/U16 preservó cuerpos, estados y cabeceras.
+- La suite independiente encontró dos regresiones de esquema (ejemplo OpenAPI prohibido y guard genérico de estado). Se eliminó el ejemplo y se acotó la excepción al esquema de revisión, con campos y destinos exactos. Recheck independiente y spot check: 5/5 en ambos. No se repitió la suite completa tras esta corrección; queda como comprobación final.
+- El corte transaccional supera el objetivo orientativo de 400 líneas por las pruebas de aislamiento, concurrencia y reversión. Se mantiene un solo corte cohesivo, según la estrategia local autorizada: no se recortan pruebas ni se prescinde del presupuesto nativo.
