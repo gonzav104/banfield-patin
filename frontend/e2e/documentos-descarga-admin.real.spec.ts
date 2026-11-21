@@ -294,7 +294,7 @@ test('PDF: «Abrir documento» says «PDF listo» and renders nothing; «Descarg
   await expectNoLeaks(admin, adminConsole);
 });
 
-test('integrity: a same-size object with other bytes answers 502 INTEGRIDAD_FALLIDA and the screen shows nothing of it; a shorter object is 502 and a larger one 503', async () => {
+test('integrity: a same-size object with other bytes answers 502 INTEGRIDAD_FALLIDA and the screen shows nothing of it; a shorter object is 502 and a larger one 502 too (the inspection confirms another size)', async () => {
   const objectPath = join(OBJECTS_DIR, docs.tampered.doc.key);
   const original = readFileSync(objectPath);
   const sameSize = Buffer.from(original);
@@ -317,13 +317,14 @@ test('integrity: a same-size object with other bytes answers 502 INTEGRIDAD_FALL
     expect(actions(docs.tampered.doc.id)).toEqual(['DOCUMENTO_INTEGRIDAD_FALLIDA']);
 
     // A shorter object: the size check refuses it before the hash (502, audited again). A LARGER one is refused by the bounded
-    // read itself (it declares more than the registered size): 503 DESCARGA_NO_DISPONIBLE, and nothing is audited.
+    // read itself (it declares more than the registered size); the HEAD inspection then confirms a different size, so it is an
+    // integrity failure too: 502 INTEGRIDAD_FALLIDA, audited a third time, and no byte is delivered.
     const csrf = await csrfHeaders(adminContext.request);
     writeFileSync(objectPath, original.subarray(0, original.length - 10));
     await expectRouteError(await adminContext.request.get(archivoPath(ids.tampered, docs.tampered.doc.id), { headers: csrf }), 502, 'INTEGRIDAD_FALLIDA', original);
     writeFileSync(objectPath, Buffer.concat([original, Buffer.from('extra-bytes')]));
-    await expectRouteError(await adminContext.request.get(archivoPath(ids.tampered, docs.tampered.doc.id), { headers: csrf }), 503, 'DESCARGA_NO_DISPONIBLE', original);
-    expect(actions(docs.tampered.doc.id)).toEqual(['DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
+    await expectRouteError(await adminContext.request.get(archivoPath(ids.tampered, docs.tampered.doc.id), { headers: csrf }), 502, 'INTEGRIDAD_FALLIDA', original);
+    expect(actions(docs.tampered.doc.id)).toEqual(['DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
     admin.removeAllListeners('download');
   } finally {
     writeFileSync(objectPath, original); // the inspection directory is left as the backend wrote it
@@ -356,7 +357,8 @@ test('security: without the CSRF header 403 CSRF_INVALIDO; a family session 403;
   await expectRouteError(await adminContext.request.get(archivoPath(ids.main, randomUUID()), { headers: adminCsrf }), 404, 'DOCUMENTO_NO_ENCONTRADO', bytes);
 
   expect(auditTrail(docs.front.doc.id)).toHaveLength(before);
-  expect(actions(docs.tampered.doc.id)).toEqual(['DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
+  // The three integrity failures of the previous scenario (same size, shorter, larger); the rejections here add nothing.
+  expect(actions(docs.tampered.doc.id)).toEqual(['DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
 });
 
 test('audit: one DOCUMENTO_DESCARGADO per delivered open, the integrity failures audited apart, and no SHA, key or bytes in any detail', () => {
@@ -366,7 +368,7 @@ test('audit: one DOCUMENTO_DESCARGADO per delivered open, the integrity failures
   // The whole trail, oldest first: the family's upload, then only what U16 did with each document.
   expect(front.map((entry) => entry.action)).toEqual(['DOCUMENTO_CARGADO', 'DOCUMENTO_DESCARGADO']);
   expect(back.map((entry) => entry.action)).toEqual(['DOCUMENTO_CARGADO', 'DOCUMENTO_DESCARGADO']);
-  expect(tampered.map((entry) => entry.action)).toEqual(['DOCUMENTO_CARGADO', 'DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
+  expect(tampered.map((entry) => entry.action)).toEqual(['DOCUMENTO_CARGADO', 'DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA', 'DOCUMENTO_INTEGRIDAD_FALLIDA']);
   expect(tampered.map((entry) => entry.action)).not.toContain('DOCUMENTO_DESCARGADO');
   for (const [entry, uploaded] of [...front.map((e) => [e, docs.front] as const), ...back.map((e) => [e, docs.back] as const), ...tampered.map((e) => [e, docs.tampered] as const)]) {
     expect(entry.withUser, 'the administrator and the school are recorded').toBe(true);

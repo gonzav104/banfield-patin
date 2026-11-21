@@ -21,6 +21,8 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.documentos.almacen.AlmacenDocumentos;
 import com.banfieldpatin.backend.documentos.almacen.DestinoPreparado;
+import com.banfieldpatin.backend.documentos.almacen.FalloAlmacenDocumentos;
+import com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -81,20 +83,17 @@ public class DescargaDocumentoService {
 		}
 		byte[] contenido = null;
 		try {
-			contenido = leer(almacen, destino, documento.tamanioBytes());
-			if (contenido.length != documento.tamanioBytes()
-					|| !MessageDigest.isEqual(sha256(contenido), documento.sha256())) {
-				DiagnosticoDescarga.fallo("integridad", null);
-				try {
-					auditoria.registrarFallo(evento(usuario, deportistaId, documentoId, documento,
-							AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA, datos));
-				} catch (RuntimeException ex) {
-					// Un fallo secundario al auditar no reemplaza el 502 original; nunca se entregan los bytes.
-					DiagnosticoDescarga.fallo("auditoria-integridad", ex);
-				}
-				throw new ExcepcionNegocio(HttpStatus.BAD_GATEWAY, "INTEGRIDAD_FALLIDA",
-						"El documento almacenado no coincide con el registrado.");
+			try {
+				contenido = almacen.leer(destino, documento.tamanioBytes()).contenido();
+			} catch (RuntimeException ex) {
+				DiagnosticoDescarga.fallo("lectura", ex);
+				if (tamanioDistintoConfirmado(almacen, destino, documento.tamanioBytes(), ex))
+					throw integridadFallida(usuario, deportistaId, documentoId, documento, datos);
+				throw noDisponible();
 			}
+			if (contenido.length != documento.tamanioBytes()
+					|| !MessageDigest.isEqual(sha256(contenido), documento.sha256()))
+				throw integridadFallida(usuario, deportistaId, documentoId, documento, datos);
 			try {
 				auditada.executeWithoutResult(s -> auditoria.registrar(evento(usuario, deportistaId, documentoId,
 						documento, AccionAuditoria.DOCUMENTO_DESCARGADO, datos)));
@@ -122,13 +121,39 @@ public class DescargaDocumentoService {
 		}
 	}
 
-	private static byte[] leer(AlmacenDocumentos almacen, DestinoPreparado destino, long tamanio) {
+	/**
+	 * Un objeto MAYOR que el registrado lo rechaza la lectura acotada como respuesta inesperada, igual que otras
+	 * respuestas inválidas. Sólo en ese caso se consulta el estado del objeto (HEAD, operación existente del puerto):
+	 * si confirma un tamaño distinto del registrado es un fallo de integridad, no una indisponibilidad. Cualquier otro
+	 * resultado (incierto, ausente, mismo tamaño o un fallo de la propia consulta) sigue siendo 503.
+	 */
+	private static boolean tamanioDistintoConfirmado(AlmacenDocumentos almacen, DestinoPreparado destino, long tamanio,
+			RuntimeException fallo) {
+		if (!(fallo instanceof FalloAlmacenDocumentos f) || f.codigo() != FalloAlmacenDocumentos.Codigo.RESPUESTA_INESPERADA)
+			return false;
 		try {
-			return almacen.leer(destino, tamanio).contenido();
+			InspeccionAlmacen inspeccion = almacen.inspeccionar(destino);
+			return inspeccion.estado() == InspeccionAlmacen.Estado.EXISTENCIA_CONFIRMADA
+					&& inspeccion.tamanioBytes().isPresent() && inspeccion.tamanioBytes().getAsLong() != tamanio;
 		} catch (RuntimeException ex) {
-			DiagnosticoDescarga.fallo("lectura", ex);
-			throw noDisponible();
+			DiagnosticoDescarga.fallo("inspeccion", ex);
+			return false;
 		}
+	}
+
+	/** Audita el fallo de integridad (un fallo secundario no reemplaza el 502) y devuelve el 502; nunca hay bytes. */
+	private ExcepcionNegocio integridadFallida(UsuarioAutenticado usuario, UUID deportistaId, UUID documentoId,
+			DocumentoDescargable documento, DatosSolicitud datos) {
+		DiagnosticoDescarga.fallo("integridad", null);
+		try {
+			auditoria.registrarFallo(evento(usuario, deportistaId, documentoId, documento,
+					AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA, datos));
+		} catch (RuntimeException ex) {
+			// Un fallo secundario al auditar no reemplaza el 502 original; nunca se entregan los bytes.
+			DiagnosticoDescarga.fallo("auditoria-integridad", ex);
+		}
+		return new ExcepcionNegocio(HttpStatus.BAD_GATEWAY, "INTEGRIDAD_FALLIDA",
+				"El documento almacenado no coincide con el registrado.");
 	}
 
 	private static EventoAuditoria evento(UsuarioAutenticado usuario, UUID deportistaId, UUID documentoId,

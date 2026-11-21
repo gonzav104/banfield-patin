@@ -217,6 +217,80 @@ class DescargaDocumentoServiceTest {
 				.doesNotContain(CLAVE.toString(), escuela.toString(), documento.toString());
 	}
 
+	private static FalloAlmacenDocumentos falloDeStorage(FalloAlmacenDocumentos.Codigo codigo) throws Exception {
+		var constructor = FalloAlmacenDocumentos.class.getDeclaredConstructor(FalloAlmacenDocumentos.Codigo.class, boolean.class);
+		constructor.setAccessible(true);
+		return constructor.newInstance(codigo, false);
+	}
+
+	private static com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen inspeccion(
+			com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen.Estado estado, Long tamanio) {
+		var i = mock(com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen.class);
+		when(i.estado()).thenReturn(estado);
+		when(i.tamanioBytes()).thenReturn(tamanio == null ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(tamanio));
+		return i;
+	}
+
+	/** Objeto mayor que el registrado: la lectura lo rechaza y el HEAD confirma otro tamaño ⇒ 502 auditado, sin bytes. */
+	@Test
+	void unObjetoDeTamanioDistintoConfirmadoEsUnFalloDeIntegridadAuditado() throws Exception {
+		when(almacen.leer(any(), anyLong())).thenThrow(falloDeStorage(FalloAlmacenDocumentos.Codigo.RESPUESTA_INESPERADA));
+		var mayor = inspeccion(com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen.Estado.EXISTENCIA_CONFIRMADA,
+				(long) CONTENIDO.length + 1);
+		when(almacen.inspeccionar(any())).thenReturn(mayor);
+		var s = servicio(2);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.BAD_GATEWAY, "INTEGRIDAD_FALLIDA");
+		assertThat(entregas).isEmpty();
+		verify(auditoria).registrarFallo(org.mockito.ArgumentMatchers.argThat(
+				e -> e.accion() == com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria.DOCUMENTO_INTEGRIDAD_FALLIDA));
+		verify(auditoria, org.mockito.Mockito.never()).registrar(any());
+		assertThat(s.permisosDisponibles()).isEqualTo(2);
+	}
+
+	/** Sin confirmación de un tamaño distinto (mismo tamaño, incierta, ausente) sigue siendo una indisponibilidad. */
+	@ParameterizedTest
+	@org.junit.jupiter.params.provider.CsvSource({ "EXISTENCIA_CONFIRMADA,SAME", "INCIERTA,", "AUSENCIA_OBSERVADA," })
+	void sinTamanioDistintoConfirmadoSigueSiendoNoDisponible(String estado, String tamanio) throws Exception {
+		when(almacen.leer(any(), anyLong())).thenThrow(falloDeStorage(FalloAlmacenDocumentos.Codigo.RESPUESTA_INESPERADA));
+		var observada = inspeccion(com.banfieldpatin.backend.documentos.almacen.InspeccionAlmacen.Estado.valueOf(estado),
+				tamanio == null ? null : (long) CONTENIDO.length);
+		when(almacen.inspeccionar(any())).thenReturn(observada);
+		var s = servicio(2);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.SERVICE_UNAVAILABLE, "DESCARGA_NO_DISPONIBLE");
+		assertThat(entregas).isEmpty();
+		verifyNoInteractions(auditoria);
+		assertThat(s.permisosDisponibles()).isEqualTo(2);
+	}
+
+	/** Si la propia inspección falla o no responde nada, no hay confirmación: sigue siendo 503 sin auditar ni entregar. */
+	@ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { true, false })
+	void unaInspeccionFallidaOVaciaNoConvierteEnFalloDeIntegridad(boolean lanza) throws Exception {
+		when(almacen.leer(any(), anyLong())).thenThrow(falloDeStorage(FalloAlmacenDocumentos.Codigo.RESPUESTA_INESPERADA));
+		if (lanza) when(almacen.inspeccionar(any())).thenThrow(new IllegalStateException("inspeccion caida"));
+		else when(almacen.inspeccionar(any())).thenReturn(null);
+		var s = servicio(2);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.SERVICE_UNAVAILABLE, "DESCARGA_NO_DISPONIBLE");
+		assertThat(entregas).isEmpty();
+		verifyNoInteractions(auditoria);
+		assertThat(s.permisosDisponibles()).isEqualTo(2);
+	}
+
+	/** Sólo una respuesta inesperada justifica consultar el estado; un plazo vencido o un rechazo no lo consultan. */
+	@ParameterizedTest
+	@org.junit.jupiter.params.provider.EnumSource(value = FalloAlmacenDocumentos.Codigo.class, names = "RESPUESTA_INESPERADA",
+			mode = org.junit.jupiter.params.provider.EnumSource.Mode.EXCLUDE)
+	void otrosFallosNoConsultanElEstadoDelObjeto(FalloAlmacenDocumentos.Codigo codigo) throws Exception {
+		when(almacen.leer(any(), anyLong())).thenThrow(falloDeStorage(codigo));
+		var s = servicio(2);
+		fallaCon(() -> s.descargar(admin, deportista, documento, datos, registrarEntrega()),
+				HttpStatus.SERVICE_UNAVAILABLE, "DESCARGA_NO_DISPONIBLE");
+		verify(almacen, org.mockito.Mockito.never()).inspeccionar(any());
+	}
+
 	@Test
 	void unErrorInesperadoDelAdaptadorTampocoEntregaNada() {
 		when(almacen.leer(any(), anyLong())).thenThrow(new IllegalStateException("BYTES-DOCUMENTALES en el mensaje"));

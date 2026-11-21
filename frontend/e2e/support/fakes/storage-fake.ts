@@ -133,12 +133,14 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<number>
   if (req.method === 'HEAD' && authenticated) {
     const [, , target, key] = rest as [string, string, string, string];
     const meta = target === bucket && KEY.test(key) ? readMeta(key) : null;
-    if (meta === null) {
+    if (meta === null || !existsSync(join(objectsDir, key))) {
       res.writeHead(400);
       res.end();
       return 400;
     }
-    res.writeHead(200, { 'Content-Type': meta.contentType, 'Content-Length': meta.size });
+    // Like real Storage, HEAD describes the object as it is NOW (same source as GET), not the size recorded at upload time:
+    // a test that rewrites the object sees a consistent size in HEAD and GET.
+    res.writeHead(200, { 'Content-Type': meta.contentType, 'Content-Length': statSync(join(objectsDir, key)).size });
     res.end();
     return 200;
   }

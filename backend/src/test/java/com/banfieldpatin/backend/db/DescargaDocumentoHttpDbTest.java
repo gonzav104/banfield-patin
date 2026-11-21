@@ -94,6 +94,19 @@ class DescargaDocumentoHttpDbTest {
 						x.getResponseBody().write(cuerpo);
 						return;
 					}
+					// HEAD del objeto (inspección): tamaño y tipo actuales, sin contar como lectura.
+					if (x.getRequestMethod().equals("HEAD") && ruta.startsWith("/storage/v1/object/authenticated/privado/")
+							&& ("Bearer " + CREDENCIAL).equals(x.getRequestHeaders().getFirst("Authorization"))) {
+						byte[] actual = OBJETOS.get(ruta.substring(ruta.lastIndexOf('/') + 1));
+						if (actual == null) {
+							x.sendResponseHeaders(400, -1);
+							return;
+						}
+						x.getResponseHeaders().set("Content-Type", "image/jpeg");
+						x.getResponseHeaders().set("Content-Length", String.valueOf(actual.length));
+						x.sendResponseHeaders(200, -1);
+						return;
+					}
 					if (!x.getRequestMethod().equals("GET") || !ruta.startsWith("/storage/v1/object/authenticated/privado/")
 							|| !("Bearer " + CREDENCIAL).equals(x.getRequestHeaders().getFirst("Authorization"))) {
 						x.sendResponseHeaders(418, -1);
@@ -424,22 +437,35 @@ class DescargaDocumentoHttpDbTest {
 	}
 
 	@Test
-	void unFalloOUnObjetoMayorEnStorageNoEstaDisponibleYNoAudita(CapturedOutput salida) throws Exception {
+	void unFalloOUnObjetoAusenteEnStorageNoEstaDisponibleYNoAudita(CapturedOutput salida) throws Exception {
 		var p = publicar(atleta, "DNI_DEPORTISTA_FRENTE", "image/jpeg", bytes("JPEG-", 40));
 		ESTADO.set(500);
 		var caido = descargar(atleta, p.id());
 		ESTADO.set(200);
-		OBJETOS.put(p.clave(), bytes("JPEG-", 41));
-		var mayor = descargar(atleta, p.id());
 		OBJETOS.remove(p.clave());
 		var ausente = descargar(atleta, p.id());
-		for (var r : List.of(caido, mayor, ausente)) {
+		for (var r : List.of(caido, ausente)) {
 			assertThat(r.statusCode()).isEqualTo(503);
 			assertThat(codigo(r)).isEqualTo("DESCARGA_NO_DISPONIBLE");
 			sinContenido(r, p);
 		}
 		assertThat(auditadas(p.id())).isEmpty();
 		assertThat(salida.getAll()).contains("fase=lectura").doesNotContain(p.clave(), CREDENCIAL);
+	}
+
+	/**
+	 * Un objeto MAYOR que el registrado lo rechaza la lectura acotada; la inspección (HEAD) confirma un tamaño distinto,
+	 * así que es un fallo de integridad (502 auditado), no una indisponibilidad, y nunca se entregan bytes.
+	 */
+	@Test
+	void unObjetoMayorQueElRegistradoEsUnFalloDeIntegridadAuditado() throws Exception {
+		var p = publicar(atleta, "DNI_DEPORTISTA_FRENTE", "image/jpeg", bytes("JPEG-", 40));
+		OBJETOS.put(p.clave(), bytes("JPEG-", 41));
+		var mayor = descargar(atleta, p.id());
+		assertThat(mayor.statusCode()).isEqualTo(502);
+		assertThat(codigo(mayor)).isEqualTo("INTEGRIDAD_FALLIDA");
+		sinContenido(mayor, p);
+		assertThat(auditadas(p.id())).containsExactly("DOCUMENTO_INTEGRIDAD_FALLIDA");
 	}
 
 	@Test
