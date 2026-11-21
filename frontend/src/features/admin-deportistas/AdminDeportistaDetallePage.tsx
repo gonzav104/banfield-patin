@@ -8,6 +8,7 @@ import { AthleteLinksAccess } from '@/features/admin-vinculos/AthleteLinksAccess
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
 import { isSafeAthleteId } from './api';
+import { AthleteDocumentsSection } from './AthleteDocumentsSection';
 import { AthleteNotFound, BackToListLink } from './AthleteNotFound';
 import { AthleteStatusBadge } from './AthleteStatusBadge';
 import { AthleteStatusControl } from './AthleteStatusControl';
@@ -92,6 +93,7 @@ function Detail({ athlete, notice: initialNotice, reload }: { athlete: AthleteDe
         <Row label="Partido">{athlete.partido}</Row>
         <Row label="Código postal">{athlete.codigoPostal}</Row>
       </Section>
+      <AthleteDocumentsSection athleteId={athlete.id} />
     </div>
   );
 }

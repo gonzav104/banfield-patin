@@ -72,7 +72,8 @@ import tools.jackson.databind.json.JsonMapper;
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
 		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class,
-		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class })
+		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class,
+		com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })
@@ -139,6 +140,8 @@ abstract class BaseOpenApiWebMvc {
 
 	@MockitoBean
 	protected DocumentoConsultaService documentoConsultaService;
+	@MockitoBean
+	protected com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoService descargaDocumentoService;
 
 	protected Cookie sesion(Rol rol) {
 		UUID familia = rol == Rol.FAMILIA ? UUID.randomUUID() : null;

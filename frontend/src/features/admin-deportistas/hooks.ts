@@ -2,13 +2,14 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { changeAthleteStatus, createAthlete, getAthlete, listAthletes, updateAthlete, type AthleteListParams, type AthleteStatusAction } from './api';
+import { changeAthleteStatus, createAthlete, getAthlete, listAthleteDocuments, listAthletes, updateAthlete, type AthleteListParams, type AthleteStatusAction } from './api';
 import type { AthleteDetail, AthleteInput, AthleteUpdateInput } from './schemas';
 
 /** Prefix of every athlete-related query (list and detail): one invalidation refreshes the lists. */
 const athletesKey = ['admin', 'athletes'] as const;
 export const athleteListKey = [...athletesKey, 'list'] as const;
 export const athleteDetailKey = (id: string) => ['admin', 'athlete-detail', id] as const;
+export const athleteDocumentsKey = (id: string) => ['admin', 'athlete-documents', id] as const;
 
 /** The search term is part of the cache key, which lives in memory only (nothing is persisted). */
 export function useAthleteList(params: AthleteListParams) {
@@ -64,4 +65,12 @@ export function useUpdateAthlete() {
 
 export function useChangeAthleteStatus() {
   return useAthleteWrite((input: { id: string; action: AthleteStatusAction; version: string }) => changeAthleteStatus(input));
+}
+
+/**
+ * Metadata of the athlete's current documents (never a file: files are fetched on demand and kept out of every cache). `gcTime: 0`
+ * drops the list as soon as the detail is no longer on screen.
+ */
+export function useAthleteDocuments(athleteId: string) {
+  return useQuery({ queryKey: athleteDocumentsKey(athleteId), queryFn: () => listAthleteDocuments(athleteId), gcTime: 0 });
 }

@@ -13,6 +13,16 @@ public interface AlmacenDocumentos {
 	Creado crear(byte[] contenido, String tipoContenido);
 	void eliminarCreado(Creado creado);
 
+	/**
+	 * Lee el objeto de un destino reconstruido desde el registro interno con
+	 * {@link DestinoPreparado#desdeRegistro} y devuelve sus bytes completos sin interpretarlos. Nunca
+	 * lee más de {@code maxBytes}: un objeto mayor, ausente o incompleto es un fallo
+	 * ({@link FalloAlmacenDocumentos}). No verifica la integridad (tamaño exacto ni SHA-256): lo hace
+	 * el llamador contra su manifiesto antes de entregar un solo byte. La lectura tiene un plazo total
+	 * (no sólo de inactividad): al vencer se aborta la E/S y es un fallo {@code TIMEOUT}.
+	 */
+	ContenidoLeido leer(DestinoPreparado destino, long maxBytes);
+
 	/** Capacidad de compensación de una creación confirmada, no reconstruible desde una clave persistida. */
 	final class Creado {
 		private final UUID clave;

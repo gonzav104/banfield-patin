@@ -164,7 +164,8 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 		for (String operacion : rutasDeLaEspecificacion(documento)) {
 			Set<String> exigidos = new TreeSet<>();
 			operacionDe(documento, operacion).path("security").forEach(r -> r.propertyNames().forEach(exigidos::add));
-			boolean escribe = !operacion.startsWith("GET ");
+			// La descarga administrativa (U16, D2) es la unica lectura que exige la cabecera CSRF.
+			boolean escribe = !operacion.startsWith("GET ") || operacion.equals(OpenApiConfig.DESCARGA_ADMIN);
 			assertThat(exigidos.contains("sesionCookie")).as("sesion en " + operacion)
 					.isEqualTo(!PUBLICAS.contains(operacion));
 			assertThat(exigidos.contains("csrfHeader")).as("csrf en " + operacion).isEqualTo(escribe);

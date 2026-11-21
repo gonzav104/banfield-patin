@@ -11,11 +11,15 @@ import { join } from 'node:path';
  *   POST /storage/v1/object/{bucket}/{key}  (x-upsert: false) -> 200 {"Id","Key":"bucket/key"}; an existing key is NEVER
  *                                                                overwritten: 400 {"statusCode":"409","error":"Duplicate",...}
  *   HEAD /storage/v1/object/authenticated/{bucket}/{key}      -> 200 with Content-Type/Content-Length, or 400 when absent
+ *   GET  /storage/v1/object/authenticated/{bucket}/{key}      -> 200 with the object's bytes as they are NOW in --objects-dir,
+ *                                                                its stored Content-Type and the real Content-Length (so a test
+ *                                                                that rewrites the file sees the backend read the rewritten
+ *                                                                bytes), or the verified absence answer below when absent
  *   GET  /storage/v1/object/info/authenticated/{bucket}/{key} -> 200 metadata, or the verified absence answer
  *        (400, JSON, exactly statusCode "404", error "not_found", code "NoSuchKey", message)
  * Every request must carry `Authorization: Bearer <credential>` and `apikey: <credential>` (the synthetic credential the
  * script generates, received in E2E_STORAGE_CREDENTIAL); otherwise 400 with statusCode "403", as the real Storage answers.
- * There is NO download route (that is U16), no delete, no public URL and no listing: anything else answers 404.
+ * There is no delete, no public URL and no listing: anything else answers 404.
  *
  * Test-only inspection: each stored object is written to `--objects-dir` as `<key>` (the exact bytes received) plus
  * `<key>.meta.json` (content type and size), so the E2E can assert what the backend really stored. Binds to 127.0.0.1 only,
@@ -129,13 +133,28 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<number>
   if (req.method === 'HEAD' && authenticated) {
     const [, , target, key] = rest as [string, string, string, string];
     const meta = target === bucket && KEY.test(key) ? readMeta(key) : null;
-    if (meta === null) {
+    if (meta === null || !existsSync(join(objectsDir, key))) {
       res.writeHead(400);
       res.end();
       return 400;
     }
-    res.writeHead(200, { 'Content-Type': meta.contentType, 'Content-Length': meta.size });
+    // Like real Storage, HEAD describes the object as it is NOW (same source as GET), not the size recorded at upload time:
+    // a test that rewrites the object sees a consistent size in HEAD and GET.
+    res.writeHead(200, { 'Content-Type': meta.contentType, 'Content-Length': statSync(join(objectsDir, key)).size });
     res.end();
+    return 200;
+  }
+
+  if (req.method === 'GET' && authenticated) {
+    const [, , target, key] = rest as [string, string, string, string];
+    const meta = target === bucket && KEY.test(key) ? readMeta(key) : null;
+    if (meta === null || !existsSync(join(objectsDir, key))) {
+      json(res, 400, { statusCode: '404', error: 'not_found', message: 'Object not found', code: 'NoSuchKey' });
+      return 400;
+    }
+    const body = readFileSync(join(objectsDir, key));
+    res.writeHead(200, { 'Content-Type': meta.contentType, 'Content-Length': body.length });
+    res.end(body);
     return 200;
   }
 

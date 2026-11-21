@@ -162,3 +162,62 @@ export function statusErrorMessage(failure: EditFailure, error: ApiError): strin
       return commonErrorMessage(error) ?? 'No pudimos cambiar el estado. Intentá de nuevo.';
   }
 }
+
+/* ---- Documents (U16) ---- */
+
+export const DOCUMENTS_TITLE = 'Documentos';
+export const DOCUMENTS_NOTE =
+  'Cada vez que se abre o se descarga un documento, el sistema de la escuela lo registra. Al descargar un PDF se guarda una copia en este dispositivo.';
+export const DOCUMENTS_EMPTY = 'Este deportista no tiene documentos vigentes.';
+export const DOCUMENTS_LOADING = 'Cargando los documentos…';
+export const DOCUMENT_LOADING = 'Abriendo el documento…';
+export const PDF_READY = 'PDF listo. Para verlo hay que descargarlo: queda una copia en este dispositivo.';
+
+const DOCUMENT_TYPE_LABEL: Record<string, string> = {
+  DNI_DEPORTISTA_FRENTE: 'DNI – frente',
+  DNI_DEPORTISTA_DORSO: 'DNI – dorso',
+  DNI_TUTOR_FRENTE: 'DNI del tutor – frente',
+  DNI_TUTOR_DORSO: 'DNI del tutor – dorso',
+  APTO_FISICO: 'Apto físico',
+  SOLICITUD_LICENCIA: 'Solicitud de licencia',
+  CERTIFICADO_WADA: 'Certificado WADA',
+  OTRO: 'Otro',
+};
+
+/** A type this screen does not know yet is still listed, with a generic name. */
+export const documentTypeLabel = (tipo: string): string => (Object.hasOwn(DOCUMENT_TYPE_LABEL, tipo) ? DOCUMENT_TYPE_LABEL[tipo]! : 'Documento');
+
+export function documentsListErrorMessage(error: ApiError): string {
+  if (error.kind === 'forbidden') return 'Esta cuenta no tiene permiso para ver los documentos.';
+  if (error.kind === 'unauthenticated') return 'La sesión venció. Es necesario ingresar de nuevo.';
+  if (error.kind === 'network') return 'No se pudo conectar con el servidor.';
+  return 'No se pudieron cargar los documentos.';
+}
+
+export const DOCUMENT_UNSUPPORTED = 'El archivo recibido tiene un formato que no se puede mostrar.';
+
+/** Fixed texts per code: the server message is never shown. A retry is always the administrator's choice (each read is audited). */
+export function documentFileErrorMessage(error: ApiError): string {
+  switch (error.code) {
+    case 'INTEGRIDAD_FALLIDA':
+      return 'El archivo guardado no superó la verificación de integridad, por eso no se muestra.';
+    case 'INTEGRIDAD_NO_VERIFICABLE':
+      return 'No es posible verificar la integridad de este documento, por eso no se muestra.';
+    case 'DESCARGA_OCUPADA':
+      return 'Hay otros documentos abriéndose en este momento. Se puede volver a intentar en unos instantes.';
+    case 'DESCARGA_NO_DISPONIBLE':
+      return 'La consulta de documentos no está disponible en este momento. Se puede volver a intentar más tarde.';
+    case 'DOCUMENTO_NO_ENCONTRADO':
+      return 'El documento ya no está disponible. Es posible que haya sido reemplazado.';
+    default:
+      break;
+  }
+  if (error.status === 404) return 'El documento ya no está disponible. Es posible que haya sido reemplazado.';
+  if (error.status === 429) return 'Hay otros documentos abriéndose en este momento. Se puede volver a intentar en unos instantes.';
+  if (error.kind === 'csrf') return 'No se pudo validar la solicitud. Es necesario recargar la página.';
+  if (error.kind === 'forbidden') return 'Esta cuenta no tiene permiso para abrir este documento.';
+  if (error.kind === 'unauthenticated') return 'La sesión venció. Es necesario ingresar de nuevo.';
+  if (error.kind === 'network') return 'No se pudo conectar con el servidor.';
+  if (error.kind === 'unavailable') return 'La consulta de documentos no está disponible en este momento. Se puede volver a intentar más tarde.';
+  return 'No se pudo abrir el documento.';
+}

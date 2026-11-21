@@ -59,6 +59,12 @@ public class OpenApiConfig {
 	private static final Set<String> PUBLICAS = Set.of("GET /api/auth/csrf", "POST /api/auth/login",
 			"POST /api/auth/admin/login", "POST /api/auth/invitaciones/validar", "POST /api/auth/registro/invitacion");
 
+	/** Descarga auditada (U16): devuelve el archivo binario y, aunque es GET, exige la cabecera CSRF (D2). */
+	static final String DESCARGA_ADMIN = "GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo";
+
+	/** Lecturas que exigen la cabecera CSRF por una decision propia de la ruta (no cambia la cadena global). */
+	private static final Set<String> LECTURAS_CON_CSRF = Set.of(DESCARGA_ADMIN);
+
 	/** Cualquier sesion vale, incluso un ADMIN con MFA pendiente. */
 	private static final Set<String> CUALQUIER_SESION = Set.of("GET /api/auth/me", "POST /api/auth/logout");
 
@@ -89,6 +95,9 @@ public class OpenApiConfig {
 					ruta(200, "404 INVITACION_NO_ENCONTRADA", "409 INVITACION_NO_REVOCABLE")),
 			entry("GET /api/admin/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
 			entry("GET /api/admin/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
+			entry(DESCARGA_ADMIN, ruta(200, "403 CSRF_INVALIDO", "404 DOCUMENTO_NO_ENCONTRADO",
+					"409 INTEGRIDAD_NO_VERIFICABLE", "429 DESCARGA_OCUPADA", "502 INTEGRIDAD_FALLIDA",
+					"503 DESCARGA_NO_DISPONIBLE")),
 			entry("GET /api/familia/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
             entry("POST /api/familia/deportistas/{id}/documentos", ruta(201, "404 DEPORTISTA_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
 			entry("GET /api/familia/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
@@ -169,7 +178,13 @@ public class OpenApiConfig {
 					+ "solo se guarda su hash) y lleva Cache-Control: no-store.",
 			"POST /api/auth/admin/mfa/enrolar",
 			"Enrola el TOTP del ADMIN. El secreto y la URI otpauth se devuelven una sola vez (Cache-Control: no-store) "
-					+ "y no se registran en logs ni auditoria. Solo con el token de MFA pendiente.");
+					+ "y no se registran en logs ni auditoria. Solo con el token de MFA pendiente.",
+			DESCARGA_ADMIN,
+			"Descarga un documento vigente del deportista (ADMIN con MFA completo y cabecera CSRF). Antes de enviar "
+					+ "un solo byte verifica el tamano y el SHA-256 completo contra la carga publicada y registra la "
+					+ "auditoria DOCUMENTO_DESCARGADO; ese evento acredita la autorizacion y el inicio de la entrega, "
+					+ "pero no acredita la recepción completa por parte del cliente. Respuesta attachment con nombre "
+					+ "neutro, Cache-Control: no-store, X-Content-Type-Options: nosniff y CSP sandbox.");
 
 	/** Codigo de exito y errores propios de una ruta. */
 	record Ruta(int exito, boolean location, List<String> errores) {
@@ -196,7 +211,7 @@ public class OpenApiConfig {
 				.schemaRequirement(ESQUEMA_CSRF, new SecurityScheme().type(SecurityScheme.Type.APIKEY)
 						.in(SecurityScheme.In.HEADER).name(CABECERA_CSRF)
 						.description("Valor de la cookie XSRF-TOKEN (se emite con GET /api/auth/csrf). "
-								+ "Obligatorio en toda ruta que escribe."));
+								+ "Obligatorio en toda ruta que escribe y en la descarga administrativa de documentos."));
 	}
 
 	/** Un {@code operationId} legible y estable (springdoc agrega sufijos numericos a los nombres repetidos). */
@@ -237,6 +252,7 @@ public class OpenApiConfig {
 			return;
 		}
 		boolean escribe = !clave.startsWith("GET ");
+		boolean csrf = escribe || LECTURAS_CON_CSRF.contains(clave);
 		boolean publica = PUBLICAS.contains(clave);
 		boolean mfa = clave.contains(" /api/auth/admin/mfa/");
 
@@ -248,7 +264,7 @@ public class OpenApiConfig {
 		if (operacion.getRequestBody() != null || (operacion.getParameters() != null && !operacion.getParameters().isEmpty())) {
 			agregar(errores, 400, "SOLICITUD_INVALIDA");
 		}
-		if (escribe) {
+		if (csrf) {
 			agregar(errores, 403, "CSRF_INVALIDO");
 		}
 		if (!publica) {
@@ -260,7 +276,7 @@ public class OpenApiConfig {
 		}
 
 		ApiResponses respuestas = new ApiResponses();
-		ApiResponse exito = exito(operacion, ruta);
+		ApiResponse exito = clave.equals(DESCARGA_ADMIN) ? archivo() : exito(operacion, ruta);
 		respuestas.addApiResponse(String.valueOf(ruta.exito()), exito);
 		errores.forEach((estado, codigos) -> respuestas.addApiResponse(String.valueOf(estado),
 				respuestaDeError(estado, codigos)));
@@ -269,7 +285,7 @@ public class OpenApiConfig {
         }
 		operacion.setResponses(respuestas);
 
-		operacion.setSecurity(seguridad(publica, escribe));
+		operacion.setSecurity(seguridad(publica, csrf));
 		if (DESCRIPCIONES.containsKey(clave)) {
 			operacion.setDescription(DESCRIPCIONES.get(clave));
 		} else if (mfa) {
@@ -312,19 +328,31 @@ public class OpenApiConfig {
 		return exito;
 	}
 
+	/** 200 binario: el tipo es el registrado del documento (PDF, JPEG o PNG), siempre como adjunto. */
+	private static ApiResponse archivo() {
+		Content contenido = new Content();
+		for (String tipo : List.of("application/pdf", "image/jpeg", "image/png")) {
+			contenido.addMediaType(tipo, new MediaType().schema(new Schema<String>().types(Set.of("string")).format("binary")));
+		}
+		return new ApiResponse().description("OK. Bytes verificados del documento.").content(contenido)
+				.addHeaderObject("Content-Disposition", new Header()
+						.description("attachment con nombre neutro (tipo documental y extension, sin datos de personas)")
+						.schema(new Schema<String>().types(Set.of("string"))));
+	}
+
 	private static ApiResponse respuestaDeError(int estado, Set<String> codigos) {
 		Schema<?> modelo = new Schema<>().$ref("#/components/schemas/" + ESQUEMA_ERROR);
 		return new ApiResponse().description("Error " + estado + ". codigo: " + String.join(" | ", codigos))
 				.content(new Content().addMediaType("application/json", new MediaType().schema(modelo)));
 	}
 
-	private static List<SecurityRequirement> seguridad(boolean publica, boolean escribe) {
+	private static List<SecurityRequirement> seguridad(boolean publica, boolean csrf) {
 		List<SecurityRequirement> requisitos = new ArrayList<>();
 		SecurityRequirement requisito = new SecurityRequirement();
 		if (!publica) {
 			requisito.addList(ESQUEMA_SESION);
 		}
-		if (escribe) {
+		if (csrf) {
 			requisito.addList(ESQUEMA_CSRF);
 		}
 		// Una lista vacia es explicita en OpenAPI: sin requisitos de seguridad (ruta publica de lectura).
