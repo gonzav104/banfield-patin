@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/session';
+import { AthleteDocumentsSection } from '@/features/admin-deportistas/AthleteDocumentsSection';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { ApiError } from '@/lib/api-error';
 import { isSafeFamilyId, isSafeTutorId } from './api';
@@ -84,6 +85,7 @@ function Detail({ tutor, familyId, saved }: { tutor: TutorDetail; familyId: stri
           </Row>
         </dl>
       </section>
+      <AthleteDocumentsSection athleteId={tutor.id} kind="tutor" />
     </div>
   );
 }

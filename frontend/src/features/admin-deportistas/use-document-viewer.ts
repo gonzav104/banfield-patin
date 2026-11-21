@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api-error';
-import { fetchAthleteDocumentFile } from './api';
+import { fetchAthleteDocumentFile, type DocumentOwnerKind } from './api';
 import { DOCUMENT_UNSUPPORTED, documentFileErrorMessage } from './messages';
 import type { AdminDocument } from './schemas';
 
@@ -24,7 +24,7 @@ export interface DocumentViewer {
  * opened, right after a PDF download starts, and on unmount. A response that arrives after the viewer moved on (closed, another
  * document, unmounted) is dropped without creating a URL. Nothing is retried: each successful read is an audited access.
  */
-export function useDocumentViewer(athleteId: string): DocumentViewer {
+export function useDocumentViewer(athleteId: string, kind: DocumentOwnerKind = 'deportista'): DocumentViewer {
   const [state, setState] = useState<DocumentViewerState>({ status: 'idle' });
   const imageUrl = useRef<string | null>(null);
   const pdf = useRef<Blob | null>(null);
@@ -59,7 +59,7 @@ export function useDocumentViewer(athleteId: string): DocumentViewer {
       release();
       const current = ++attempt.current;
       setState({ status: 'loading', document });
-      fetchAthleteDocumentFile(athleteId, document.id).then(
+      fetchAthleteDocumentFile(athleteId, document.id, kind).then(
         (file) => {
           if (current !== attempt.current) return;
           if (file.kind === 'image') {
@@ -79,7 +79,7 @@ export function useDocumentViewer(athleteId: string): DocumentViewer {
         },
       );
     },
-    [athleteId, release],
+    [athleteId, kind, release],
   );
 
   const close = useCallback(() => {

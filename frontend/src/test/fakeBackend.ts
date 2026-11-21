@@ -1294,6 +1294,10 @@ export class FakeBackend {
     return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
   }
 
+  private adminOwnerExists(id: string, tutor: boolean): boolean {
+    return tutor ? this.families.some((f) => f.tutores.some((t) => t.id === id)) : this.adminAthletes.some((a) => a.id === id);
+  }
+
   /**
    * Mirrors the ADMIN document routes (U16): the list of current documents and the file of one of them. The file route requires the
    * CSRF header even though it is a GET (D2), then the session and the role; one 404 DOCUMENTO_NO_ENCONTRADO for an unknown athlete or a
@@ -1307,20 +1311,25 @@ export class FakeBackend {
     csrfHeader: string | null,
     body: unknown,
   ): { status: number; body?: unknown; headers?: Record<string, string> } | null {
-    const list = /^\/admin\/deportistas\/([^/]+)\/documentos$/.exec(path);
-    const file = /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
-    const review = /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/revision$/.exec(path);
+    // The same routes for an athlete and, since U19, for a tutor (`tutores`): the owner kind decides the scope and the types.
+    const list = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
+    const file = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
+    const review = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/revision$/.exec(path);
     if (!(method === 'get' && (list || file)) && !(method === 'post' && review)) return null;
     if ((file || review) && (!csrfHeader || csrfHeader !== this.csrfToken)) return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
     if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
     if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
     if (list) {
-      if (!this.adminAthletes.some((a) => a.id === list[1])) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
-      return this.currentDocumentsPage(list[1]!, params, true);
+      const tutor = list[1] === 'tutores';
+      if (!this.adminOwnerExists(list[2]!, tutor)) {
+        return tutor ? this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.') : this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      }
+      return this.currentDocumentsPage(list[2]!, params, true);
     }
     if (review) {
-      const doc = this.documentsOf(review[1]!).find((item) => item.id === review[2]);
-      if (!doc || !['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'].includes(doc.tipo)) {
+      const sides = review[1] === 'tutores' ? ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'] : ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'];
+      const doc = this.documentsOf(review[2]!).find((item) => item.id === review[3]);
+      if (!doc || !sides.includes(doc.tipo)) {
         return this.error(404, 'DOCUMENTO_NO_ENCONTRADO');
       }
       const decision = body as { estado?: FakeDocumentStatus; versionEsperada?: string; motivoObservacion?: string };
@@ -1335,8 +1344,8 @@ export class FakeBackend {
       doc.motivoObservacion = decision.motivoObservacion ?? null;
       return { status: 200, body: { ...doc, vigente: true } };
     }
-    const [, athleteId, documentId] = file!;
-    const known = this.adminAthletes.some((a) => a.id === athleteId) && this.documentsOf(athleteId!).some((d) => d.id === documentId);
+    const [, kind, athleteId, documentId] = file!;
+    const known = this.adminOwnerExists(athleteId!, kind === 'tutores') && this.documentsOf(athleteId!).some((d) => d.id === documentId);
     this.documentDownloads.push({ athleteId: athleteId!, documentId: documentId!, status: known ? 200 : 404 });
     if (!known) return this.error(404, 'DOCUMENTO_NO_ENCONTRADO', 'El documento no existe.');
     const stored = this.documentFiles.get(documentId!) ?? { file: new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }), disposition: defaultDisposition('image/png') };
@@ -1345,23 +1354,33 @@ export class FakeBackend {
     return { status: 200, body: stored.file, headers };
   }
 
+  /** The athlete is linked and active, or the tutor belongs to the family (U19). */
+  private ownerInFamily(family: PortalFamily | undefined, id: string, tutor: boolean): boolean {
+    if (!family) return false;
+    return tutor ? family.tutores.some((t) => t.id === id) : family.links.get(id) === true;
+  }
+
+  private ownerNotFound(tutor: boolean) {
+    return tutor ? this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.') : this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+  }
+
   /**
    * Mirrors POST /api/familia/deportistas/{id}/documentos for the DNI types: CSRF and session are checked by `route`.
    * The same Idempotency-Key with the same athlete, type, size and MIME returns the SAME document (200) and stores nothing
    * new; with anything else it is a 409, like a second DNI of a type that already has a current one. It is a MOCK: the real
    * server compares the SHA-256 of the bytes.
    */
-  private uploadDocument(athleteId: string, body: unknown, key: string | null, family: PortalFamily | undefined): { status: number; body?: unknown } {
+  private uploadDocument(athleteId: string, body: unknown, key: string | null, family: PortalFamily | undefined, tutor = false): { status: number; body?: unknown } {
     if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
     if (!key || !UUID_FORMAT.test(key) || !(body instanceof FormData)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
-    if (!UUID_FORMAT.test(athleteId) || !family || family.links.get(athleteId) !== true) {
-      return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
-    }
+    if (!UUID_FORMAT.test(athleteId) || !this.ownerInFamily(family, athleteId, tutor)) return this.ownerNotFound(tutor);
     const tipo = body.get('tipo');
     const archivo = body.get('archivo');
     if (typeof tipo !== 'string' || !(archivo instanceof Blob) || body.getAll('archivo').length !== 1) {
       return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
     }
+    // A tutor only takes the two tutor DNI sides (U19); the type of the athlete route is not validated by this mock.
+    if (tutor && tipo !== 'DNI_TUTOR_FRENTE' && tipo !== 'DNI_TUTOR_DORSO') return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
     const record = (status: number) =>
       this.documentUploads.push({
         athleteId, tipo, idempotencyKey: key, fileName: archivo instanceof File ? archivo.name : '', type: archivo.type, size: archivo.size, blob: archivo, status,
@@ -1398,11 +1417,11 @@ export class FakeBackend {
    * even though the predecessor is no longer current; any other reuse of the key is a 409. A predecessor that is not an
    * OBSERVED DNI of this athlete is a 404 (not found) or a 409 (not OBSERVADO). On success the predecessor stops being current.
    */
-  private replaceDocument(athleteId: string, documentId: string, body: unknown, key: string | null, family: PortalFamily | undefined): { status: number; body?: unknown } {
+  private replaceDocument(athleteId: string, documentId: string, body: unknown, key: string | null, family: PortalFamily | undefined, tutor = false): { status: number; body?: unknown } {
     if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
     if (!key || !UUID_FORMAT.test(key) || !(body instanceof FormData)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
     if (!UUID_FORMAT.test(athleteId) || !UUID_FORMAT.test(documentId)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
-    if (!family || family.links.get(athleteId) !== true) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    if (!this.ownerInFamily(family, athleteId, tutor)) return this.ownerNotFound(tutor);
     const archivo = body.get('archivo');
     if (!(archivo instanceof Blob) || body.getAll('archivo').length !== 1 || [...body.keys()].some((name) => name !== 'archivo')) {
       return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
@@ -1426,7 +1445,8 @@ export class FakeBackend {
       record(same && stored ? 200 : 409, previous.tipo);
       return same && stored ? { status: 200, body: stored } : this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
     }
-    const predecessor = this.documentsOf(athleteId).find((d) => d.id === documentId && (d.tipo === 'DNI_DEPORTISTA_FRENTE' || d.tipo === 'DNI_DEPORTISTA_DORSO'));
+    const sides = tutor ? ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'] : ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'];
+    const predecessor = this.documentsOf(athleteId).find((d) => d.id === documentId && sides.includes(d.tipo));
     if (!predecessor) {
       record(404, '');
       return this.error(404, 'DOCUMENTO_NO_ENCONTRADO', 'Documento no encontrado.');
@@ -1459,20 +1479,22 @@ export class FakeBackend {
     const familyId = this.identity(current, false).familiaId;
     const family = familyId ? this.portalFamilies.get(familyId) : undefined;
 
-    const documents = /^\/familia\/deportistas\/([^/]+)\/documentos$/.exec(path);
-    if (documents && method === 'post') return this.uploadDocument(documents[1]!, body, idempotencyKey, family);
-    const replacement = /^\/familia\/deportistas\/([^/]+)\/documentos\/([^/]+)\/reemplazo$/.exec(path);
-    if (replacement && method === 'post') return this.replaceDocument(replacement[1]!, replacement[2]!, body, idempotencyKey, family);
+    // The same document routes for an athlete and, since U19, for a tutor of the family (`tutores`).
+    const documents = /^\/familia\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
+    if (documents && method === 'post') return this.uploadDocument(documents[2]!, body, idempotencyKey, family, documents[1] === 'tutores');
+    const replacement = /^\/familia\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/reemplazo$/.exec(path);
+    if (replacement && method === 'post') return this.replaceDocument(replacement[2]!, replacement[3]!, body, idempotencyKey, family, replacement[1] === 'tutores');
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
     if (path === '/familia/documentos/disponibilidad') {
       return { status: 200, body: { habilitada: this.documentUpload.enabled, maxBytes: this.documentUpload.enabled ? this.documentUpload.maxBytes : null } };
     }
     if (documents) {
-      // Mirrors GET /api/familia/deportistas/{id}/documentos: only current documents, ONE 404 for every cause.
-      const id = documents[1]!;
+      // Mirrors GET /api/familia/{deportistas|tutores}/{id}/documentos: only current documents, ONE 404 for every cause.
+      const id = documents[2]!;
+      const tutor = documents[1] === 'tutores';
       if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
-      if (!family || family.links.get(id) !== true) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      if (!this.ownerInFamily(family, id, tutor)) return this.ownerNotFound(tutor);
       return this.currentDocumentsPage(id, params);
     }
 

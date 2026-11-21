@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { replaceAthleteDocument, uploadAthleteDocument, type DniType } from './api';
+import { replaceAthleteDocument, uploadAthleteDocument, type DniType, type DocumentOwnerKind } from './api';
 import { familyKeys } from './hooks';
 import type { FamilyIdentity } from './identity';
 import { prepareDocument, type PrepareFailure, type PreparedDocument } from './image-normalization';
@@ -42,8 +42,9 @@ export function newIdempotencyKey(): string {
  * `replaces` is the id of the OBSERVED document this attempt replaces (U18), or null for a first upload. The attempt
  * remembers it: a key is never reused for another document.
  */
-export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId: string; tipo: DniType; maxBytes: number; replaces?: string | null }) {
+export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId: string; tipo: DniType; maxBytes: number; replaces?: string | null; kind?: DocumentOwnerKind }) {
   const { identity, athleteId, tipo, maxBytes } = options;
+  const kind = options.kind ?? 'deportista';
   const replaces = options.replaces ?? null;
   const queryClient = useQueryClient();
   const [state, setState] = useState<UploadStep>({ step: 'idle', notice: null });
@@ -73,9 +74,10 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
             documentId: input.replaces,
             prepared: input.prepared,
             idempotencyKey: input.idempotencyKey,
+            kind,
             ...(input.onProgress ? { onProgress: input.onProgress } : {}),
           })
-        : uploadAthleteDocument(input),
+        : uploadAthleteDocument({ ...input, kind }),
   });
 
   const drop = useCallback(
@@ -143,7 +145,7 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
         releasePreview();
         attempt.current = null;
         setState({ step: 'sent' });
-        await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId) });
+        await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId, kind) });
       } catch (error) {
         if (!mounted.current) return;
         const failure = uploadFailure(error, maxBytes, replaces !== null);
@@ -152,10 +154,10 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
           return;
         }
         drop(failure.message);
-        if (failure.action === 'refresh') await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId) });
+        if (failure.action === 'refresh') await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId, kind) });
       }
     },
-    [athleteId, drop, identity, maxBytes, mutation, queryClient, releasePreview, replaces, tipo],
+    [athleteId, drop, identity, kind, maxBytes, mutation, queryClient, releasePreview, replaces, tipo],
   );
 
   return { state, choose, send, discard: () => drop(null) };

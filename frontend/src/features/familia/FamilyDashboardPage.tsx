@@ -27,6 +27,13 @@ function FamilyCard({ identity }: { identity: FamilyIdentity }) {
                 {tutor.nombre} {tutor.apellido}
               </span>
               {tutor.parentesco ? <span className="text-muted"> · {tutor.parentesco}</span> : null}
+              <Link
+                to={`/familia/tutores/${tutor.id}`}
+                aria-label={`Documentos de ${tutor.nombre} ${tutor.apellido}`}
+                className="ml-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 hover:underline"
+              >
+                Documentos
+              </Link>
             </li>
           ))}
         </ul>

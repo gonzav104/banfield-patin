@@ -98,6 +98,14 @@ describe('athlete documents: list (mock backend)', () => {
     expect(openButton(label)).toBeEnabled();
   });
 
+  it('a tutor DNI type in an athlete list never gets the review controls (U19: the controls follow the owner)', async () => {
+    backend.seedDocument(athlete.id, { tipo: 'DNI_TUTOR_FRENTE', estado: 'CARGADO' });
+    await openDetail();
+    const row = await within(section()).findByRole('listitem');
+    expect(within(row).getByRole('button', { name: /Abrir documento/ })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /Aprobar documento|Observar documento/ })).not.toBeInTheDocument();
+  });
+
   it('never shows a reason for a document that is not observed, even if the server sent one', async () => {
     const url = `/admin/deportistas/${athlete.id}/documentos?page=0&size=100`;
     backend.override('get', url, {

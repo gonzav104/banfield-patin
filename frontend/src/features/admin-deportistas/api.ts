@@ -76,10 +76,14 @@ export async function changeAthleteStatus(input: { id: string; action: AthleteSt
 /** Every current document of an athlete fits in one page: there is at most one per type. */
 export const ATHLETE_DOCUMENTS_PAGE_SIZE = 100;
 
-/** GET /api/admin/deportistas/{id}/documentos: metadata of the CURRENT documents only (no file, no name, no MIME type). */
-export async function listAthleteDocuments(athleteId: string): Promise<AdminDocument[]> {
+/** Whose documents a screen manages: an athlete (default) or, since U19, a tutor. Same routes, other owner. */
+export type DocumentOwnerKind = 'deportista' | 'tutor';
+const ownerPath = (kind: DocumentOwnerKind, id: string) => `/admin/${kind === 'tutor' ? 'tutores' : 'deportistas'}/${encodeURIComponent(id)}`;
+
+/** GET /api/admin/{deportistas|tutores}/{id}/documentos: metadata of the CURRENT documents only (no file, no name, no MIME type). */
+export async function listAthleteDocuments(athleteId: string, kind: DocumentOwnerKind = 'deportista'): Promise<AdminDocument[]> {
   const query = new URLSearchParams({ page: '0', size: String(ATHLETE_DOCUMENTS_PAGE_SIZE) });
-  return parse(adminDocumentPageSchema, await apiGet(`/admin/deportistas/${encodeURIComponent(athleteId)}/documentos?${query.toString()}`)).contenido;
+  return parse(adminDocumentPageSchema, await apiGet(`${ownerPath(kind, athleteId)}/documentos?${query.toString()}`)).contenido;
 }
 
 export type DocumentReviewAction = 'APROBADO' | 'OBSERVADO';
@@ -90,8 +94,9 @@ export async function reviewAthleteDocument(
   decision: { estado: DocumentReviewAction; versionEsperada: string; motivoObservacion?: string },
   beforeWrite: () => void,
   signal: AbortSignal,
+  kind: DocumentOwnerKind = 'deportista',
 ): Promise<AdminDocument> {
-  const path = `/admin/deportistas/${encodeURIComponent(athleteId)}/documentos/${encodeURIComponent(documentId)}/revision`;
+  const path = `${ownerPath(kind, athleteId)}/documentos/${encodeURIComponent(documentId)}/revision`;
   const saved = parse(adminDocumentSchema, await apiWrite('post', path, decision, beforeWrite, { signal }));
   if (saved.id !== documentId || saved.version === undefined) {
     throw new ApiError('server', 'El servidor respondió con un formato inesperado.');
@@ -120,9 +125,9 @@ export function pdfFileName(contentDisposition: string | null): string {
  * GET /api/admin/deportistas/{athleteId}/documentos/{documentId}/archivo, with the CSRF header the route requires. Every successful
  * answer is an AUDITED access on the server: the caller never retries it by itself. Not cached anywhere (no query cache).
  */
-export async function fetchAthleteDocumentFile(athleteId: string, documentId: string): Promise<DocumentFile> {
+export async function fetchAthleteDocumentFile(athleteId: string, documentId: string, kind: DocumentOwnerKind = 'deportista'): Promise<DocumentFile> {
   const { blob, contentType, contentDisposition } = await apiGetBlob(
-    `/admin/deportistas/${encodeURIComponent(athleteId)}/documentos/${encodeURIComponent(documentId)}/archivo`,
+    `${ownerPath(kind, athleteId)}/documentos/${encodeURIComponent(documentId)}/archivo`,
   );
   if (contentType && IMAGE_TYPES.has(contentType)) return { kind: 'image', blob: blob.type === contentType ? blob : new Blob([blob], { type: contentType }) };
   if (contentType === 'application/pdf') {

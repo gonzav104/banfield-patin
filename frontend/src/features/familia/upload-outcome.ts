@@ -69,6 +69,9 @@ export function uploadFailure(error: unknown, maxBytes: number | null = null, re
       message: 'No se pudo completar esta carga porque cambió el estado del documento. Actualizamos la información: si todavía falta, volvé a elegir el archivo.',
     };
   }
+  if (code === 'TUTOR_NO_ENCONTRADO') {
+    return { action: 'refresh', message: 'No encontramos este tutor. Volvé a tu familia.' };
+  }
   if (replacing && code === 'DOCUMENTO_NO_ENCONTRADO') {
     return { action: 'refresh', message: 'Este documento ya no está disponible. Actualizamos la información.' };
   }
