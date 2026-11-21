@@ -136,7 +136,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	@Test
 	void lasRutasProbadasSonExactamenteLasQueLaEspecificacionDeclaraComo201Y204() {
 		// Cada 201/204 tiene cobertura: MVC para servicios simulados; carga real aislada en PostgreSQL para el motor documental.
-		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/admin/familias",
+		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/familias",
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas", "POST /api/admin/invitaciones",
 				"POST /api/auth/registro/invitacion", "POST /api/admin/temporadas",
 				"POST /api/admin/deportistas/{deportistaId}/temporadas");

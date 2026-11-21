@@ -111,3 +111,28 @@ export async function uploadAthleteDocument(input: {
   });
   return parse(athleteDocumentSchema, data);
 }
+
+/**
+ * Replaces an OBSERVED DNI of the athlete with a new file (U18). Same rules as `uploadAthleteDocument` (the caller keeps
+ * `idempotencyKey` and `prepared` for a retry), but only `archivo` is sent: the type comes from the document it
+ * replaces, which travels in the path and is authorized again by the server.
+ */
+export async function replaceAthleteDocument(input: {
+  athleteId: string;
+  documentId: string;
+  prepared: PreparedDocument;
+  idempotencyKey: string;
+  onProgress?: (fraction: number) => void;
+}): Promise<AthleteDocument> {
+  if (!isAthleteId(input.athleteId) || !isAthleteId(input.documentId)) {
+    throw new ApiError('validation', 'El identificador no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+  }
+  const form = new FormData();
+  form.append('archivo', input.prepared.blob, input.prepared.fileName);
+  const data = await apiWrite<unknown>('post', `/familia/deportistas/${input.athleteId}/documentos/${input.documentId}/reemplazo`, form, undefined, {
+    headers: { 'Idempotency-Key': input.idempotencyKey },
+    timeout: UPLOAD_TIMEOUT_MS,
+    ...(input.onProgress ? { onUploadProgress: input.onProgress } : {}),
+  });
+  return parse(athleteDocumentSchema, data);
+}

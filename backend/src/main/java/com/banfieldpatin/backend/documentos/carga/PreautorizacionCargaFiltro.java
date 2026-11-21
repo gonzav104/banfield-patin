@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
   static final String CONTEXTO = PreautorizacionCargaFiltro.class.getName();
   private static final Pattern RUTA =
-      Pattern.compile("^/api/familia/deportistas/([^/]+)/documentos$");
+      Pattern.compile("^/api/familia/deportistas/([^/]+)/documentos(?:/([^/]+)/reemplazo)?$");
   private final ObjectProvider<CargaDocumentalService> proveedor;
   private final JsonMapper json;
 
@@ -74,6 +74,15 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
       } catch (IllegalArgumentException ex) {
         throw new ExcepcionNegocio(
             HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "Solicitud inválida.");
+      }
+      if (match.group(2) != null) {
+        // Reemplazo (U18): el predecesor viaja en la ruta y se valida antes de leer el cuerpo.
+        try {
+          UUID.fromString(match.group(2));
+        } catch (IllegalArgumentException ex) {
+          throw new ExcepcionNegocio(
+              HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "Solicitud inválida.");
+        }
       }
       var contexto = ContextoCarga.desde(auth.getToken());
       servicio.preautorizar(contexto, atleta);

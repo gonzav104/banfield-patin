@@ -286,3 +286,165 @@ describe('uploading a DNI side', () => {
     await waitFor(() => expect(within(front).getByText('En revisión')).toBeInTheDocument());
   });
 });
+
+describe('replacing an OBSERVED DNI (U18)', () => {
+  beforeEach(() => void backend.enableDocumentUpload());
+
+  const replaceUrl = (athleteId: string, documentId: string) => `/familia/deportistas/${athleteId}/documentos/${documentId}/reemplazo`;
+  const replacePosts = (athleteId: string, documentId: string) =>
+    backend.requests.filter((r) => r.method === 'post' && r.url === replaceUrl(athleteId, documentId));
+  const observedBack = () => {
+    const athlete = own();
+    backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'APROBADO' });
+    const observed = backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_DORSO', estado: 'OBSERVADO', motivoObservacion: 'La foto está borrosa.' });
+    return { athlete, observed };
+  };
+
+  it('offers the replacement ONLY for an observed document: the reason stays visible and the other states are read-only', async () => {
+    const { athlete } = observedBack();
+    await openSheet(athlete.id);
+
+    const back = await slot('DNI – dorso');
+    expect(within(back).getByText('La foto está borrosa.')).toBeInTheDocument();
+    expect(within(back).getByText('Subí un archivo nuevo para reemplazarlo.')).toBeInTheDocument();
+    expect(within(back).queryByText('Comunicate con el club para resolverlo.')).not.toBeInTheDocument();
+    expect(within(back).getByLabelText('Sacar foto del DNI – dorso')).toBeInTheDocument();
+    const front = await slot('DNI – frente'); // APROBADO: nothing to upload
+    expect(within(front).queryByLabelText('Sacar foto del DNI – frente')).not.toBeInTheDocument();
+    expect(within(front).queryByLabelText('Elegir archivo para el DNI – frente')).not.toBeInTheDocument();
+  });
+
+  it('sends ONLY the file to the replacement route with a UUID key, and then shows the successor in review', async () => {
+    const { athlete, observed } = observedBack();
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    expect(within(back).getByText('Documento enviado. El club lo va a revisar.')).toBeInTheDocument();
+    const [upload] = backend.documentUploads;
+    expect(upload).toMatchObject({ athleteId: athlete.id, tipo: 'DNI_DEPORTISTA_DORSO', status: 201, replaces: observed.id, fileName: 'documento.jpg' });
+    expect(upload?.idempotencyKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    const post = replacePosts(athlete.id, observed.id)[0]!;
+    expect([...(post.body as FormData).keys()]).toEqual(['archivo']); // no `tipo`: it comes from the document it replaces
+    expect(backend.requests.some((r) => r.method === 'post' && r.url === uploadsUrl(athlete.id))).toBe(false); // the original route is untouched
+    expect(backend.documentsOf(athlete.id).filter((d) => d.tipo === 'DNI_DEPORTISTA_DORSO')).toHaveLength(1);
+    expect(within(back).queryByText('La foto está borrosa.')).not.toBeInTheDocument();
+    expect(within(back).queryByText('Subí un archivo nuevo para reemplazarlo.')).not.toBeInTheDocument(); // no promise of a control that is gone
+  });
+
+  it('after a LOST response, «Reintentar» re-sends the SAME bytes with the SAME key and the successor is stored once', async () => {
+    const { athlete, observed } = observedBack();
+    backend.override('post', replaceUrl(athlete.id, observed.id), 'lost');
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByRole('alert')).toHaveTextContent('No pudimos confirmar si el documento se guardó');
+    await user.click(within(back).getByRole('button', { name: 'Reintentar' }));
+
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    const [first, second] = backend.documentUploads;
+    expect(backend.documentUploads.map((u) => u.status)).toEqual([201, 200]);
+    expect(second?.idempotencyKey).toBe(first?.idempotencyKey);
+    expect(await readBytes(second!.blob)).toEqual(await readBytes(first!.blob));
+    expect(backend.documentsOf(athlete.id).filter((d) => d.tipo === 'DNI_DEPORTISTA_DORSO')).toHaveLength(1);
+  });
+
+  it('a 409 OPERACION_EN_CURSO keeps the attempt: the retry is manual and sends the SAME key', async () => {
+    const { athlete, observed } = observedBack();
+    backend.override('post', replaceUrl(athlete.id, observed.id), { status: 409, body: { codigo: 'OPERACION_EN_CURSO', mensaje: 'La operación anterior todavía se está procesando.' } });
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+
+    expect(await within(back).findByRole('alert')).toHaveTextContent('La carga anterior todavía se está procesando');
+    expect(replacePosts(athlete.id, observed.id)).toHaveLength(1); // no automatic retry
+    await user.click(within(back).getByRole('button', { name: 'Reintentar' }));
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    const posts = replacePosts(athlete.id, observed.id);
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+  });
+
+  it('a definitive 409 drops the attempt, explains it and offers the picker again with a NEW key', async () => {
+    const { athlete, observed } = observedBack();
+    backend.override('post', replaceUrl(athlete.id, observed.id), { status: 409, body: { codigo: 'OPERACION_NO_REPETIBLE', mensaje: 'x' } });
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+
+    expect(await within(back).findByText(/ya fue reemplazado o cambió de estado/)).toBeInTheDocument();
+    expect(within(back).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    await user.upload(within(back).getByLabelText('Sacar foto del DNI – dorso'), photo());
+    await user.click(await within(back).findByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    const [rejected, accepted] = replacePosts(athlete.id, observed.id);
+    expect(accepted?.idempotencyKey).not.toBe(rejected?.idempotencyKey);
+  });
+
+  it('a 404 DOCUMENTO_NO_ENCONTRADO refreshes the documents with its own message', async () => {
+    const { athlete, observed } = observedBack();
+    backend.override('post', replaceUrl(athlete.id, observed.id), { status: 404, body: { codigo: 'DOCUMENTO_NO_ENCONTRADO', mensaje: 'x' } });
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByText('Este documento ya no está disponible. Actualizamos la información.')).toBeInTheDocument();
+    await waitFor(() => expect(backend.requests.filter((r) => r.method === 'get' && r.url.startsWith(uploadsUrl(athlete.id))).length).toBeGreaterThan(1));
+  });
+
+  it('when the club observes the SUCCESSOR, the slot offers a new replacement with a NEW key (the confirmation of the previous one is gone)', async () => {
+    const { athlete, observed } = observedBack();
+    const { queryClient } = renderApp(`/familia/deportistas/${athlete.id}`);
+    await section();
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    await user.click(within(back).getByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByText('Documento enviado. El club lo va a revisar.')).toBeInTheDocument();
+    const successor = backend.documentsOf(athlete.id).find((d) => d.tipo === 'DNI_DEPORTISTA_DORSO')!;
+
+    // The club observes the successor; the family screen (still open) refetches, as on window focus.
+    successor.estado = 'OBSERVADO';
+    successor.motivoObservacion = 'Otra vez borrosa.';
+    await queryClient.invalidateQueries();
+
+    expect(await within(back).findByText('Otra vez borrosa.')).toBeInTheDocument();
+    expect(within(back).queryByText('Documento enviado. El club lo va a revisar.')).not.toBeInTheDocument();
+    expect(within(back).getByText('Subí un archivo nuevo para reemplazarlo.')).toBeInTheDocument();
+    await user.upload(within(back).getByLabelText('Sacar foto del DNI – dorso'), photo());
+    await user.click(await within(back).findByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    const first = replacePosts(athlete.id, observed.id)[0]!;
+    const second = replacePosts(athlete.id, successor.id)[0]!;
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
+  });
+
+  it('when ANOTHER observed document appears, what was chosen for the previous one is dropped: nothing is sent to the new one without choosing again', async () => {
+    const { athlete, observed } = observedBack();
+    const { queryClient } = renderApp(`/familia/deportistas/${athlete.id}`);
+    await section();
+    const user = await choosePhoto('DNI – dorso');
+    const back = await slot('DNI – dorso');
+    expect(await within(back).findByRole('button', { name: 'Enviar' })).toBeInTheDocument(); // preview ready for `observed`
+
+    // Another device replaced it and the club observed the new one: a different observed document.
+    const documents = backend.documentsOf(athlete.id);
+    documents.splice(documents.findIndex((d) => d.id === observed.id), 1);
+    const other = backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_DORSO', estado: 'OBSERVADO', motivoObservacion: 'Cortada.' });
+    await queryClient.invalidateQueries();
+
+    expect(await within(back).findByText('Cortada.')).toBeInTheDocument();
+    await waitFor(() => expect(within(back).queryByRole('button', { name: 'Enviar' })).not.toBeInTheDocument());
+    expect(within(back).getByLabelText('Sacar foto del DNI – dorso')).toBeInTheDocument(); // back to the picker
+    expect(replacePosts(athlete.id, observed.id)).toHaveLength(0);
+    expect(replacePosts(athlete.id, other.id)).toHaveLength(0);
+    await user.upload(within(back).getByLabelText('Sacar foto del DNI – dorso'), photo());
+    await user.click(await within(back).findByRole('button', { name: 'Enviar' }));
+    expect(await within(back).findByText('En revisión')).toBeInTheDocument();
+    expect(replacePosts(athlete.id, other.id)).toHaveLength(1);
+  });
+});

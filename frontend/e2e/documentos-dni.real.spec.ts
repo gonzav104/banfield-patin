@@ -7,7 +7,7 @@ import { browserJpeg, sha256, syntheticPdf } from './support/documents';
 import { eicarBytes } from './support/fakes/eicar';
 import { addPrivacyHazards, inspectJpeg } from './support/jpeg';
 import { leakPattern } from './support/leak';
-import { AdminSeed, loginAdminUi, schoolToday, type SeededFamily } from './support/seed';
+import { AdminSeed, csrfHeaders, loginAdminUi, schoolToday, type SeededFamily } from './support/seed';
 
 /**
  * REAL upload of the athlete's DNI from the family sheet (FE-06/U15): browser (Canvas normalization) -> Vite proxy -> Spring
@@ -33,7 +33,7 @@ test.skip(OBJECTS_DIR === '' && !process.env.CI, 'Needs .github/scripts/frontend
 const suffix = randomBytes(3).toString('hex');
 const YEAR = Number(schoolToday().slice(0, 4));
 const FAMILY_NAME = `E2E Docs Familia ${suffix}`;
-const ATHLETES = { main: `E2E-Docs-Principal-${suffix}`, lost: `E2E-Docs-Perdida-${suffix}`, eicar: `E2E-Docs-Eicar-${suffix}` } as const;
+const ATHLETES = { main: `E2E-Docs-Principal-${suffix}`, lost: `E2E-Docs-Perdida-${suffix}`, eicar: `E2E-Docs-Eicar-${suffix}`, replace: `E2E-Docs-Reemplazo-${suffix}` } as const;
 type AthleteKey = keyof typeof ATHLETES;
 /** The original file names a phone gives: they carry personal data and must never reach the server, the address or storage. */
 const PHOTO_NAME = `IMG_20261120_DNI_frente_${ATHLETES.main}.jpg`;
@@ -359,6 +359,100 @@ test('a PDF carrying the EICAR test string is rejected by the scan with 422: the
   expect(storedDocument(ids.eicar, 'DNI_DEPORTISTA_DORSO')).toEqual([]);
   expect(objectFiles().filter((name) => !objectsBefore.includes(name))).toEqual([]);
   expect((await sentUploads(page, 1))[0]).toMatchObject({ name: 'documento.pdf', type: 'application/pdf' });
+
+  await expectNoLeaks(page, consoleLines);
+  await context.close();
+});
+
+/** Read-only: the documents of one athlete and side, oldest first, with the chain columns the API never shows. */
+function documentChain(athleteId: string, tipo: string): { id: string; vigente: boolean; estado: string; motivo: string | null; serieId: string; anteriorId: string | null }[] {
+  const out = dbQuery(
+    "COPY (SELECT id, vigente, estado, motivo_observacion, serie_id, documento_anterior_id FROM gestion_patin.documento WHERE deportista_id = :'athlete' AND tipo = :'tipo' ORDER BY creado_en, id) TO STDOUT;\n",
+    { athlete: athleteId, tipo },
+  );
+  return out
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [id = '', vigente = '', estado = '', motivo = '\\N', serieId = '', anteriorId = '\\N'] = line.split('\t');
+      return { id, vigente: vigente === 't', estado, motivo: motivo === '\\N' ? null : motivo, serieId, anteriorId: anteriorId === '\\N' ? null : anteriorId };
+    });
+}
+
+test('U18: the club observes a DNI and the family REPLACES it: the successor is the only current document, the predecessor keeps its chain and reason and can no longer be downloaded', async () => {
+  const REASON = `Foto borrosa ${suffix}`;
+  const { context, page, consoleLines } = await familyPage({ width: 360, height: 800 });
+  await openSheet(page, 'replace');
+  const objectsBefore = objectFiles();
+
+  // First upload of the front, as in the first scenario: a phone photo, normalized by the browser.
+  await slot(page, 'frente').getByLabel('Sacar foto del DNI – frente', { exact: true }).setInputFiles({ name: PHOTO_NAME, mimeType: 'image/jpeg', buffer: photo });
+  const first = page.waitForResponse(isUpload(ids.replace));
+  await slot(page, 'frente').getByRole('button', { name: 'Enviar' }).click();
+  const firstResponse = await first;
+  expect(firstResponse.status()).toBe(201);
+  const originalId = ((await firstResponse.json()) as { id: string }).id;
+  await expect(badge(page, 'frente', 'En revisión')).toBeVisible();
+
+  // The club (ADMIN, real API with CSRF) observes it with a reason. A newly stored document has version "0".
+  const observed = await adminContext.request.post(`/api/admin/deportistas/${ids.replace}/documentos/${originalId}/revision`, {
+    data: { estado: 'OBSERVADO', versionEsperada: '0', motivoObservacion: REASON },
+    headers: await csrfHeaders(adminContext.request),
+  });
+  expect(observed.status()).toBe(200);
+
+  // After a reload the family sees the state, the reason and the way to fix it: replacing (not "talk to the club").
+  await page.reload();
+  await expect(badge(page, 'frente', 'Observado')).toBeVisible();
+  await expect(slot(page, 'frente').getByText(REASON)).toBeVisible();
+  await expect(slot(page, 'frente').getByText('Subí un archivo nuevo para reemplazarlo.')).toBeVisible();
+  await expect(slot(page, 'frente').getByText('Comunicate con el club para resolverlo.')).toHaveCount(0);
+  expect(await noHorizontalOverflow(page)).toBe(true);
+
+  // The replacement goes through its own route (the backend accepts only the `archivo` part) and a fresh key.
+  const pdf = syntheticPdf();
+  await slot(page, 'frente').getByLabel('Elegir archivo para el DNI – frente', { exact: true }).setInputFiles({ name: PDF_NAME, mimeType: 'application/pdf', buffer: pdf });
+  await expect(slot(page, 'frente').getByText(/^PDF listo para enviar \(\d+ KB\)\.$/)).toBeVisible();
+  const replacement = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/familia/deportistas/${ids.replace}/documentos/${originalId}/reemplazo`,
+  );
+  await slot(page, 'frente').getByRole('button', { name: 'Enviar' }).click();
+  const replaced = await replacement;
+  expect(replaced.status()).toBe(201);
+  const successorId = ((await replaced.json()) as { id: string }).id;
+  expect(successorId).not.toBe(originalId);
+  await expect(slot(page, 'frente').getByText(SENT)).toBeVisible();
+  await expect(badge(page, 'frente', 'En revisión')).toBeVisible();
+  await expect(slot(page, 'frente').getByText(REASON)).toHaveCount(0);
+
+  // The backend: the family list shows ONLY the successor; the chain, the reason and BOTH stored objects survive.
+  expect((await backendDocuments(page, ids.replace)).map((d) => [d.tipo, d.estado])).toEqual([['DNI_DEPORTISTA_FRENTE', 'CARGADO']]);
+  const chain = documentChain(ids.replace, 'DNI_DEPORTISTA_FRENTE');
+  expect(chain).toHaveLength(2);
+  expect(chain[0]).toMatchObject({ id: originalId, vigente: false, estado: 'OBSERVADO', motivo: REASON, anteriorId: null });
+  expect(chain[0]!.serieId).toBe(originalId);
+  expect(chain[1]).toMatchObject({ id: successorId, vigente: true, estado: 'CARGADO', anteriorId: originalId, serieId: originalId });
+  expect(operationCount(ids.replace, 'DNI_DEPORTISTA_FRENTE')).toBe(2);
+  const stored = storedDocument(ids.replace, 'DNI_DEPORTISTA_FRENTE');
+  expect(stored).toHaveLength(2);
+  expect(objectFiles().filter((name) => !objectsBefore.includes(name)).sort()).toEqual(stored.map((d) => d.key).sort());
+  // The page was reloaded after the first upload, so its recorder only holds the replacement.
+  const [sentPdf] = await sentUploads(page, 1);
+  expect(sentPdf).toMatchObject({ name: 'documento.pdf', type: 'application/pdf', size: pdf.length, sha256: sha256(pdf) });
+  expect(stored.filter((d) => sha256(readFileSync(join(OBJECTS_DIR, d.key))) === sentPdf!.sha256)).toHaveLength(1);
+
+  // The admin download (U16) serves the current document only: the replaced one is gone from the API.
+  const adminHeaders = await csrfHeaders(adminContext.request);
+  const downloadOld = await adminContext.request.get(`/api/admin/deportistas/${ids.replace}/documentos/${originalId}/archivo`, { headers: adminHeaders });
+  expect(downloadOld.status()).toBe(404);
+  const downloadNew = await adminContext.request.get(`/api/admin/deportistas/${ids.replace}/documentos/${successorId}/archivo`, { headers: adminHeaders });
+  expect(downloadNew.status()).toBe(200);
+  expect(sha256(Buffer.from(await downloadNew.body()))).toBe(sha256(pdf));
+
+  // After a reload the state still comes from the backend, and there is nothing left to replace.
+  await page.reload();
+  await expect(badge(page, 'frente', 'En revisión')).toBeVisible();
+  await expect(slot(page, 'frente').getByLabel('Elegir archivo para el DNI – frente', { exact: true })).toHaveCount(0);
 
   await expectNoLeaks(page, consoleLines);
   await context.close();

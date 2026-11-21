@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadAthleteDocument, type DniType } from './api';
+import { replaceAthleteDocument, uploadAthleteDocument, type DniType } from './api';
 import { familyKeys } from './hooks';
 import type { FamilyIdentity } from './identity';
 import { prepareDocument, type PrepareFailure, type PreparedDocument } from './image-normalization';
@@ -38,11 +38,16 @@ export function newIdempotencyKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId: string; tipo: DniType; maxBytes: number }) {
+/**
+ * `replaces` is the id of the OBSERVED document this attempt replaces (U18), or null for a first upload. The attempt
+ * remembers it: a key is never reused for another document.
+ */
+export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId: string; tipo: DniType; maxBytes: number; replaces?: string | null }) {
   const { identity, athleteId, tipo, maxBytes } = options;
+  const replaces = options.replaces ?? null;
   const queryClient = useQueryClient();
   const [state, setState] = useState<UploadStep>({ step: 'idle', notice: null });
-  const attempt = useRef<{ key: string; prepared: PreparedDocument } | null>(null);
+  const attempt = useRef<{ key: string; prepared: PreparedDocument; replaces: string | null } | null>(null);
   const previewUrl = useRef<string | null>(null);
   const mounted = useRef(true);
 
@@ -60,6 +65,19 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
     };
   }, [releasePreview]);
 
+  const mutation = useMutation({
+    mutationFn: (input: Parameters<typeof uploadAthleteDocument>[0] & { replaces: string | null }) =>
+      input.replaces
+        ? replaceAthleteDocument({
+            athleteId: input.athleteId,
+            documentId: input.replaces,
+            prepared: input.prepared,
+            idempotencyKey: input.idempotencyKey,
+            ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+          })
+        : uploadAthleteDocument(input),
+  });
+
   const drop = useCallback(
     (notice: string | null) => {
       releasePreview();
@@ -68,6 +86,22 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
     },
     [releasePreview],
   );
+
+  // The slot stays mounted after a send. When a DIFFERENT observed document appears (the club observed the successor, or
+  // another device replaced this one), what the user chose or sent belongs to the previous document: the attempt, the
+  // preview and the confirmation are dropped. Going back to "no observed document" keeps the confirmation on screen.
+  const lastReplaces = useRef(replaces);
+  const sending = mutation.isPending;
+  useEffect(() => {
+    if (replaces === lastReplaces.current) return;
+    if (replaces === null) {
+      lastReplaces.current = null;
+      return;
+    }
+    if (sending) return; // re-evaluated when the request in flight settles
+    lastReplaces.current = replaces;
+    drop(null);
+  }, [replaces, sending, drop]);
 
   const choose = useCallback(
     async (file: File) => {
@@ -86,12 +120,12 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
     [maxBytes, releasePreview],
   );
 
-  const mutation = useMutation({ mutationFn: uploadAthleteDocument });
-
   const send = useCallback(
     async (prepared: PreparedDocument) => {
-      // The key is born on the first send of THESE bytes and is reused, unchanged, by every retry of them.
-      if (!attempt.current || attempt.current.prepared !== prepared) attempt.current = { key: newIdempotencyKey(), prepared };
+      // The key is born on the first send of THESE bytes (for THIS document) and is reused, unchanged, by every retry.
+      if (!attempt.current || attempt.current.prepared !== prepared || attempt.current.replaces !== replaces) {
+        attempt.current = { key: newIdempotencyKey(), prepared, replaces };
+      }
       const { key } = attempt.current;
       setState({ step: 'sending', prepared, previewUrl: previewUrl.current, progress: null });
       try {
@@ -99,6 +133,7 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
           athleteId,
           tipo,
           prepared,
+          replaces,
           idempotencyKey: key,
           onProgress: (fraction) => {
             if (mounted.current) setState((s) => (s.step === 'sending' ? { ...s, progress: fraction } : s));
@@ -111,7 +146,7 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
         await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId) });
       } catch (error) {
         if (!mounted.current) return;
-        const failure = uploadFailure(error, maxBytes);
+        const failure = uploadFailure(error, maxBytes, replaces !== null);
         if (failure.action === 'retry-same') {
           setState({ step: 'failed', prepared, previewUrl: previewUrl.current, failure });
           return;
@@ -120,7 +155,7 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
         if (failure.action === 'refresh') await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId) });
       }
     },
-    [athleteId, drop, identity, maxBytes, mutation, queryClient, releasePreview, tipo],
+    [athleteId, drop, identity, maxBytes, mutation, queryClient, releasePreview, replaces, tipo],
   );
 
   return { state, choose, send, discard: () => drop(null) };

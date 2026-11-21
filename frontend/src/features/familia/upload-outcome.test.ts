@@ -57,6 +57,23 @@ describe('uploadFailure: what to do after a failed upload', () => {
     expect(outcome.message).toMatch(/actualizamos la información/i);
   });
 
+  it('while replacing, a 409 says the document was already replaced or changed and refreshes', () => {
+    const outcome = uploadFailure(error('conflict', 409, 'OPERACION_NO_REPETIBLE'), null, true);
+    expect(outcome.action).toBe('refresh');
+    expect(outcome.message).toMatch(/ya fue reemplazado o cambió de estado/i);
+    expect(uploadFailure(error('conflict', 409, 'OPERACION_EN_CURSO'), null, true).action).toBe('retry-same');
+  });
+
+  it('a 404 DOCUMENTO_NO_ENCONTRADO refreshes with its own message; the athlete 404 keeps its message', () => {
+    expect(uploadFailure(error('unknown', 404, 'DOCUMENTO_NO_ENCONTRADO'), null, true)).toMatchObject({
+      action: 'refresh',
+      message: expect.stringMatching(/ya no está disponible/i) as string,
+    });
+    expect(uploadFailure(error('unknown', 404, 'DEPORTISTA_NO_ENCONTRADO'))).toMatchObject({ message: expect.stringMatching(/deportista/i) as string });
+    // The original upload is unchanged: without `replacing`, the same code keeps the generic 404 message.
+    expect(uploadFailure(error('unknown', 404, 'DOCUMENTO_NO_ENCONTRADO'))).toMatchObject({ action: 'refresh', message: expect.stringMatching(/deportista/i) as string });
+  });
+
   it('a 404 is the uniform "athlete not found" answer', () => {
     expect(uploadFailure(error('unknown', 404, 'DEPORTISTA_NO_ENCONTRADO'))).toMatchObject({ action: 'refresh' });
   });

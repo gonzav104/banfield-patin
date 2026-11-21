@@ -20,7 +20,8 @@ export const PRIVACY_NOTE =
  */
 function UploadableSlot(props: { identity: FamilyIdentity; athleteId: string; tipo: DniType; maxBytes: number; document: AthleteDocument | null }) {
   const { document, ...options } = props;
-  const upload = useDocumentUpload(options);
+  // An OBSERVED document can be replaced (U18); any other state is read-only for the family.
+  const upload = useDocumentUpload({ ...options, replaces: document?.estado === 'OBSERVADO' ? document.id : null });
   return <DniSlot title={TITLES[props.tipo]} document={document} upload={upload} unavailableText={null} />;
 }
 
