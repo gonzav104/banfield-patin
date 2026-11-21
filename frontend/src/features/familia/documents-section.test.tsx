@@ -187,6 +187,30 @@ describe('uploading a DNI side', () => {
     expect(accepted?.idempotencyKey).not.toBe(rejected?.idempotencyKey);
   });
 
+  it('a 409 OPERACION_EN_CURSO keeps the attempt: «Reintentar» re-sends the SAME bytes with the SAME key, by hand', async () => {
+    const athlete = own();
+    backend.override('post', uploadsUrl(athlete.id), { status: 409, body: { codigo: 'OPERACION_EN_CURSO', mensaje: 'La operación anterior todavía se está procesando.' } });
+    await openSheet(athlete.id);
+    const user = await choosePhoto('DNI – frente');
+    const front = await slot('DNI – frente');
+    await user.click(within(front).getByRole('button', { name: 'Enviar' }));
+
+    const alert = await within(front).findByRole('alert');
+    expect(alert).toHaveTextContent('La carga anterior todavía se está procesando');
+    expect(alert).not.toHaveTextContent(/Actualizamos la información/);
+    expect(backend.requests.filter((r) => r.method === 'post' && r.url === uploadsUrl(athlete.id))).toHaveLength(1); // no automatic retry
+    await user.click(within(front).getByRole('button', { name: 'Reintentar' }));
+
+    expect(await within(front).findByText('En revisión')).toBeInTheDocument();
+    const posts = backend.requests.filter((r) => r.method === 'post' && r.url === uploadsUrl(athlete.id));
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+    const [stored] = backend.documentUploads;
+    expect(backend.documentUploads).toHaveLength(1);
+    expect(stored?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+    expect(backend.documentsOf(athlete.id)).toHaveLength(1);
+  });
+
   it('a 409 drops the attempt and reloads the documents (for example another tutor uploaded it first)', async () => {
     const athlete = own();
     await openSheet(athlete.id);

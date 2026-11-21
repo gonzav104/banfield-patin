@@ -103,7 +103,7 @@ public class OpenApiConfig {
 					"409 INTEGRIDAD_NO_VERIFICABLE", "429 DESCARGA_OCUPADA", "502 INTEGRIDAD_FALLIDA",
 					"503 DESCARGA_NO_DISPONIBLE")),
 			entry("GET /api/familia/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
-            entry("POST /api/familia/deportistas/{id}/documentos", ruta(201, "404 DEPORTISTA_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
+            entry("POST /api/familia/deportistas/{id}/documentos", ruta(201, "404 DEPORTISTA_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE o OPERACION_EN_CURSO", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
 			entry("GET /api/familia/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
 			entry("GET /api/familia/documentos/disponibilidad", ruta(200)),
 			// --- Familias

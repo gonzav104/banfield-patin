@@ -39,6 +39,18 @@ describe('uploadFailure: what to do after a failed upload', () => {
     expect(outcome.message).toMatch(text);
   });
 
+  it('a 409 OPERACION_EN_CURSO keeps the key and asks for a manual retry, without saying it failed', () => {
+    const outcome = uploadFailure(error('conflict', 409, 'OPERACION_EN_CURSO'));
+    expect(outcome.action).toBe('retry-same');
+    expect(outcome.message).toMatch(/todavía se está procesando/i);
+    expect(outcome.message).toMatch(/no se va a duplicar/i);
+  });
+
+  it('an unknown 409 code keeps today\'s behavior: it drops the attempt and refreshes', () => {
+    expect(uploadFailure(error('conflict', 409, 'CODIGO_FUTURO'))).toMatchObject({ action: 'refresh' });
+    expect(uploadFailure(error('conflict', 409, null))).toMatchObject({ action: 'refresh' });
+  });
+
   it('a 409 drops the attempt and refreshes the documents: the operation cannot be repeated with that key', () => {
     const outcome = uploadFailure(error('conflict', 409, 'OPERACION_NO_REPETIBLE'));
     expect(outcome.action).toBe('refresh');

@@ -219,7 +219,8 @@ final class OperacionesCargaJdbc {
           // El manifiesto ya coincide: sólo entonces un reintento puede retomar la operación.
           boolean retomada = false;
           if (!nueva && !op.estado().equals("PUBLICADA")) {
-            if (!RETOMABLES.contains(op.estado()) || !retomar(op)) throw ErrorCarga.conflicto();
+            if (!RETOMABLES.contains(op.estado())) throw ErrorCarga.conflicto();
+            if (!retomar(op)) throw reservaViva(op) ? ErrorCarga.enCurso() : ErrorCarga.conflicto();
             op =
                 conEstado(op, op.estado().equals("TRANSFIRIENDO") ? "RECONCILIANDO" : op.estado());
             retomada = true;
@@ -251,6 +252,22 @@ final class OperacionesCargaJdbc {
             .param("e", o.estado())
             .update()
         == 1;
+  }
+
+  /**
+   * Distingue, tras perder el CAS de {@link #retomar}, una reserva todavía activa (transitoria) de
+   * cualquier otra causa. La fila sigue bloqueada por esta transacción: estado y versión no cambian,
+   * así que el CAS sólo pudo fallar porque la reserva no venció. Un estado terminal nunca tiene
+   * reserva (ck_operacion_terminal), por lo que no se clasifica como en curso.
+   */
+  private boolean reservaViva(Operacion o) {
+    return jdbc.sql(
+                "SELECT true FROM gestion_patin.operacion_carga_documental WHERE id=:id"
+                    + " AND estado NOT IN ('PUBLICADA','CERRADA') AND reserva_hasta IS NOT NULL")
+            .param("id", o.id())
+            .query(Boolean.class)
+            .optional()
+            .isPresent();
   }
 
   Operacion iniciar(ContextoCarga c, Operacion o) {
