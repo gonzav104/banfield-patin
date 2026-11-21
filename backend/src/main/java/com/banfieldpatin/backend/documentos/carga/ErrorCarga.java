@@ -27,6 +27,17 @@ final class ErrorCarga {
         "La operación está en curso, requiere resolución o no coincide con la solicitud.");
   }
 
+  /**
+   * Otra solicitud mantiene viva la reserva de esta clave: transitorio. Repetir la MISMA clave y
+   * los MISMOS bytes puede retomar o devolver la operación cuando la reserva venza.
+   */
+  static ExcepcionNegocio enCurso() {
+    return new ExcepcionNegocio(
+        HttpStatus.CONFLICT,
+        "OPERACION_EN_CURSO",
+        "La operación anterior todavía se está procesando; reintente con la misma clave.");
+  }
+
   static ExcepcionNegocio incierto() {
     return new ExcepcionNegocio(
         HttpStatus.SERVICE_UNAVAILABLE,

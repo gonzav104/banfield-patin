@@ -4,10 +4,11 @@ import { ApiError } from '@/lib/api-error';
  * What the screen does after a failed document upload (POST /api/familia/deportistas/{id}/documentos):
  * - `retry-same`: keep the SAME Idempotency-Key and the SAME normalized bytes. The server either stored the document once
  *   or not at all; retrying with the same key returns it (200) instead of storing it twice. Used whenever the outcome is
- *   unknown or temporary (lost response, timeout, 5xx, 429, stale CSRF token).
+ *   unknown or temporary (lost response, timeout, 5xx, 429, stale CSRF token, or a 409 `OPERACION_EN_CURSO`: the previous
+ *   request with that key still holds the reservation; the retry is manual, never automatic).
  * - `choose-other-file`: the file itself was rejected (size, format, content or the virus scan). The attempt is dropped.
- * - `refresh`: 409 (the operation cannot be repeated with that key: it is in progress, closed, does not match, or the
- *   document already exists) or 404. The attempt is dropped and the document list is reloaded.
+ * - `refresh`: any other 409 (the operation cannot be repeated with that key: it is closed, does not match, or the
+ *   document already exists; also an unknown 409 code) or 404. The attempt is dropped and the document list is reloaded.
  * - `session-expired` / `stop`: no session, or no permission. Nothing to retry.
  * The server message is never shown: every text here is written for the family.
  */
@@ -47,6 +48,12 @@ export function uploadFailure(error: unknown, maxBytes: number | null = null): U
   }
   if (status === 415 || status === 400) {
     return { action: 'choose-other-file', message: 'No pudimos aceptar este archivo. Elegí una foto JPG o PNG, o un PDF.' };
+  }
+  if (status === 409 && code === 'OPERACION_EN_CURSO') {
+    return {
+      action: 'retry-same',
+      message: 'La carga anterior todavía se está procesando. Esperá unos minutos y tocá «Reintentar»: no se va a duplicar.',
+    };
   }
   if (status === 409) {
     return {

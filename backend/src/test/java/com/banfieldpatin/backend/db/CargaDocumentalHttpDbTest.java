@@ -326,6 +326,9 @@ class CargaDocumentalHttpDbTest {
         .single();
   }
 
+  static final String EN_CURSO = "\"codigo\":\"OPERACION_EN_CURSO\"";
+  static final String NO_REPETIBLE = "\"codigo\":\"OPERACION_NO_REPETIBLE\"";
+
   String fase(UUID key) {
     return jdbc.sql(
             "SELECT estado FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e AND"
@@ -433,7 +436,10 @@ class CargaDocumentalHttpDbTest {
     assertThat(r.statusCode()).as(r.body()).isEqualTo(503);
     assertThat(fase(key)).isEqualTo("RECONCILIANDO");
     assertThat(documentos()).isZero();
-    assertThat(cargar(key, file).statusCode()).isEqualTo(409);
+    var reintento = cargar(key, file);
+    assertThat(reintento.statusCode()).isEqualTo(409);
+    // Tras un resultado incierto la reserva sigue acotada y activa: transitorio, se reintenta con la misma clave.
+    assertThat(reintento.body()).contains(EN_CURSO);
     assertThat(POSTS.get()).isEqualTo(1);
     sinFugas(r);
   }
@@ -492,6 +498,7 @@ class CargaDocumentalHttpDbTest {
       var second = cargar(key, file);
       release.countDown();
       assertThat(second.statusCode()).as(second.body()).isEqualTo(409);
+      assertThat(second.body()).contains(EN_CURSO);
       assertThat(first.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
       assertThat(documentos()).isEqualTo(1);
       assertThat(POSTS.get()).isEqualTo(1);
@@ -553,6 +560,7 @@ class CargaDocumentalHttpDbTest {
             "image/png",
             "DNI_DEPORTISTA_FRENTE");
     assertThat(b.statusCode()).as(b.body()).isEqualTo(409);
+    assertThat(b.body()).contains(NO_REPETIBLE);
     assertThat(POSTS.get()).isEqualTo(1);
     assertThat(documentos()).isEqualTo(1);
   }
@@ -881,6 +889,7 @@ class CargaDocumentalHttpDbTest {
         .update();
     var r = cargar(key, png());
     assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE);
     assertThat(POSTS.get()).isZero();
     assertThat(documentos()).isZero();
     assertThat(fase(key)).isEqualTo("RESERVADA");
@@ -972,6 +981,50 @@ class CargaDocumentalHttpDbTest {
     return out.toByteArray();
   }
 
+  @Test
+  void operacionCerradaConservaElConflictoDefinitivo() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    operacionPrevia(key, file, "CERRADA", false);
+    long antes = version(key);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE).doesNotContain("OPERACION_EN_CURSO");
+    assertThat(fase(key)).isEqualTo("CERRADA");
+    assertThat(version(key)).isEqualTo(antes);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+    sinFugas(r);
+  }
+
+  @Test
+  void manifiestoDistinteConReservaActivaEsDefinitivoYNoEnCurso() throws Exception {
+    var key = UUID.randomUUID();
+    operacionPrevia(key, png(), "RESERVADA", false);
+    long antes = version(key);
+    var r = cargar(key, png(40));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE).doesNotContain("OPERACION_EN_CURSO");
+    assertThat(version(key)).isEqualTo(antes);
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void reintentoConLaMismaClaveTrasLaReservaVencidaYaNoEstaEnCurso() throws Exception {
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = operacionPrevia(key, file, "RESERVADA", false);
+    assertThat(cargar(key, file).body()).contains(EN_CURSO);
+    vencer(id);
+    var r = cargar(key, file);
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    var repetida = cargar(key, file);
+    assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(200);
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
   @org.junit.jupiter.params.ParameterizedTest
   @org.junit.jupiter.params.provider.ValueSource(
       strings = {"RESERVADA", "ALMACENADA", "TRANSFIRIENDO", "RECONCILIANDO"})
@@ -982,6 +1035,7 @@ class CargaDocumentalHttpDbTest {
     long antes = version(key);
     var r = cargar(key, file);
     assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(EN_CURSO).doesNotContain("OPERACION_NO_REPETIBLE");
     assertThat(fase(key)).isEqualTo(estado);
     assertThat(version(key)).isEqualTo(antes);
     assertThat(documentos()).isZero();
@@ -1069,9 +1123,11 @@ class CargaDocumentalHttpDbTest {
       var ganador = perdedor == a ? b : a;
       assertThat(perdedor.isDone()).isTrue();
       assertThat(perdedor.get().statusCode()).as(perdedor.get().body()).isEqualTo(409);
+      assertThat(perdedor.get().body()).contains(EN_CURSO);
       // Mientras el ganador mantiene la reserva, los reintentos posteriores tampoco se apropian.
       var tardio = cargar(key, file);
       assertThat(tardio.statusCode()).as(tardio.body()).isEqualTo(409);
+      assertThat(tardio.body()).contains(EN_CURSO);
       liberar.countDown();
       assertThat(ganador.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(201);
     } finally {

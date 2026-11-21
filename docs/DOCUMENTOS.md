@@ -144,7 +144,8 @@ Tipos permitidos: DNI_DEPORTISTA_FRENTE, DNI_DEPORTISTA_DORSO, SOLICITUD_LICENCI
 - `401/403/404`: sesión/rol/acceso; padre ajeno, inexistente o vínculo no ACTIVO mantienen el 404 uniforme. No exige deportista activo ni vínculo principal, como D1.
 - `400/415`: solicitud o contenedor multipart/tipo HTTP inválido; `413`: bytes reales excedidos.
 - `422`: formato/estructura/contenido no admitido o detección positiva del scanner.
-- `409`: clave/contexto diferentes, operación en curso (reserva activa), versión perdida, DNI ya vigente u operación `CERRADA`. Una operación cerrada nunca se reabre ni reutiliza su objeto: el cliente debe reintentar con una **nueva** clave de idempotencia.
+- `409 OPERACION_EN_CURSO` (transitorio): otra solicitud mantiene viva la reserva de la misma clave (estado no terminal y reserva sin vencer, o CAS de retoma perdido contra esa reserva). El cliente conserva la **misma** clave y los **mismos** bytes y reintenta a mano: cuando la reserva venza, el reintento retoma la operación o recibe la ya publicada (`200`). Nunca se emite para una operación `PUBLICADA` ni `CERRADA`.
+- `409 OPERACION_NO_REPETIBLE` (definitivo): clave/contexto diferentes, versión perdida por el propietario tardío, reconciliación cerrada, DNI ya vigente u operación `CERRADA`. Una operación cerrada nunca se reabre ni reutiliza su objeto: el cliente debe reintentar con una **nueva** clave de idempotencia. Un cliente que no conoce `OPERACION_EN_CURSO` lo trata igual que este caso (se descarta la clave y se recarga la lista).
 - `429`: capacidad de procesamiento ocupada; no se encola otro archivo. Se decide con el cuerpo ya recibido: un cliente lento no ocupa un permiso mientras envía.
 - `503`: integración apagada, scanner/infraestructura no disponibles o resultado no confirmable. No significa que el objeto/documento no exista.
 
