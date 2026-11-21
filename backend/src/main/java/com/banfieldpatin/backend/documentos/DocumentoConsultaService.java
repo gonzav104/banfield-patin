@@ -53,19 +53,37 @@ public class DocumentoConsultaService {
     @Transactional
     public Pagina<DocumentoMetadatos> deportista(UsuarioAutenticado usuario, UUID id, Pageable pagina,
             DatosSolicitud datos) {
-        boolean admin = esAdmin(usuario);
-        if (!admin && usuario.familiaId() == null) {
+        if (esAdmin(usuario)) {
+            return respuesta(usuario, id, "DEPORTISTA", buscarDeportistaAdmin(usuario, id, pagina)
+                    .map(DocumentoAdminMetadatos::sinVersion), datos);
+        }
+        if (usuario.familiaId() == null) {
             throw DeportistaAdminService.deportistaNoEncontrado();
         }
-        Page<DocumentoMetadatos> resultado = admin
-                ? documentos.deportistaAdmin(usuario.escuelaId(), id, pagina)
-                : documentos.deportistaFamilia(usuario.escuelaId(), id, usuario.familiaId(), pagina);
-        if (resultado.isEmpty() && !(admin
-                ? deportistas.existsByIdAndEscuelaId(id, usuario.escuelaId())
-                : vinculos.deportistaEnAlcance(usuario.familiaId(), usuario.escuelaId(), id).isPresent())) {
+        Page<DocumentoMetadatos> resultado =
+                documentos.deportistaFamilia(usuario.escuelaId(), id, usuario.familiaId(), pagina);
+        if (resultado.isEmpty()
+                && vinculos.deportistaEnAlcance(usuario.familiaId(), usuario.escuelaId(), id).isEmpty()) {
             throw DeportistaAdminService.deportistaNoEncontrado();
         }
         return respuesta(usuario, id, "DEPORTISTA", resultado, datos);
+    }
+
+    @Transactional
+    public Pagina<DocumentoAdminMetadatos> deportistaAdmin(UsuarioAutenticado usuario, UUID id, Pageable pagina,
+            DatosSolicitud datos) {
+        if (!esAdmin(usuario)) {
+            throw new ExcepcionNegocio(HttpStatus.FORBIDDEN, "ACCESO_DENEGADO", "Acceso denegado.");
+        }
+        return respuesta(usuario, id, "DEPORTISTA", buscarDeportistaAdmin(usuario, id, pagina), datos);
+    }
+
+    private Page<DocumentoAdminMetadatos> buscarDeportistaAdmin(UsuarioAutenticado usuario, UUID id, Pageable pagina) {
+        Page<DocumentoAdminMetadatos> resultado = documentos.deportistaAdmin(usuario.escuelaId(), id, pagina);
+        if (resultado.isEmpty() && !deportistas.existsByIdAndEscuelaId(id, usuario.escuelaId())) {
+            throw DeportistaAdminService.deportistaNoEncontrado();
+        }
+        return resultado;
     }
 
     @Transactional
@@ -86,8 +104,8 @@ public class DocumentoConsultaService {
         return respuesta(usuario, id, "TUTOR", resultado, datos);
     }
 
-    private Pagina<DocumentoMetadatos> respuesta(UsuarioAutenticado usuario, UUID id, String tipo,
-            Page<DocumentoMetadatos> pagina, DatosSolicitud datos) {
+    private <T> Pagina<T> respuesta(UsuarioAutenticado usuario, UUID id, String tipo,
+            Page<T> pagina, DatosSolicitud datos) {
         auditoria.registrar(new EventoAuditoria(usuario.escuelaId(), usuario.id(),
                 AccionAuditoria.DOCUMENTOS_CONSULTADOS, tipo, id,
                 Map.of("cantidad", pagina.getNumberOfElements(), "pagina", pagina.getNumber()), datos));
