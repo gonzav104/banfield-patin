@@ -105,6 +105,8 @@ public class OpenApiConfig {
 			entry("GET /api/familia/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
             entry("POST /api/familia/deportistas/{id}/documentos", ruta(201, "404 DEPORTISTA_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE o OPERACION_EN_CURSO", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
             entry("POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", ruta(201, "404 DEPORTISTA_NO_ENCONTRADO o DOCUMENTO_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE o OPERACION_EN_CURSO", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
+            entry("POST /api/familia/tutores/{id}/documentos", ruta(201, "404 TUTOR_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE o OPERACION_EN_CURSO", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
+            entry("POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo", ruta(201, "404 TUTOR_NO_ENCONTRADO o DOCUMENTO_NO_ENCONTRADO", "409 OPERACION_NO_REPETIBLE o OPERACION_EN_CURSO", "413 ARCHIVO_DEMASIADO_GRANDE", "422 ARCHIVO_INVALIDO", "429 CARGA_OCUPADA", "503 CARGA_NO_DISPONIBLE o RESULTADO_CARGA_INCIERTO")),
 			entry("GET /api/familia/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
 			entry("GET /api/familia/documentos/disponibilidad", ruta(200)),
 			// --- Familias
@@ -286,7 +288,9 @@ public class OpenApiConfig {
 		errores.forEach((estado, codigos) -> respuestas.addApiResponse(String.valueOf(estado),
 				respuestaDeError(estado, codigos)));
         if (clave.equals("POST /api/familia/deportistas/{id}/documentos")
-                || clave.equals("POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo")) {
+                || clave.equals("POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo")
+                || clave.equals("POST /api/familia/tutores/{id}/documentos")
+                || clave.equals("POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo")) {
             respuestas.addApiResponse("200", new ApiResponse().description("Repetición de una carga confirmada, sin duplicado.").content(exito.getContent()).headers(exito.getHeaders()));
         }
 		operacion.setResponses(respuestas);

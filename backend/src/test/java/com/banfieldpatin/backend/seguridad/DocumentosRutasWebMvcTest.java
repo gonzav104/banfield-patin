@@ -111,7 +111,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   assertThat(xsrf).isNotNull();
   for(String rol:List.of("admin","familia")) for(String p:List.of("deportistas","tutores"))
    mvc.perform(post(ruta(rol,p)).cookie(sesion(Rol.valueOf(rol.toUpperCase())),xsrf)
-    .header("X-XSRF-TOKEN",xsrf.getValue())).andExpect(status().is(rol.equals("familia") && p.equals("deportistas") ? 503 : 405));
+    .header("X-XSRF-TOKEN",xsrf.getValue())).andExpect(status().is(rol.equals("familia") ? 503 : 405)); // la carga de tutores (U19) existe y está desactivada igual que la del deportista
   verifyNoInteractions(documentoConsultaService);
   mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
    .andExpect(cookie().exists("XSRF-TOKEN"))

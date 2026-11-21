@@ -15,7 +15,7 @@ Rama: `feat/fe10-u19-documentos-tutores` · Base: `origin/main` `700e3e3` (inclu
 - S11: verificaciones focales e independientes por corte con Gentle AI (consentimiento previo a cada revisión nativa); sin push, PR, merge ni despliegue; no habilitar la carga en producción; no U20; sin bandeja de pendientes.
 
 ## Tasks
-- [ ] T1 · S7/S11 · inline · C1: V13, lectura admin de tutor con versión · pendiente.
+- [x] T1 · S7/S11 · inline · C1: V13, lectura admin de tutor con versión · commit C1 (ver L3); verificación independiente sin bloqueantes; Gentle AI aprobada y reconocida.
 - [ ] T2 · S2/S4/S8/S11 · inline · C2: carga y reemplazo familiar de tutor · pendiente.
 - [ ] T3 · S9/S11 · inline · C3: revisión y descarga ADMIN de tutor · pendiente.
 - [ ] T4 · S10/S11 · inline · C4: frontend y E2E · pendiente.
@@ -28,3 +28,6 @@ Apruebo las seis decisiones del plan de U19 y autorizo comenzar su implementaci�
 
 ### L2 — Hechos que condicionan el diseño (verificados en origin/main 700e3e3)
 Esquema listo para tutores (V1 `documento.tutor_id`; V5 `uq_documento_dni_tutor` y FK de cadena por tutor; V6 operación con `tutor_id` y tipos `DNI_TUTOR`). `tutor.usuario_id` no se mapea ni se gestiona: no hay vínculo usuario-tutor, el permiso solo puede ser por familia. Atado a deportista: `autorizar/reservar/publicar/comprobarPrimera` de la carga, `ALCANCE` de U17, SQL de U16, CHECK y trigger de V12, filtros de ruta. El portal familiar solo lista tutores; el detalle admin de tutor no tiene documentos.
+
+### L3 — C1 cerrado
+Pruebas: V13 7/7 (con DORSO), V12 11/11, V6 57/57, consulta 9/9; normal sin fallos; `-Pdb-tests` 769 con un único error ambiental (`V5OperacionDbTest.respaldoSeRestauraEnOtroServidor…`, `CannotGetJdbcConnection`) que pasa 11/11 al aislarlo. RED observado (6 errores sin V13; compilación sin el método de servicio). Verificación independiente: sin bloqueantes; diferencial V12/V13 de 48 pasos idéntico para deportista; mutaciones: sobrevivió M3 (reemplazo de DORSO sin prueba) y se cerró antes de la revisión nativa; M4/M6/M7 equivalentes. Gentle AI aprobada sin hallazgos y reconocida (`review-f049d4838cd8691b`; lentes risk y reliability; consentimiento del usuario).

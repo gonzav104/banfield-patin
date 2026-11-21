@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
   static final String CONTEXTO = PreautorizacionCargaFiltro.class.getName();
   private static final Pattern RUTA =
-      Pattern.compile("^/api/familia/deportistas/([^/]+)/documentos(?:/([^/]+)/reemplazo)?$");
+      Pattern.compile("^/api/familia/(deportistas|tutores)/([^/]+)/documentos(?:/([^/]+)/reemplazo)?$");
   private final ObjectProvider<CargaDocumentalService> proveedor;
   private final JsonMapper json;
 
@@ -70,22 +70,24 @@ public final class PreautorizacionCargaFiltro extends OncePerRequestFilter {
         throw new ExcepcionNegocio(HttpStatus.UNAUTHORIZED, "NO_AUTENTICADO", "Sesión requerida.");
       UUID atleta;
       try {
-        atleta = UUID.fromString(match.group(1));
+        atleta = UUID.fromString(match.group(2));
       } catch (IllegalArgumentException ex) {
         throw new ExcepcionNegocio(
             HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "Solicitud inválida.");
       }
-      if (match.group(2) != null) {
+      if (match.group(3) != null) {
         // Reemplazo (U18): el predecesor viaja en la ruta y se valida antes de leer el cuerpo.
         try {
-          UUID.fromString(match.group(2));
+          UUID.fromString(match.group(3));
         } catch (IllegalArgumentException ex) {
           throw new ExcepcionNegocio(
               HttpStatus.BAD_REQUEST, "SOLICITUD_INVALIDA", "Solicitud inválida.");
         }
       }
       var contexto = ContextoCarga.desde(auth.getToken());
-      servicio.preautorizar(contexto, atleta);
+      // `atleta` es el id del dueño de la ruta: un deportista, o un tutor (U19, /familia/tutores/...).
+      if (match.group(1).equals("tutores")) servicio.preautorizarTutor(contexto, atleta);
+      else servicio.preautorizar(contexto, atleta);
       // Con resolve-lazily el multipart solo se lee en el controlador: sin cuota, 429 sin cuerpo.
       if (!servicio.entrarRecepcion()) throw ErrorCarga.ocupada();
       recibiendo = true;

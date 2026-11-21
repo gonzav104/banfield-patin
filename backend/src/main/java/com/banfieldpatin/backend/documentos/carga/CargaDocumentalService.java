@@ -46,6 +46,17 @@ public final class CargaDocumentalService {
     recepciones.release();
   }
 
+  void preautorizarTutor(ContextoCarga c, UUID tutor) {
+    try {
+      operaciones.preautorizarTutor(c, tutor);
+    } catch (ExcepcionNegocio ex) {
+      throw ex;
+    } catch (RuntimeException ex) {
+      DiagnosticoCarga.fallo(null, "preautorizar", ex);
+      throw ErrorCarga.indisponible();
+    }
+  }
+
   void preautorizar(ContextoCarga c, UUID atleta) {
     try {
       operaciones.preautorizar(c, atleta);
@@ -72,7 +83,7 @@ public final class CargaDocumentalService {
       DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, atleta, tipo, temporada, null, idem, archivo, datos);
+      return procesar(c, Propietario.deDeportista(atleta), tipo, temporada, null, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -88,7 +99,29 @@ public final class CargaDocumentalService {
       DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, atleta, null, null, predecesor, idem, archivo, datos);
+      return procesar(c, Propietario.deDeportista(atleta), null, null, predecesor, idem, archivo, datos);
+    } finally {
+      cupos.release();
+    }
+  }
+
+  /** Carga inicial de un DNI de un tutor (U19): el mismo pipeline, con el tutor como dueño. */
+  Resultado cargarTutor(
+      ContextoCarga c, UUID tutor, TipoDocumento tipo, UUID idem, MultipartFile archivo, DatosSolicitud datos) {
+    if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
+    try {
+      return procesar(c, Propietario.deTutor(tutor), tipo, null, null, idem, archivo, datos);
+    } finally {
+      cupos.release();
+    }
+  }
+
+  /** Reemplazo de un DNI OBSERVADO de un tutor (U19). */
+  Resultado reemplazarTutor(
+      ContextoCarga c, UUID tutor, UUID predecesor, UUID idem, MultipartFile archivo, DatosSolicitud datos) {
+    if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
+    try {
+      return procesar(c, Propietario.deTutor(tutor), null, null, predecesor, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -96,7 +129,7 @@ public final class CargaDocumentalService {
 
   private Resultado procesar(
       ContextoCarga c,
-      UUID atleta,
+      Propietario prop,
       TipoDocumento tipo,
       UUID temporada,
       UUID predecesor,
@@ -114,9 +147,13 @@ public final class CargaDocumentalService {
         fase = "reservar";
         var reserva =
             predecesor == null
-                ? operaciones.reservar(c, atleta, tipo, temporada, idem, almacen.prepararDestino(), a)
-                : operaciones.reservarReemplazo(
-                    c, atleta, predecesor, idem, almacen.prepararDestino(), a);
+                ? (prop.esTutor()
+                    ? operaciones.reservarTutor(c, prop.tutor(), tipo, idem, almacen.prepararDestino(), a)
+                    : operaciones.reservar(c, prop.deportista(), tipo, temporada, idem, almacen.prepararDestino(), a))
+                : (prop.esTutor()
+                    ? operaciones.reservarReemplazoTutor(c, prop.tutor(), predecesor, idem, almacen.prepararDestino(), a)
+                    : operaciones.reservarReemplazo(
+                        c, prop.deportista(), predecesor, idem, almacen.prepararDestino(), a));
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
         if (reserva.retomada()) DiagnosticoCarga.retomada(op.id(), op.estado());

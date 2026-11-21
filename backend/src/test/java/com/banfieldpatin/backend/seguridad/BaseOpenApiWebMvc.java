@@ -72,6 +72,7 @@ import tools.jackson.databind.json.JsonMapper;
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
 		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class,
+		com.banfieldpatin.backend.documentos.carga.CargaTutorDocumentalController.class,
 		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class,
 		com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoController.class,
 		com.banfieldpatin.backend.documentos.revision.RevisionDocumentoController.class })

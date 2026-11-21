@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InventarioRutasTest {
 
 	/** Rutas mutantes esperadas, con el formato "METODO /ruta". */
-	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo",
+	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 			"POST /api/auth/login",
 			"POST /api/auth/admin/login",
 			"POST /api/auth/logout",
@@ -162,7 +162,9 @@ class InventarioRutasTest {
 		Set<String> mutantes = rutas(true);
 
 		assertThat(mutantes.stream().filter(r -> r.contains("/tutores"))).containsExactlyInAnyOrder(
-				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}");
+				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
+				// Carga y reemplazo familiar de los DNI de un tutor (U19): no crean, borran ni cambian al tutor.
+				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
 				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
@@ -232,7 +234,7 @@ class InventarioRutasTest {
 	@Test
 	void laUnicaRutaMutanteFamiliarEsLaCargaAutorizada() throws Exception {
 		// La carga documental es la única excepción explícita al portal de lectura.
-		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactly("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo");
+		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactly("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
 	}
 
 	@Test
@@ -249,6 +251,8 @@ class InventarioRutasTest {
 				// Ficha minima de un deportista propio (FE-04): datos generales y temporada vigente, sin datos sensibles.
 				"GET /api/familia/deportistas/{deportistaId}/ficha", "POST /api/familia/deportistas/{id}/documentos",
 				// Reemplazo de un DNI observado (U18): misma carga autorizada, ruta dedicada.
-				"POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo");
+				"POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo",
+				// Carga y reemplazo familiar de los DNI de un tutor (U19).
+				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
 	}
 }
