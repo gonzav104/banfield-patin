@@ -62,8 +62,11 @@ public class OpenApiConfig {
 	/** Descarga auditada (U16): devuelve el archivo binario y, aunque es GET, exige la cabecera CSRF (D2). */
 	static final String DESCARGA_ADMIN = "GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo";
 
+	/** Descarga auditada de un DNI de un tutor (U19): mismas reglas que la del deportista. */
+	static final String DESCARGA_TUTOR = "GET /api/admin/tutores/{tutorId}/documentos/{documentoId}/archivo";
+
 	/** Lecturas que exigen la cabecera CSRF por una decision propia de la ruta (no cambia la cadena global). */
-	private static final Set<String> LECTURAS_CON_CSRF = Set.of(DESCARGA_ADMIN);
+	private static final Set<String> LECTURAS_CON_CSRF = Set.of(DESCARGA_ADMIN, DESCARGA_TUTOR);
 
 	/** Cualquier sesion vale, incluso un ADMIN con MFA pendiente. */
 	private static final Set<String> CUALQUIER_SESION = Set.of("GET /api/auth/me", "POST /api/auth/logout");
@@ -100,6 +103,13 @@ public class OpenApiConfig {
 							"409 EDICION_DESACTUALIZADA", "409 TRANSICION_DOCUMENTO_NO_PERMITIDA",
 							"409 CONFLICTO_CONCURRENCIA", "409 VERSION_DOCUMENTO_AGOTADA")),
 			entry(DESCARGA_ADMIN, ruta(200, "403 CSRF_INVALIDO", "404 DOCUMENTO_NO_ENCONTRADO",
+					"409 INTEGRIDAD_NO_VERIFICABLE", "429 DESCARGA_OCUPADA", "502 INTEGRIDAD_FALLIDA",
+					"503 DESCARGA_NO_DISPONIBLE")),
+			entry("POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
+					ruta(200, "404 DOCUMENTO_NO_ENCONTRADO", "409 DOCUMENTO_NO_VIGENTE",
+							"409 EDICION_DESACTUALIZADA", "409 TRANSICION_DOCUMENTO_NO_PERMITIDA",
+							"409 CONFLICTO_CONCURRENCIA", "409 VERSION_DOCUMENTO_AGOTADA")),
+			entry(DESCARGA_TUTOR, ruta(200, "403 CSRF_INVALIDO", "404 DOCUMENTO_NO_ENCONTRADO",
 					"409 INTEGRIDAD_NO_VERIFICABLE", "429 DESCARGA_OCUPADA", "502 INTEGRIDAD_FALLIDA",
 					"503 DESCARGA_NO_DISPONIBLE")),
 			entry("GET /api/familia/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
@@ -186,6 +196,9 @@ public class OpenApiConfig {
 			"POST /api/auth/admin/mfa/enrolar",
 			"Enrola el TOTP del ADMIN. El secreto y la URI otpauth se devuelven una sola vez (Cache-Control: no-store) "
 					+ "y no se registran en logs ni auditoria. Solo con el token de MFA pendiente.",
+			DESCARGA_TUTOR,
+			"Descarga un DNI vigente de un tutor (ADMIN con MFA completo y cabecera CSRF); las mismas verificaciones, "
+					+ "auditoria y cabeceras que la descarga del deportista. La familia no descarga documentos.",
 			DESCARGA_ADMIN,
 			"Descarga un documento vigente del deportista (ADMIN con MFA completo y cabecera CSRF). Antes de enviar "
 					+ "un solo byte verifica el tamano y el SHA-256 completo contra la carga publicada y registra la "
@@ -283,7 +296,7 @@ public class OpenApiConfig {
 		}
 
 		ApiResponses respuestas = new ApiResponses();
-		ApiResponse exito = clave.equals(DESCARGA_ADMIN) ? archivo() : exito(operacion, ruta);
+		ApiResponse exito = clave.equals(DESCARGA_ADMIN) || clave.equals(DESCARGA_TUTOR) ? archivo() : exito(operacion, ruta);
 		respuestas.addApiResponse(String.valueOf(ruta.exito()), exito);
 		errores.forEach((estado, codigos) -> respuestas.addApiResponse(String.valueOf(estado),
 				respuestaDeError(estado, codigos)));

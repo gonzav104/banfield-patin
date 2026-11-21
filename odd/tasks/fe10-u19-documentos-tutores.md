@@ -16,7 +16,7 @@ Rama: `feat/fe10-u19-documentos-tutores` · Base: `origin/main` `700e3e3` (inclu
 
 ## Tasks
 - [x] T1 · S7/S11 · inline · C1: V13, lectura admin de tutor con versión · commit C1 (ver L3); verificación independiente sin bloqueantes; Gentle AI aprobada y reconocida.
-- [ ] T2 · S2/S4/S8/S11 · inline · C2: carga y reemplazo familiar de tutor · pendiente.
+- [x] T2 · S2/S4/S8/S11 · inline · C2: carga y reemplazo familiar de tutor · commit C2 (ver L4); verificación independiente sin bloqueantes; Gentle AI aprobada y reconocida.
 - [ ] T3 · S9/S11 · inline · C3: revisión y descarga ADMIN de tutor · pendiente.
 - [ ] T4 · S10/S11 · inline · C4: frontend y E2E · pendiente.
 
@@ -31,3 +31,6 @@ Esquema listo para tutores (V1 `documento.tutor_id`; V5 `uq_documento_dni_tutor`
 
 ### L3 — C1 cerrado
 Pruebas: V13 7/7 (con DORSO), V12 11/11, V6 57/57, consulta 9/9; normal sin fallos; `-Pdb-tests` 769 con un único error ambiental (`V5OperacionDbTest.respaldoSeRestauraEnOtroServidor…`, `CannotGetJdbcConnection`) que pasa 11/11 al aislarlo. RED observado (6 errores sin V13; compilación sin el método de servicio). Verificación independiente: sin bloqueantes; diferencial V12/V13 de 48 pasos idéntico para deportista; mutaciones: sobrevivió M3 (reemplazo de DORSO sin prueba) y se cerró antes de la revisión nativa; M4/M6/M7 equivalentes. Gentle AI aprobada sin hallazgos y reconocida (`review-f049d4838cd8691b`; lentes risk y reliability; consentimiento del usuario).
+
+### L4 — C2 cerrado
+Punto de extensión: registro `Propietario` (deportista o tutor) que decide autorización, columna del dueño, tipos permitidos y alcance del predecesor; el camino del deportista conserva sus firmas y respuestas. Pruebas: `CargaDocumentalHttpDbTest` 100/100 (89 previas + 11 nuevas); normal exit 0 y `-Pdb-tests` 779/0 antes de agregar 2 pruebas pedidas por el verificador. RED observado: sin el cambio del filtro, 7 de las 9 pruebas iniciales fallan con 415 (falla cerrada). Verificación independiente: sin bloqueantes; diferencial base/candidato del circuito del deportista idéntico (3762 líneas, 90/90, 28 rutas × 7 métodos × 8 variantes); 404 uniforme byte a byte en 8 candidatos de tutor; sin ciclo de bloqueos con la edición admin del tutor (sondas con retención de 0,8 s y 3 s: la subida llega a 503 reintentable si el admin retiene más de 2 s). Advertencias del verificador: duplicación de wrappers y de la validación de partes en el controlador de tutor (se mantiene para no tocar los contratos del deportista ni las firmas mockeadas); precedencia 422/429 distinta en un caso no observable; huecos de pruebas, ya cubiertos antes de la revisión. Gentle AI aprobada sin hallazgos y reconocida (`review-57c3b078e16b1792`; lentes risk, resilience y reliability; consentimiento del usuario).

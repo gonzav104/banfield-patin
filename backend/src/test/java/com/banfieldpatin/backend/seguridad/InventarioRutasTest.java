@@ -49,6 +49,8 @@ class InventarioRutasTest {
 			"POST /api/admin/deportistas/{id}/activar",
 			"POST /api/admin/deportistas/{id}/desactivar",
 			"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+			// Revision de un DNI de un tutor (U19).
+			"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
 			// Vinculos (slice 5): lote de vinculacion, revocacion y cambio explicito de principal; sin DELETE ni PATCH.
 			"POST /api/admin/familias/{familiaId}/deportistas",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
@@ -136,6 +138,7 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
@@ -164,9 +167,12 @@ class InventarioRutasTest {
 		assertThat(mutantes.stream().filter(r -> r.contains("/tutores"))).containsExactlyInAnyOrder(
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
 				// Carga y reemplazo familiar de los DNI de un tutor (U19): no crean, borran ni cambian al tutor.
-				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
+				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+				// Revision administrativa de un DNI de un tutor (U19): no crea, borra ni cambia al tutor.
+				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
-				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos");
+				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos",
+				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision", "GET /api/admin/tutores/{tutorId}/documentos/{documentoId}/archivo");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 

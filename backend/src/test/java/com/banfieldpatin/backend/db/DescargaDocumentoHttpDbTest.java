@@ -339,6 +339,107 @@ class DescargaDocumentoHttpDbTest {
 		assertThat(b.body()).isEqualTo(png.bytes());
 	}
 
+	// ---------- U19: DNI de un tutor ----------
+
+	private Publicado publicarTutor(UUID tutor, String tipo, String mime, byte[] bytes) {
+		UUID objeto = UUID.randomUUID();
+		UUID id = jdbc.sql("""
+				INSERT INTO gestion_patin.operacion_carga_documental(escuela_id,solicitante_id,tutor_id,tipo,
+				    storage_bucket,objeto_id,idempotencia)
+				VALUES(:e,:u,:t,:tipo,'privado',:o,:i) RETURNING id
+				""").param("e", escuela).param("u", admin).param("t", tutor).param("tipo", tipo).param("o", objeto)
+				.param("i", UUID.randomUUID()).query(UUID.class).single();
+		cambiar(id, "reserva_hasta=clock_timestamp()+interval '1 minute'", Map.of());
+		cambiar(id, "sha256_archivo=:sha,mime_type=:m,tamanio_bytes=:n", Map.of("sha", sha(bytes), "m", mime, "n", (long) bytes.length));
+		cambiar(id, "estado='TRANSFIRIENDO'", Map.of());
+		cambiar(id, "estado='ALMACENADA'", Map.of());
+		jdbc.sql("""
+				INSERT INTO gestion_patin.documento(id,escuela_id,tutor_id,tipo,nombre_original,storage_bucket,
+				    storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,version)
+				VALUES(:id,:e,:t,:tipo,'documento','privado',:k,:m,:n,'CARGADO',true,:u,:id,0)
+				""").param("id", id).param("e", escuela).param("t", tutor).param("tipo", tipo)
+				.param("k", objeto.toString()).param("m", mime).param("n", (long) bytes.length).param("u", admin).update();
+		cambiar(id, "estado='PUBLICADA',documento_id=id,reserva_hasta=NULL", Map.of());
+		OBJETOS.put(objeto.toString(), bytes);
+		return new Publicado(id, objeto.toString(), bytes);
+	}
+
+	private HttpResponse<byte[]> descargarTutor(UUID tutor, UUID documento, String token, boolean conCsrf) throws Exception {
+		String[] x = csrf();
+		var pedido = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + "/api/admin/tutores/" + tutor
+				+ "/documentos/" + documento + "/archivo"))
+				.timeout(Duration.ofSeconds(20)).header("Cookie", x[0] + "; BP_SESION=" + token).GET();
+		if (conCsrf) pedido.header("X-XSRF-TOKEN", x[1]);
+		return http.send(pedido.build(), HttpResponse.BodyHandlers.ofByteArray());
+	}
+
+	@Test
+	void adminDescargaElDniDeUnTutorConLasMismasGarantiasYAuditoriaConElTutor() throws Exception {
+		UUID tutor = new DatosDb(jdbc).tutor(escuela, new DatosDb(jdbc).familia(escuela, "Familia tutor", true), "Tutor", "Sintético");
+		var p = publicarTutor(tutor, "DNI_TUTOR_DORSO", "image/png", bytes("PNG-SINTETICO-", 80));
+		var r = descargarTutor(tutor, p.id(), sesion, true);
+		assertThat(r.statusCode()).isEqualTo(200);
+		assertThat(r.body()).isEqualTo(p.bytes());
+		assertThat(r.headers().firstValue("content-type")).hasValue("image/png");
+		assertThat(r.headers().firstValue("content-disposition")).hasValue("attachment; filename=\"dni-dorso.png\"");
+		assertThat(r.headers().allValues("x-content-type-options")).containsExactly("nosniff");
+		assertThat(r.headers().allValues("cache-control")).containsExactly("no-store");
+		assertThat(r.headers().firstValue("content-security-policy")).hasValue("sandbox; default-src 'none'");
+		assertThat(auditadas(p.id())).containsExactly("DOCUMENTO_DESCARGADO");
+		var detalle = jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE recurso_id=:d")
+				.param("d", p.id()).query(String.class).single();
+		assertThat(detalle).contains(tutor.toString(), "tutorId", "DNI_TUTOR_DORSO").doesNotContain(p.clave(), "privado", "deportistaId");
+	}
+
+	@Test
+	void elDniDeUnTutorSeProtegeComoElDelDeportistaCsrfFamiliaOtroTutorEscuelaYCruce() throws Exception {
+		var d = new DatosDb(jdbc);
+		UUID familiaT = d.familia(escuela, "Familia tutor", true);
+		UUID tutor = d.tutor(escuela, familiaT, "Tutor", "Uno");
+		UUID otroTutor = d.tutor(escuela, familiaT, "Tutor", "Dos");
+		var p = publicarTutor(tutor, "DNI_TUTOR_FRENTE", "image/jpeg", bytes("JPEG-", 60));
+		var deDeportista = publicar(atleta, "DNI_DEPORTISTA_FRENTE", "image/jpeg", bytes("JPEG-", 60));
+		// Sin CSRF: 403 y no se lee Storage; una sesión FAMILIA no descarga documentos.
+		assertThat(descargarTutor(tutor, p.id(), sesion, false).statusCode()).isEqualTo(403);
+		UUID usuarioFamilia = d.usuarioFamilia(escuela, familiaT, "fam-" + UUID.randomUUID() + "@example.invalid");
+		assertThat(descargarTutor(tutor, p.id(), tokens.emitir(usuarioFamilia, Rol.FAMILIA, escuela, familiaT), true).statusCode())
+				.isEqualTo(403);
+		// 404 uniforme: otro tutor, otra escuela, un documento de deportista por la ruta del tutor y viceversa.
+		UUID otraEscuela = d.escuela("ajena-" + UUID.randomUUID());
+		UUID adminAjeno = d.admin(otraEscuela, "ajeno-" + UUID.randomUUID() + "@example.invalid", true);
+		var respuestas = List.of(
+				descargarTutor(otroTutor, p.id(), sesion, true),
+				descargarTutor(tutor, p.id(), tokens.emitir(adminAjeno, Rol.ADMIN, otraEscuela, null), true),
+				descargarTutor(tutor, deDeportista.id(), sesion, true),
+				descargarTutor(tutor, UUID.randomUUID(), sesion, true),
+				descargar(atleta, p.id()));
+		for (var r : respuestas) {
+			assertThat(r.statusCode()).isEqualTo(404);
+			assertThat(codigo(r)).isEqualTo("DOCUMENTO_NO_ENCONTRADO");
+			sinContenido(r, p);
+		}
+		assertThat(LECTURAS).hasValue(0);
+		assertThat(auditadas(p.id())).isEmpty();
+	}
+
+	@Test
+	void soloLosDosDniDelTutorYSoloVigentesSonDescargablesElRestoEsUn404() throws Exception {
+		var d = new DatosDb(jdbc);
+		UUID tutor = d.tutor(escuela, d.familia(escuela, "Familia tutor", true), "Tutor", "Sintético");
+		var otro = publicarTutor(tutor, "OTRO", "application/pdf", bytes("%PDF-", 10));
+		var retirado = publicarTutor(tutor, "DNI_TUTOR_FRENTE", "image/jpeg", bytes("JPEG-", 20));
+		jdbc.sql("UPDATE gestion_patin.documento SET vigente=false WHERE id=:id").param("id", retirado.id()).update();
+		for (var p : List.of(otro, retirado)) {
+			var r = descargarTutor(tutor, p.id(), sesion, true);
+			assertThat(r.statusCode()).isEqualTo(404);
+			assertThat(codigo(r)).isEqualTo("DOCUMENTO_NO_ENCONTRADO");
+			sinContenido(r, p);
+		}
+		assertThat(LECTURAS).hasValue(0);
+		assertThat(auditadas(otro.id())).isEmpty();
+		assertThat(auditadas(retirado.id())).isEmpty();
+	}
+
 	@Test
 	void otraEscuelaOtroDeportistaNoVigenteOInexistenteSonUn404Uniforme() throws Exception {
 		var p = publicar(atleta, "DNI_DEPORTISTA_FRENTE", "image/jpeg", bytes("JPEG-", 50));

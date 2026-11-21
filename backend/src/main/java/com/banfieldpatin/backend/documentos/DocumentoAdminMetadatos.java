@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Metadatos del deportista para ADMIN; la versión decimal conserva toda la precisión de BIGINT. */
+/** Metadatos de un documento del deportista o del tutor (U17, U19) para ADMIN; la versión decimal conserva toda la precisión de BIGINT. */
 public record DocumentoAdminMetadatos(UUID id, TipoDocumento tipo, EstadoDocumento estado, UUID temporadaId,
         Instant creadoEn, boolean vigente, LocalDate fechaVencimiento, String motivoObservacion, String version) {
 
