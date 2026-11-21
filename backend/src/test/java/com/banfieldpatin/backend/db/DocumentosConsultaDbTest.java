@@ -59,6 +59,15 @@ class DocumentosConsultaDbTest extends BaseVinculosDb {
   return jdbc.sql("SELECT coalesce(json_agg(d ORDER BY id)::text,'[]') FROM gestion_patin.documento d WHERE escuela_id IN (:a,:b)")
    .param("a",escuelaA).param("b",escuelaB).query(String.class).single();
  }
+ @Test void laProyeccionAdminLeeLaVersionPersistidaSinPerderPrecision() {
+  var id=documento(escuelaA,deportistaA,false,true,"CARGADO");
+  jdbc.sql("UPDATE gestion_patin.documento SET version=:v WHERE id=:id")
+   .param("v",Long.MAX_VALUE).param("id",id).update();
+  var fila=documentos.deportistaAdmin(admin,deportistaA,Pagina.pedir(0,20),DATOS).contenido().getFirst();
+  assertThat(fila.id()).isEqualTo(id);
+  assertThat(fila.version()).isEqualTo("9223372036854775807");
+  assertThat(fila.motivoObservacion()).isNull();
+ }
  @Test void consultaAmbosPropietariosSinMezclarEscuelasFamiliasNiHistorial() {
   var d=documento(escuelaA,deportistaA,false,true,"CARGADO");
   var t=documento(escuelaA,tutorA,true,true,"OBSERVADO");

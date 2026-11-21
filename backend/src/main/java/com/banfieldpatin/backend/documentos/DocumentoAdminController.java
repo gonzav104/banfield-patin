@@ -24,9 +24,9 @@ public class DocumentoAdminController {
     }
 
     @GetMapping("/deportistas/{id}/documentos")
-    public Pagina<DocumentoMetadatos> deportista(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+    public Pagina<DocumentoAdminMetadatos> deportista(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, HttpServletRequest request) {
-        return servicio.deportista(UsuarioAutenticado.desde(jwt), id, Pagina.pedir(page, size), DatosSolicitud.de(request));
+        return servicio.deportistaAdmin(UsuarioAutenticado.desde(jwt), id, Pagina.pedir(page, size), DatosSolicitud.de(request));
     }
 
     @GetMapping("/tutores/{id}/documentos")

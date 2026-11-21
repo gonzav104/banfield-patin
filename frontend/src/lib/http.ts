@@ -92,6 +92,7 @@ async function fetchCsrf(): Promise<{ headerName: string; token: string }> {
 export interface WriteOptions {
   headers?: Record<string, string>;
   timeout?: number;
+  signal?: AbortSignal;
   onUploadProgress?: (fraction: number) => void;
 }
 
@@ -116,6 +117,7 @@ export async function apiWrite<T = void>(
     method,
     url,
     data,
+    ...(options.signal ? { signal: options.signal } : {}),
     headers: withCsrfHeader(options.headers, headerName, token),
     ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
     ...(progress ? { onUploadProgress: (event) => event.total && progress(Math.min(event.loaded / event.total, 1)) } : {}),

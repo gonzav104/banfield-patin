@@ -46,6 +46,7 @@ interface StoredDocument {
 }
 interface Uploaded {
   sent: Buffer;
+  idempotencyKey: string;
   doc: StoredDocument;
 }
 
@@ -118,15 +119,16 @@ const actions = (documentId: string) => auditTrail(documentId).map((entry) => en
 
 /** The family's upload through the real API, shaped exactly like its browser sends it (U15): neutral name, CSRF, Idempotency-Key. */
 async function upload(athleteId: string, tipo: string, file: { name: string; mimeType: string; buffer: Buffer }): Promise<Uploaded> {
+  const idempotencyKey = randomUUID();
   const response = await familyContext.request.post(`/api/familia/deportistas/${athleteId}/documentos`, {
     multipart: { tipo, archivo: file },
-    headers: { ...(await csrfHeaders(familyContext.request)), 'Idempotency-Key': randomUUID() },
+    headers: { ...(await csrfHeaders(familyContext.request)), 'Idempotency-Key': idempotencyKey },
   });
   expect(response.status(), `upload ${tipo}`).toBe(201);
   const doc = storedDocument(athleteId, tipo);
   const stored = readFileSync(join(OBJECTS_DIR, doc.key));
   expect(stored.equals(file.buffer), 'the Storage double holds exactly the bytes the family sent').toBe(true);
-  return { sent: file.buffer, doc };
+  return { sent: file.buffer, idempotencyKey, doc };
 }
 
 async function openDetail(page: Page, key: AthleteKey): Promise<void> {
@@ -375,5 +377,85 @@ test('audit: one DOCUMENTO_DESCARGADO per delivered open, the integrity failures
     expect(entry.detail).not.toContain(uploaded.doc.key);
     expect(entry.detail).not.toContain(sha256(uploaded.sent));
     expect(entry.detail).not.toMatch(LEAK());
+  }
+});
+
+test('U17: revisión en dos sesiones, conflicto sin reenvío y motivo visible para la familia', async () => {
+  // Two independently authenticated browser sessions; PostgreSQL tests use two different ADMIN actors as well.
+  const otherContext = await browserRef.newContext({ baseURL: 'http://127.0.0.1:5173' });
+  const other = await otherContext.newPage();
+  const familyPage = await familyContext.newPage();
+  try {
+    await loginAdminUi(other);
+    await openDetail(admin, 'main');
+    await openDetail(other, 'main');
+    const docPath = `/api/admin/deportistas/${ids.main}/documentos/${docs.front.doc.id}/revision`;
+    const revision = (resp: Response) => resp.request().method() === 'POST' && new URL(resp.url()).pathname === docPath;
+    const observe = (page: Page, side: string) => row(page, side).getByRole('button', { name: `Observar documento: ${side}` });
+
+    await observe(other, FRONT).click(); // Hold the old decision open while the other session approves.
+    const staleDialog = other.getByRole('dialog');
+    await staleDialog.getByLabel('Motivo de la observación').fill('Decisión que quedó desactualizada');
+    await row(admin, FRONT).getByRole('button', { name: `Aprobar documento: ${FRONT}` }).click();
+    const approved = admin.waitForResponse(revision);
+    await admin.getByRole('dialog').getByRole('button', { name: 'Confirmar aprobación' }).click();
+    expect((await approved).status()).toBe(200);
+    await expect(row(admin, FRONT)).toContainText('Aprobado');
+
+    const sentFromOther: string[] = [];
+    other.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === docPath) sentFromOther.push(request.method());
+    });
+    const rejected = other.waitForResponse(revision);
+    await staleDialog.getByRole('button', { name: 'Confirmar observación' }).click();
+    expect((await rejected).status()).toBe(409);
+    await expect(documentsSection(other).getByRole('alert')).toContainText('volvé a decidir');
+    await expect(staleDialog).toHaveCount(0);
+    await expect(row(other, FRONT)).toContainText('Aprobado');
+    expect(sentFromOther).toHaveLength(1);
+
+    const reason = 'La imagen corta un borde del documento.';
+    await observe(other, FRONT).click();
+    const dialog = other.getByRole('dialog');
+    await expect(dialog).toContainText('Esta decisión revoca la aprobación');
+    await dialog.getByLabel('Motivo de la observación').fill(reason);
+    const observed = other.waitForResponse(revision);
+    await dialog.getByRole('button', { name: 'Confirmar observación' }).click();
+    expect((await observed).status()).toBe(200);
+    await expect(row(other, FRONT)).toContainText('Observado');
+    await expect(row(other, FRONT).getByRole('button', { name: /Aprobar documento/ })).toHaveCount(0);
+    expect(sentFromOther).toHaveLength(2);
+
+    await observe(other, BACK).click();
+    await expect(dialog).not.toContainText('revoca la aprobación');
+    await dialog.getByLabel('Motivo de la observación').fill('El dorso no es legible.');
+    await dialog.getByRole('button', { name: 'Confirmar observación' }).click();
+    await expect(row(other, BACK)).toContainText('Observado');
+
+    await familyPage.goto(`/familia/deportistas/${ids.main}`);
+    const familyDocs = familyPage.getByRole('region', { name: 'Documentos del deportista' });
+    await expect(familyDocs.getByText(reason, { exact: false })).toBeVisible();
+    await expect(familyDocs.getByRole('button', { name: /Reemplazar|Cargar/ })).toHaveCount(0);
+
+    const replay = await familyContext.request.post(`/api/familia/deportistas/${ids.main}/documentos`, {
+      multipart: { tipo: 'DNI_DEPORTISTA_FRENTE', archivo: { name: 'documento.jpg', mimeType: 'image/jpeg', buffer: docs.front.sent } },
+      headers: { ...(await csrfHeaders(familyContext.request)), 'Idempotency-Key': docs.front.idempotencyKey },
+    });
+    expect(replay.status()).toBe(200);
+    expect(await replay.json()).toMatchObject({ id: docs.front.doc.id, estado: 'OBSERVADO', motivoObservacion: reason });
+    const trail = auditTrail(docs.front.doc.id);
+    expect(trail.filter((entry) => entry.action === 'DOCUMENTO_CARGADO')).toHaveLength(1);
+    const reviews = trail.filter((entry) => entry.action === 'DOCUMENTO_REVISADO');
+    expect(reviews).toHaveLength(2);
+    for (const review of reviews) {
+      expect(review.withUser).toBe(true);
+      expect(review.detail).not.toContain(reason);
+    }
+    const file = await otherContext.request.get(archivoPath(ids.main, docs.front.doc.id), { headers: await csrfHeaders(otherContext.request) });
+    expect(file.status()).toBe(200);
+    expect(sha256(await file.body())).toBe(sha256(docs.front.sent));
+  } finally {
+    await familyPage.close();
+    await otherContext.close();
   }
 });

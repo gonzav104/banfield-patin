@@ -382,3 +382,19 @@ El backend arranca con `DOCUMENTOS_CARGA_HABILITADA=true`, `DOCUMENTOS_STORAGE_H
 **Pruebas PostgreSQL locales.** En el arnés local WSL2/Docker, `V5OperacionDbTest` falla con `Connection refused` (2 errores en `./mvnw -Pdb-tests verify` completo). Se reproduce igual en `main` (`baba56c`) sin U16: es un problema previo del arnés (B1-C), no atribuible a U16, y por eso la suite PostgreSQL local completa no terminó en verde.
 
 **Métodos y memoria.** La ruta solo atiende `GET`: un `HEAD` (que Spring atendería con el mismo método) responde `405 METODO_NO_PERMITIDO` sin leer Storage ni auditar, porque `DOCUMENTO_DESCARGADO` acredita el inicio de una entrega. El contenido verificado vive solo en memoria y el permiso acota las lecturas simultáneas (`banfield.documentos.descarga.concurrencia`, 2 por defecto); el tope de bytes se aplica a lo acumulado (como máximo `tamanio_bytes + 1`), Con longitud declarada se reserva de entrada ese tamaño (como máximo el registrado), así que el pico por permiso es del orden del tamaño registrado; sin longitud declarada puede existir una copia transitoria del búfer y el pico puede acercarse al doble. Dimensionar la memoria con ese margen.
+
+### Revisión administrativa de DNI (U17)
+
+El listado administrativo del deportista incluye `version` como cadena decimal. Para revisar el frente o dorso del DNI, enviar `POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision` con sesión ADMIN, MFA completo y CSRF de escritura. El cuerpo incluye `estado` y `versionEsperada` (cadena decimal); `motivoObservacion` es obligatorio al observar y debe omitirse o ser nulo al aprobar. El motivo, tras quitar espacios en los extremos, debe tener de 1 a 500 caracteres Unicode y se muestra a la familia.
+
+| Estado actual | Decisiones disponibles |
+|---|---|
+| CARGADO | Aprobar u observar |
+| APROBADO | Observar, revocando la aprobación |
+| Otros | Ninguna |
+
+Un `200` devuelve metadatos administrativos actualizados, con la nueva versión. Un documento inexistente, de otra escuela, de otro deportista o de otro tipo da el mismo `404 DOCUMENTO_NO_ENCONTRADO`. Dentro del alcance, se comprueba primero la vigencia (`409 DOCUMENTO_NO_VIGENTE`), luego la versión (`409 EDICION_DESACTUALIZADA`) y finalmente la transición (`409 TRANSICION_DOCUMENTO_NO_PERMITIDA`). Un bloqueo que agota el plazo de dos segundos se informa como `409 CONFLICTO_CONCURRENCIA`; una versión sin capacidad de incremento, como `409 VERSION_DOCUMENTO_AGOTADA`. No reenviar automáticamente: recargar y decidir de nuevo.
+
+El bloqueo de la fila no sustituye la actualización condicional por versión. El cambio de estado y el evento `DOCUMENTO_REVISADO` se confirman en la misma transacción. El evento identifica actor, escuela, documento y estados anterior/nuevo, pero no contiene el motivo ni datos del archivo. No se toca Storage ni se modifica el contrato familiar o de carga; la repetición de una carga ya publicada sigue leyendo los metadatos actuales. U17 no habilita carga ni reemplazo documental.
+
+Desde la ficha administrativa, las acciones aparecen únicamente para los lados de DNI habilitados. Observar abre un diálogo que pide el motivo y avisa que lo leerá la familia; si el DNI estaba aprobado, el diálogo indica explícitamente que la decisión revoca la aprobación. Ante un conflicto se cierra el diálogo, se recarga la lista y se espera una decisión nueva: no se reenvía la solicitud ni se conserva un borrador de motivo. Cambiar de deportista o de sesión cancela la espera del cliente e impide aplicar una respuesta anterior; una solicitud ya recibida por el backend puede haberse confirmado.

@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge, type BadgeTone } from '@/features/familia/StatusBadge';
 import type { DocumentStatus } from '@/features/familia/schemas';
 import { DOCUMENT_LOADING, DOCUMENTS_EMPTY, DOCUMENTS_LOADING, DOCUMENTS_NOTE, DOCUMENTS_TITLE, documentTypeLabel, PDF_READY } from './messages';
+import type { DocumentReviewAction } from './api';
+import { canReview } from './use-document-review';
 import type { AdminDocument } from './schemas';
 import type { DocumentViewerState } from './use-document-viewer';
 
@@ -22,7 +24,10 @@ export function uploadDate(iso: string): string | null {
   return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
 }
 
-function DocumentRow({ document, busy, onOpen, rowRef }: { document: AdminDocument; busy: boolean; onOpen: () => void; rowRef: (node: HTMLLIElement | null) => void }) {
+function DocumentRow({ document, busy, onOpen, rowRef, reviewDisabled, onReview }: {
+  document: AdminDocument; busy: boolean; onOpen: () => void; rowRef: (node: HTMLLIElement | null) => void;
+  reviewDisabled: boolean; onReview: (action: DocumentReviewAction) => void;
+}) {
   const label = documentTypeLabel(document.tipo);
   const status = STATUS[document.estado];
   const date = uploadDate(document.creadoEn);
@@ -37,9 +42,17 @@ function DocumentRow({ document, busy, onOpen, rowRef }: { document: AdminDocume
       </div>
       <p className="text-sm text-muted">Fecha de carga: {date ?? 'No informada'}</p>
       {reason ? <p className="break-words text-sm">Motivo de la observación: {reason}</p> : null}
-      <Button variant="outline" disabled={busy} onClick={onOpen} aria-label={`Abrir documento: ${label}`}>
-        Abrir documento
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" disabled={busy} onClick={onOpen} aria-label={`Abrir documento: ${label}`}>
+          Abrir documento
+        </Button>
+        {canReview(document, 'APROBADO') ? (
+          <Button disabled={reviewDisabled} onClick={() => onReview('APROBADO')} aria-label={`Aprobar documento: ${label}`}>Aprobar</Button>
+        ) : null}
+        {canReview(document, 'OBSERVADO') ? (
+          <Button variant="outline" disabled={reviewDisabled} onClick={() => onReview('OBSERVADO')} aria-label={`Observar documento: ${label}`}>Observar</Button>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -74,6 +87,9 @@ export interface AthleteDocumentsViewProps {
   loading: boolean;
   listError: string | null;
   onRetryList: () => void;
+  reviewDisabled: boolean;
+  reviewFeedback: { tone: 'success' | 'error'; message: string } | null;
+  onReview: (document: AdminDocument, action: DocumentReviewAction) => void;
   viewer: DocumentViewerState;
   onOpen: (document: AdminDocument) => void;
   onClose: () => void;
@@ -81,7 +97,8 @@ export interface AthleteDocumentsViewProps {
 }
 
 /** Presentational: the list of current documents with one «Abrir documento» per row, and the single open document. */
-export function AthleteDocumentsView({ documents, loading, listError, onRetryList, viewer, onOpen, onClose, onDownload }: AthleteDocumentsViewProps) {
+export function AthleteDocumentsView({ documents, loading, listError, onRetryList, viewer, onOpen, onClose, onDownload,
+  reviewDisabled, reviewFeedback, onReview }: AthleteDocumentsViewProps) {
   const rows = useRef(new Map<string, HTMLLIElement>());
   const lastOpened = useRef<string | null>(null);
   const busy = viewer.status === 'loading';
@@ -99,6 +116,9 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
     <section aria-label={DOCUMENTS_TITLE} className="space-y-3 rounded-2xl border border-line bg-white p-5">
       <h2 className="text-base font-bold">{DOCUMENTS_TITLE}</h2>
       <p className="text-sm text-muted">{DOCUMENTS_NOTE}</p>
+      {reviewFeedback ? (
+        <Alert tone={reviewFeedback.tone} role={reviewFeedback.tone === 'success' ? 'status' : 'alert'}>{reviewFeedback.message}</Alert>
+      ) : null}
       {loading ? (
         <p role="status" className="text-sm text-muted">
           {DOCUMENTS_LOADING}
@@ -120,6 +140,8 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
               key={document.id}
               document={document}
               busy={busy}
+              reviewDisabled={reviewDisabled}
+              onReview={(action) => onReview(document, action)}
               onOpen={() => onOpen(document)}
               rowRef={(node) => {
                 if (node) rows.current.set(document.id, node);

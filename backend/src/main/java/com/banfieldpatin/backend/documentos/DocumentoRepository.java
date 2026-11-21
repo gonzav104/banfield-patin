@@ -9,20 +9,23 @@ import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
 import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 /** Solo proyecciones; sin save/delete/findAll. Filas y conteo comparten exactamente el alcance. */
 public interface DocumentoRepository extends Repository<Documento, UUID> {
-    String PROYECCION = """
- select new com.banfieldpatin.backend.documentos.DocumentoMetadatos(
+    String CAMPOS_METADATOS = """
  doc.id, doc.tipo, doc.estado, doc.temporadaId, doc.creadoEn, doc.vigente, doc.fechaVencimiento,
  case when doc.estado = com.banfieldpatin.backend.documentos.EstadoDocumento.OBSERVADO
- then doc.motivoObservacion else null end)
+ then doc.motivoObservacion else null end
  """;
+    String PROYECCION = "select new com.banfieldpatin.backend.documentos.DocumentoMetadatos("
+            + CAMPOS_METADATOS + ")";
+    String PROYECCION_ADMIN = "select new com.banfieldpatin.backend.documentos.DocumentoAdminMetadatos("
+            + CAMPOS_METADATOS + ", doc.version)";
     String ORDEN = " order by doc.creadoEn desc, doc.id";
     String DEPORTISTA = " from Documento doc where doc.escuelaId = :escuelaId and doc.deportistaId = :propietarioId and doc.vigente = true";
     String TUTOR = " from Documento doc where doc.escuelaId = :escuelaId and doc.tutorId = :propietarioId and doc.vigente = true";
     String DEPORTISTA_FAMILIA = DEPORTISTA + " and exists (select fd.id " + FamiliaDeportistaRepository.ALCANCE_FAMILIA + " and d.id = doc.deportistaId)";
     String TUTOR_FAMILIA = TUTOR + " and exists (select t.id " + TutorRepository.ALCANCE_FAMILIA + " and t.id = doc.tutorId)";
 
-    @Query(value = PROYECCION + DEPORTISTA + ORDEN, countQuery = "select count(doc)" + DEPORTISTA)
-    Page<DocumentoMetadatos> deportistaAdmin(@Param("escuelaId") UUID escuelaId,
+    @Query(value = PROYECCION_ADMIN + DEPORTISTA + ORDEN, countQuery = "select count(doc)" + DEPORTISTA)
+    Page<DocumentoAdminMetadatos> deportistaAdmin(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, Pageable pagina);
 
     @Query(value = PROYECCION + TUTOR + ORDEN, countQuery = "select count(doc)" + TUTOR)

@@ -85,8 +85,8 @@ export interface AthleteUpdateInput {
 }
 
 /**
- * One current (vigente) document of an athlete as GET /api/admin/deportistas/{id}/documentos lists it (DocumentoMetadatos). Only
- * what the screen shows is read: the season, the expiry and the `vigente` flag are not. The id is used in a path, so it must have
+ * One current (vigente) document of an athlete as GET /api/admin/deportistas/{id}/documentos lists it. The version remains an opaque decimal string; without
+ * a version or explicit vigencia the list is readable but cannot submit a review. The id is used in a path, so it must have
  * the shape of an id. `motivoObservacion` is only shown for OBSERVADO. The metadata carries no MIME type and no file name.
  */
 export const adminDocumentSchema = z.object({
@@ -95,6 +95,8 @@ export const adminDocumentSchema = z.object({
   estado: documentStatusSchema,
   creadoEn: z.string(),
   motivoObservacion: z.string().nullable().optional(),
+  vigente: z.boolean().optional(),
+  version: z.string().regex(/^[0-9]{1,19}$/).optional(),
 });
 export type AdminDocument = z.infer<typeof adminDocumentSchema>;
 
