@@ -25,10 +25,21 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   var fila=new DocumentoMetadatos(id,TipoDocumento.OTRO,EstadoDocumento.OBSERVADO,null,
    Instant.parse("2026-01-01T00:00:00Z"),true,null,"Documento ilegible");
   var pagina=new Pagina<>(List.of(fila),0,20,1);
+  var filaAdmin=new DocumentoAdminMetadatos(fila.id(),fila.tipo(),fila.estado(),fila.temporadaId(),fila.creadoEn(),
+   fila.vigente(),fila.fechaVencimiento(),fila.motivoObservacion(),Long.MAX_VALUE);
+  when(documentoConsultaService.deportistaAdmin(any(),any(),any(),any()))
+   .thenReturn(new Pagina<>(List.of(filaAdmin),0,20,1));
   when(documentoConsultaService.deportista(any(),any(),any(),any())).thenReturn(pagina);
   when(documentoConsultaService.tutor(any(),any(),any(),any())).thenReturn(pagina);
  }
  @Test void adminPuedeConsultarMetadatosDeAmbosPropietarios() throws Exception { comprobar(Rol.ADMIN); }
+ @Test void versionAdministrativaEsDecimalSinPerderPrecision() throws Exception {
+  var respuesta=mvc.perform(get(ruta("admin","deportistas")).cookie(sesion(Rol.ADMIN)))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+  var version=new JsonMapper().readTree(respuesta).path("contenido").get(0).path("version");
+  assertThat(version.isString()).isTrue();
+  assertThat(version.asString()).isEqualTo("9223372036854775807");
+ }
  @Test void familiaPuedeConsultarMetadatosDeAmbosPropietarios() throws Exception { comprobar(Rol.FAMILIA); }
  private void comprobar(Rol rol) throws Exception {
   for(String p:List.of("deportistas","tutores")) {
@@ -37,7 +48,10 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
     .andExpect(jsonPath("$.totalElementos").value(1)).andExpect(jsonPath("$.contenido[0].motivoObservacion").value("Documento ilegible"))
     .andReturn().getResponse().getContentAsString();
    var campos=new JsonMapper().readTree(respuesta).path("contenido").get(0).propertyNames();
-   assertThat(campos).containsExactlyInAnyOrder("id","tipo","estado","temporadaId","creadoEn","vigente","fechaVencimiento","motivoObservacion");
+   var permitidos=new java.util.ArrayList<>(List.of("id","tipo","estado","temporadaId","creadoEn","vigente",
+    "fechaVencimiento","motivoObservacion"));
+   if (rol==Rol.ADMIN && p.equals("deportistas")) permitidos.add("version");
+   assertThat(campos).containsExactlyInAnyOrderElementsOf(permitidos);
   }
  }
  @Test void anonimatoRolIncorrectoYUuidInvalidoNoConsultanServicio() throws Exception {
@@ -62,6 +76,7 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
   verify(documentoConsultaService).tutor(eq(u.getValue()),eq(id),any(),any());
  }
  @Test void alcanceDenegadoTiene404YNoRevelaCampos() throws Exception {
+  when(documentoConsultaService.deportistaAdmin(any(),any(),any(),any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
   when(documentoConsultaService.deportista(any(),any(),any(),any())).thenThrow(DeportistaAdminService.deportistaNoEncontrado());
   when(documentoConsultaService.tutor(any(),any(),any(),any())).thenThrow(TutorAdminService.tutorNoEncontrado());
   for(String rol:List.of("admin","familia")) for(String p:List.of("deportistas","tutores"))
@@ -96,6 +111,16 @@ class DocumentosRutasWebMvcTest extends BaseOpenApiWebMvc {
    var op=spec.path("paths").path("/api/"+rol+"/"+p+"/{id}/documentos").path("get");
    assertThat(op.path("responses").propertyNames()).contains("200","400","401","403","404");
   }
+  var esquemas=spec.path("components").path("schemas");
+  var referencia=spec.path("paths").path("/api/admin/deportistas/{id}/documentos").path("get")
+   .path("responses").path("200").path("content").path("application/json").path("schema").path("$ref").asString();
+  assertThat(referencia).startsWith("#/components/schemas/");
+  assertThat(esquemas.path(referencia.substring(referencia.lastIndexOf('/')+1)).path("properties").path("contenido")
+   .path("items").path("$ref").asString()).isEqualTo("#/components/schemas/DocumentoAdminMetadatos");
+  var admin=spec.path("components").path("schemas").path("DocumentoAdminMetadatos").path("properties");
+  assertThat(admin.path("version").path("type").asString()).isEqualTo("string");
+  assertThat(admin.propertyNames()).containsExactlyInAnyOrder("id","tipo","estado","temporadaId","creadoEn",
+   "vigente","fechaVencimiento","motivoObservacion","version");
   assertThat(spec.path("components").path("schemas").path("DocumentoMetadatos").path("properties").propertyNames())
    .containsExactlyInAnyOrder("id","tipo","estado","temporadaId","creadoEn","vigente","fechaVencimiento","motivoObservacion");
  }

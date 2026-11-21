@@ -7,6 +7,7 @@ public enum AccionAuditoria {
 	/** Descarga rechazada porque el objeto leído no coincide con el tamaño o el SHA-256 del manifiesto. */
 	DOCUMENTO_INTEGRIDAD_FALLIDA,
 	DOCUMENTOS_CONSULTADOS,
+	DOCUMENTO_REVISADO,
 	LOGIN_EXITOSO,
 	LOGIN_FALLIDO,
 	LOGOUT,

@@ -119,11 +119,22 @@ class OpenApiSinDatosSensiblesTest extends BaseOpenApiWebMvc {
 		assertThat(esquemas.path("TemporadaDeFamilia").path("properties").propertyNames()).containsExactlyInAnyOrder(
 				"temporadaId", "anio", "temporadaActiva", "categoria", "rama", "divisional", "numeroCorredor",
 				"estadoDeportivo");
-		// Las solicitudes no aceptan campos que decide el servidor (mass assignment): escuela, estado, rol, principal, actor.
+		// U17 es un comando explícito; no habilita edición libre del estado de una entidad.
+		JsonNode revision = esquemas.path("RevisionDocumentoSolicitud").path("properties");
+		assertThat(revision.propertyNames()).containsExactlyInAnyOrder("estado", "versionEsperada", "motivoObservacion");
+		var destinos = new java.util.ArrayList<String>();
+		revision.path("estado").path("enum").forEach(destino -> destinos.add(destino.asString()));
+		assertThat(destinos).containsExactlyInAnyOrder("APROBADO", "OBSERVADO");
+
+		// Nadie puede suministrar campos de identidad, control de roles o estado global.
 		for (Map.Entry<String, JsonNode> esquema : esquemas.properties()) {
 			if (esquema.getKey().endsWith("Solicitud")) {
-				assertThat(esquema.getValue().path("properties").propertyNames()).as(esquema.getKey()).doesNotContain(
-						"escuelaId", "activo", "activa", "estado", "rol", "usuarioId", "esPrincipal", "autorizadoPor");
+				var campos = esquema.getValue().path("properties").propertyNames();
+				assertThat(campos).as(esquema.getKey()).doesNotContain(
+						"escuelaId", "activo", "activa", "rol", "usuarioId", "esPrincipal", "autorizadoPor");
+				if (!esquema.getKey().equals("RevisionDocumentoSolicitud")) {
+					assertThat(campos).as(esquema.getKey()).doesNotContain("estado");
+				}
 			}
 		}
 	}

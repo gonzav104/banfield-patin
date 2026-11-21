@@ -145,6 +145,6 @@ function AthleteScreen() {
 export function AdminDeportistaDetallePage() {
   const session = useSession();
   const { id } = useParams();
-  const identity = session.status === 'authenticated' ? session.user.id : '';
+  const identity = session.status === 'authenticated' ? `${session.user.escuelaId ?? ''}:${session.user.id}` : '';
   return <AthleteScreen key={`${identity}:${id ?? ''}`} />;
 }

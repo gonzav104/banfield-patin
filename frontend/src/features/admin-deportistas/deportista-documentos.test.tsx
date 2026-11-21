@@ -382,3 +382,100 @@ describe('athlete documents: failures (mock backend)', () => {
     expect(backend.requests.filter((r) => r.url.includes('/documentos'))).toEqual([]);
   });
 });
+
+const frontReview = { id: 'frente', tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '9007199254740993' } as const;
+const reviewUrl = () => `/admin/deportistas/${athlete.id}/documentos/${frontReview.id}/revision`;
+const documentListUrl = () => `/admin/deportistas/${athlete.id}/documentos?page=0&size=100`;
+const reviewWrites = () => backend.writes().filter((request) => request.url === reviewUrl());
+const serveReviewRows = (...rows: unknown[]) => backend.override('get', documentListUrl(), {
+  status: 200,
+  body: { contenido: rows, pagina: 0, tamanio: 100, totalElementos: rows.length },
+});
+
+describe('revisión administrativa de DNI', () => {
+  it('ofrece acciones de revisión para el DNI cargado y no para otros tipos', async () => {
+    const url = '/admin/deportistas/' + athlete.id + '/documentos?page=0&size=100';
+    backend.override('get', url, { status: 200, body: { contenido: [
+      { id: 'frente', tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
+      { id: 'apto', tipo: 'APTO_FISICO', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
+    ], pagina: 0, tamanio: 100, totalElementos: 2 } });
+    await openDetail();
+    expect(await within(section()).findByRole('button', { name: 'Aprobar documento: DNI – frente' })).toBeEnabled();
+    expect(within(section()).getByRole('button', { name: 'Observar documento: DNI – frente' })).toBeEnabled();
+    expect(within(section()).queryByRole('button', { name: /Observar documento: Apto/ })).not.toBeInTheDocument();
+  });
+
+  it('exige motivo y confirmación expresa para revocar una aprobación; envía la versión como cadena una sola vez', async () => {
+    backend.seedDocument(athlete.id, { ...frontReview, estado: 'APROBADO' });
+    const held = backend.hold('post', reviewUrl());
+    await openDetail();
+    expect(within(section()).queryByRole('button', { name: /Aprobar documento/ })).not.toBeInTheDocument();
+    await userEvent.click(await within(section()).findByRole('button', { name: /Observar documento/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Esta decisión revoca la aprobación');
+    expect(within(dialog).getByRole('textbox')).toHaveFocus();
+    const confirm = within(dialog).getByRole('button', { name: 'Confirmar observación' });
+    await userEvent.click(confirm);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Ingresá un motivo');
+    expect(reviewWrites()).toHaveLength(0);
+    await userEvent.type(within(dialog).getByRole('textbox'), '  Recorte deficiente  ');
+    await userEvent.dblClick(confirm);
+    await waitFor(() => expect(reviewWrites()).toHaveLength(1));
+    expect(typeof reviewWrites()[0]?.csrfHeader).toBe('string');
+    expect(reviewWrites()[0]).toMatchObject({
+      body: { estado: 'OBSERVADO', versionEsperada: '9007199254740993', motivoObservacion: 'Recorte deficiente' },
+    });
+    expect(within(dialog).getByRole('button', { name: 'Guardando…' })).toBeDisabled();
+    act(() => held.release());
+    expect(await within(section()).findByText('Documento observado.')).toBeInTheDocument();
+    expect(within(section()).getByText(/Motivo de la observación: Recorte/)).toBeInTheDocument();
+    expect(within(section()).queryByRole('button', { name: /Aprobar|Observar|Reemplazar/ })).not.toBeInTheDocument();
+    expect(reviewWrites()).toHaveLength(1);
+  });
+
+  it('recarga después de 409 y no reenvía la decisión con una nueva versión', async () => {
+    serveReviewRows(frontReview);
+    serveReviewRows({ ...frontReview, estado: 'APROBADO', version: '9007199254740994' });
+    backend.override('post', reviewUrl(), { status: 409, body: { codigo: 'EDICION_DESACTUALIZADA' } });
+    await openDetail();
+    await userEvent.click(await within(section()).findByRole('button', { name: /Aprobar documento/ }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar aprobación' }));
+    expect(await within(section()).findByRole('alert')).toHaveTextContent('volvé a decidir');
+    await waitFor(() => expect(within(section()).queryByRole('button', { name: /Aprobar documento/ })).not.toBeInTheDocument());
+    expect(within(section()).getByRole('button', { name: /Observar documento/ })).toBeEnabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(reviewWrites()).toHaveLength(1);
+  });
+
+  it('no envía si la sesión cambia durante CSRF y no restaura datos de esa sesión', async () => {
+    serveReviewRows(frontReview);
+    const { queryClient } = await openDetail();
+    await userEvent.click(await within(section()).findByRole('button', { name: /Aprobar documento/ }));
+    const held = backend.hold('get', '/auth/csrf');
+    const before = backend.requests.filter((request) => request.url === '/auth/csrf').length;
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar aprobación' }));
+    await waitFor(() => expect(backend.requests.filter((request) => request.url === '/auth/csrf')).toHaveLength(before + 1));
+    act(() => { queryClient.setQueryData(['session'], null); });
+    await screen.findByRole('heading', { name: 'Acceso administrativo' });
+    await act(() => { held.release(); return Promise.resolve(); });
+    expect(reviewWrites()).toHaveLength(0);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('descarta una respuesta de revisión que llega después de salir del deportista', async () => {
+    backend.seedDocument(athlete.id, frontReview);
+    const newAthlete = backend.addAdminAthlete({ nombre: 'Inés', apellido: 'Otra', dni: '30111323' });
+    const held = backend.hold('post', reviewUrl());
+    const { queryClient } = await openDetail();
+    await userEvent.click(await within(section()).findByRole('button', { name: /Aprobar documento/ }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar aprobación' }));
+    await waitFor(() => expect(reviewWrites()).toHaveLength(1));
+    await userEvent.click(screen.getByRole('link', { name: /Volver al listado/ }));
+    await userEvent.click((await screen.findAllByRole('link', { name: /Otra, Inés/ }))[0]!);
+    await screen.findByRole('heading', { name: 'Inés Otra' });
+    expect(screen.getByTestId('location')).toHaveTextContent(newAthlete.id);
+    await act(() => { held.release(); return Promise.resolve(); });
+    expect(queryClient.getQueryData(['admin', 'athlete-documents', athlete.id])).toBeUndefined();
+    expect(screen.queryByText('Documento aprobado.')).not.toBeInTheDocument();
+  });
+});

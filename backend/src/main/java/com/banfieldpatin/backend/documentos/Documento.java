@@ -52,6 +52,9 @@ public class Documento {
     @Column(name = "fecha_vencimiento")
     private LocalDate fechaVencimiento;
 
+    @Column(nullable = false)
+    private long version;
+
     @Column(name = "motivo_observacion", length = 500)
     private String motivoObservacion;
 }
