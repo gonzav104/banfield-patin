@@ -204,7 +204,7 @@ describe('athlete documents: opening a file (mock backend)', () => {
     await userEvent.click(within(region).getByRole('button', { name: 'Descargar PDF' }));
     expect(clicks).toEqual([{ href: 'blob:http://app.test/1', download: 'documento-7f3a.pdf' }]);
     await waitFor(() => expect(revoked).toEqual(['blob:http://app.test/1']));
-    expect(screen.queryByRole('link', { hidden: true, name: /documento/i })).not.toBeInTheDocument(); // the temporary link is gone
+    expect(globalThis.document.querySelector('a[download]')).toBeNull(); // the temporary download link is gone (the menu's own «Documentos pendientes» link is not it)
     expect(fileRequests()).toHaveLength(1); // downloading re-uses the bytes in memory: no second audited read
   });
 

@@ -394,6 +394,17 @@ Alcance: **solo `DNI_TUTOR_FRENTE` y `DNI_TUTOR_DORSO`**. Carga, reemplazo de un
 
 **Verificación de U19 en el E2E real** (`documentos-tutor.real.spec.ts`, mismos dobles de Storage y clamd): la familia carga frente y dorso desde su portal, el club abre un documento, aprueba el frente y observa el dorso con motivo desde el detalle del tutor, la familia ve el motivo y reemplaza solo el dorso, el club aprueba la nueva versión y la descarga (el reemplazado responde `404`), y la familia ve ambas caras aprobadas; se comprueban en la base la cadena (`tutor_id`, `documento_anterior_id`, `serie_id`), las operaciones, los dos objetos en Storage y la auditoría (con `tutorId` y sin el motivo). Otra familia recibe el mismo `404 TUTOR_NO_ENCONTRADO` al listar, cargar y reemplazar, y ninguna familia puede descargar un archivo. Es Chromium de escritorio con dobles de prueba: no sustituye la validación en dispositivos móviles reales ni contra Supabase y ClamAV reales.
 
+## Bandeja de documentos pendientes (ADMIN)
+
+`GET /api/admin/documentos/pendientes` lista, para el administrador, los documentos que esperan revisión sin recorrer las fichas. Solo ADMIN con MFA completo (`/api/admin/**`); la escuela sale de la sesión y la ruta no acepta parámetros de alcance.
+
+- **Qué muestra:** únicamente documentos con `vigente = true` y `estado = CARGADO`, de deportistas y de tutores. No aparecen los `OBSERVADO`, los `APROBADO` ni las versiones históricas. El sucesor `CARGADO` de un documento observado aparece con `reemplazo = true` (tiene `documento_anterior_id`).
+- **Orden y paginación:** del más antiguo al más reciente (`creado_en`, `id` desempata); `page` y `size` como el resto (1–100). Filtro opcional `titular=DEPORTISTA|TUTOR`; cualquier otro valor es `400`.
+- **Fila:** `id`, `tipo`, `creadoEn`, `titularTipo`, `titularId`, `titularNombre` («nombre apellido»), `familiaId` (solo de un tutor, necesario para llegar a su ficha; `null` para un deportista) y `reemplazo`. Nunca el archivo, su nombre, la clave de Storage, el hash ni la versión de revisión (esa se lee en la ficha).
+- **Costo:** dos consultas por página (filas y total), sin consultas por resultado; usa `ix_documento_estado (escuela_id, estado)`; sin migración.
+- **Revisión y descarga:** siguen en la ficha del deportista o del tutor (U16/U17/U19). La bandeja es de lectura y no audita, igual que los demás listados.
+- **Interfaz:** «Documentos pendientes» en el menú administrativo; cada fila enlaza a `/admin/deportistas/:id` o `/admin/familias/:familiaId/tutores/:tutorId`.
+
 ## Descarga auditada para ADMIN (U16)
 
 `GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo` entrega el archivo de un documento **vigente** del deportista. Es la única lectura del puerto `AlmacenDocumentos` y es aditiva: `ContenidoLeido leer(DestinoPreparado destino, long maxBytes)` no cambia creación, inspección ni compensación.

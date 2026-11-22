@@ -98,6 +98,7 @@ public class OpenApiConfig {
 					ruta(200, "404 INVITACION_NO_ENCONTRADA", "409 INVITACION_NO_REVOCABLE")),
 			entry("GET /api/admin/deportistas/{id}/documentos", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
 			entry("GET /api/admin/tutores/{id}/documentos", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
+			entry("GET /api/admin/documentos/pendientes", ruta(200)),
 			entry("POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
 					ruta(200, "404 DOCUMENTO_NO_ENCONTRADO", "409 DOCUMENTO_NO_VIGENTE",
 							"409 EDICION_DESACTUALIZADA", "409 TRANSICION_DOCUMENTO_NO_PERMITIDA",
