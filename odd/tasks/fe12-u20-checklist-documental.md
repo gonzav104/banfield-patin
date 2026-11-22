@@ -15,7 +15,7 @@ Runner: Maven (`./mvnw`, `-Pdb-tests`), Vitest, Playwright real vía `.github/sc
 ## Tasks
 - [x] T1 · S1-S5 · inline · C1 backend · commit C1 (ver L2)
 - [x] T2 · S6 · inline · C2 frontend familiar · commit C2 (ver L3)
-- [ ] T3 · S7 · inline · C3 frontend administrativo
+- [x] T3 · S7 · inline · C3 frontend administrativo · commit C3 (ver L5)
 
 ## Log
 ### L1
@@ -30,3 +30,6 @@ Pedido del usuario: ver `S1`–`S8` (citas literales). Decisiones conocidas para
 ### L4 — Verificación independiente de C1 y C2
 C1 (fe25541): sin bloqueantes; diferencial idéntico; 2 de 3 mutantes del verificador detectados y el tercero (alcance de `requisitosFamilia`) sobrevivía por redundancia con el control del servicio: se agregó una prueba directa del repositorio y se suavizaron tres textos (commit `ff08be9`). Se mantuvo la decisión de no auditar la lectura (coherente con `SEGURIDAD.md`: las lecturas del portal no se auditan); el verificador la dejó como advisory del dueño del producto porque `motivoObservacion` ya se audita por la ruta de documentos.
 C2 (3be5487): un bloqueante menor y cinco advertencias, atendidos en el commit de seguimiento: (B1) la sección de documentos del **tutor** había ganado `tabindex`/`outline-none` sin pedirlo; ahora solo la del deportista (y una prueba lo fija en el portal y en la ficha admin del tutor); (A1) el esquema exige `requisitos` no vacío; (A2/A5) el resumen del panel describe el estado sin prometer una acción (la carga puede estar deshabilitada) y nombra lo que evalúa («DNI del deportista (frente y dorso): …»), y el atajo dice «Ir a los documentos»; (A3) comentario corregido; (A4) el foco programático sin contorno sigue el patrón del `h1` de la ficha.
+
+### L5 — C3 frontend administrativo
+`AdminDocumentChecklist` en la ficha (`/admin/deportistas/:id`, antes de «Documentos»), `fetchAdminDocumentChecklist`, `useAdminDocumentChecklist` (`gcTime: 0`), invalidación tras revisar un DNI del deportista, ancla `documentos-admin-deportista` solo en la sección del deportista (la del tutor queda sin cambios, con una prueba). **Indicador en el listado: no se implementó** (decisión de S7: requiere N+1 o un endpoint agregado y ampliar el contrato del listado). No se duplica la bandeja. Pruebas: 7 en `documentos-checklist-admin.test.tsx`, 1 nueva en `tutores-documentos.test.tsx`; E2E real `documentos-checklist.real.spec.ts` 3/3 (alta, estados reales, alcance y roles) más regresión de bandeja, descarga admin y tutor (15/15 en total, Chromium de escritorio con dobles); `shards.json` en 231 escenarios.

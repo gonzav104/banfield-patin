@@ -20,6 +20,7 @@
       "documentos-dni.real.spec.ts",
       "documentos-tutor.real.spec.ts",
       "documentos-pendientes.real.spec.ts",
+      "documentos-checklist.real.spec.ts",
       "familias-detalle-alta.real.spec.ts",
       "familias-listado.real.spec.ts",
       "familias-tutores.real.spec.ts",

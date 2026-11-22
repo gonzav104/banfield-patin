@@ -2,13 +2,14 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { changeAthleteStatus, createAthlete, getAthlete, listAthleteDocuments, listAthletes, updateAthlete, type AthleteListParams, type AthleteStatusAction, type DocumentOwnerKind } from './api';
+import { changeAthleteStatus, createAthlete, fetchAdminDocumentChecklist, getAthlete, listAthleteDocuments, listAthletes, updateAthlete, type AthleteListParams, type AthleteStatusAction, type DocumentOwnerKind } from './api';
 import type { AthleteDetail, AthleteInput, AthleteUpdateInput } from './schemas';
 
 /** Prefix of every athlete-related query (list and detail): one invalidation refreshes the lists. */
 const athletesKey = ['admin', 'athletes'] as const;
 export const athleteListKey = [...athletesKey, 'list'] as const;
 export const athleteDetailKey = (id: string) => ['admin', 'athlete-detail', id] as const;
+export const athleteChecklistKey = (id: string) => ['admin', 'athlete-checklist', id] as const;
 export const athleteDocumentsKey = (id: string, kind: DocumentOwnerKind = 'deportista') =>
   ['admin', kind === 'tutor' ? 'tutor-documents' : 'athlete-documents', id] as const;
 
@@ -72,6 +73,11 @@ export function useChangeAthleteStatus() {
  * Metadata of the athlete's current documents (never a file: files are fetched on demand and kept out of every cache). `gcTime: 0`
  * drops the list as soon as the detail is no longer on screen.
  */
+/** The partial DNI checklist of ONE athlete (U20); like the documents it is derived from, it is not kept once no screen shows it. */
+export function useAdminDocumentChecklist(athleteId: string) {
+  return useQuery({ queryKey: athleteChecklistKey(athleteId), queryFn: () => fetchAdminDocumentChecklist(athleteId), gcTime: 0 });
+}
+
 export function useAthleteDocuments(athleteId: string, kind: DocumentOwnerKind = 'deportista') {
   return useQuery({ queryKey: athleteDocumentsKey(athleteId, kind), queryFn: () => listAthleteDocuments(athleteId, kind), gcTime: 0 });
 }

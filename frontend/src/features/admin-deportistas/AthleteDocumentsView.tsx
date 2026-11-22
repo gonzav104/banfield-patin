@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { StatusBadge, type BadgeTone } from '@/features/familia/StatusBadge';
 import type { DocumentStatus } from '@/features/familia/schemas';
 import { DOCUMENT_LOADING, DOCUMENTS_EMPTY, DOCUMENTS_LOADING, DOCUMENTS_NOTE, DOCUMENTS_TITLE, documentTypeLabel, PDF_READY, TUTOR_DOCUMENTS_EMPTY } from './messages';
@@ -82,6 +83,9 @@ function Preview({ state, onClose, onDownload }: { state: Exclude<DocumentViewer
   );
 }
 
+/** The anchor the partial checklist points to in the athlete ficha: where the documents (and their review) already are. */
+export const ADMIN_DOCUMENTS_SECTION_ID = 'documentos-admin-deportista';
+
 export interface AthleteDocumentsViewProps {
   documents: AdminDocument[] | undefined;
   loading: boolean;
@@ -115,7 +119,7 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
   }, [viewer]);
 
   return (
-    <section aria-label={DOCUMENTS_TITLE} className="space-y-3 rounded-2xl border border-line bg-white p-5">
+    <section id={owner === 'deportista' ? ADMIN_DOCUMENTS_SECTION_ID : undefined} tabIndex={owner === 'deportista' ? -1 : undefined} aria-label={DOCUMENTS_TITLE} className={cn('space-y-3 rounded-2xl border border-line bg-white p-5', owner === 'deportista' && 'outline-none')}>
       <h2 className="text-base font-bold">{DOCUMENTS_TITLE}</h2>
       <p className="text-sm text-muted">{DOCUMENTS_NOTE}</p>
       {reviewFeedback ? (
