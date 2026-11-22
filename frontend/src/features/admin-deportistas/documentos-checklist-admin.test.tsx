@@ -59,10 +59,22 @@ describe('partial document checklist in the administrative ficha (U20)', () => {
     expect(back).toHaveTextContent('Motivo de la observación: El dorso está cortado.');
   });
 
-  it('the shortcut moves the focus to the documents, where the review already is', async () => {
+  it('the shortcut appears only when a DNI side waits for the club’s review, and moves the focus to the documents', async () => {
+    backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'CARGADO' });
     await openDetail();
     await userEvent.click(within(await checklist()).getByRole('button', { name: 'Ir a los documentos' }));
     expect(documents()).toHaveFocus();
+  });
+
+  it.each([
+    ['missing', null],
+    ['observed (it waits for the family)', { tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'OBSERVADO' as const, motivoObservacion: 'Borroso.' }],
+  ])('offers no shortcut when the only open side is %s: the club has nothing to decide', async (_name, doc) => {
+    if (doc) backend.seedDocument(athlete.id, doc);
+    backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_DORSO', estado: 'APROBADO' });
+    await openDetail();
+    await item('DNI – frente');
+    expect(within(await checklist()).queryByRole('button', { name: 'Ir a los documentos' })).not.toBeInTheDocument();
   });
 
   it('refreshes after a review: approving the DNI side turns the checklist into «Aprobado» without reloading', async () => {

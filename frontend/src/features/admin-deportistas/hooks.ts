@@ -69,15 +69,15 @@ export function useChangeAthleteStatus() {
   return useAthleteWrite((input: { id: string; action: AthleteStatusAction; version: string }) => changeAthleteStatus(input));
 }
 
-/**
- * Metadata of the athlete's current documents (never a file: files are fetched on demand and kept out of every cache). `gcTime: 0`
- * drops the list as soon as the detail is no longer on screen.
- */
 /** The partial DNI checklist of ONE athlete (U20); like the documents it is derived from, it is not kept once no screen shows it. */
 export function useAdminDocumentChecklist(athleteId: string) {
   return useQuery({ queryKey: athleteChecklistKey(athleteId), queryFn: () => fetchAdminDocumentChecklist(athleteId), gcTime: 0 });
 }
 
+/**
+ * Metadata of the athlete's current documents (never a file: files are fetched on demand and kept out of every cache). `gcTime: 0`
+ * drops the list as soon as the detail is no longer on screen.
+ */
 export function useAthleteDocuments(athleteId: string, kind: DocumentOwnerKind = 'deportista') {
   return useQuery({ queryKey: athleteDocumentsKey(athleteId, kind), queryFn: () => listAthleteDocuments(athleteId, kind), gcTime: 0 });
 }

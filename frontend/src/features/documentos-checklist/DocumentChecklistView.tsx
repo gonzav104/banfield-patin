@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/features/familia/StatusBadge';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
 import { CHECKLIST_LOADING, CHECKLIST_PARTIAL_NOTE, CHECKLIST_TITLE, requirementLabel, STATE_LABEL, STATE_TONE } from './messages';
-import type { DocumentChecklist } from './schemas';
+import type { DocumentChecklist, RequirementState } from './schemas';
 
 export interface DocumentChecklistViewProps {
   checklist: DocumentChecklist | undefined;
@@ -13,7 +13,12 @@ export interface DocumentChecklistViewProps {
   /** Where the existing document actions are (an element id on the same screen). Offered only when something can be done. */
   actionsId?: string;
   actionsLabel?: string;
+  /** The states in which there is something to do in those actions (the family: a missing or observed side; the club: one in review). */
+  actionStates?: readonly RequirementState[];
 }
+
+/** For the family: a missing side can be uploaded and an observed one replaced. */
+const FAMILY_ACTION_STATES: readonly RequirementState[] = ['FALTA', 'OBSERVADO'];
 
 function goTo(id: string) {
   const target = globalThis.document.getElementById(id);
@@ -26,8 +31,8 @@ function goTo(id: string) {
  * requirement is a state in text (never only colour); an observed one keeps its reason. It says it is partial, and it never
  * shows an overall percentage or a registration state.
  */
-export function DocumentChecklistView({ checklist, loading, error, onRetry, actionsId, actionsLabel = 'Ir a los documentos' }: DocumentChecklistViewProps) {
-  const actionable = checklist?.requisitos.some((r) => r.estado === 'FALTA' || r.estado === 'OBSERVADO') ?? false;
+export function DocumentChecklistView({ checklist, loading, error, onRetry, actionsId, actionsLabel = 'Ir a los documentos', actionStates = FAMILY_ACTION_STATES }: DocumentChecklistViewProps) {
+  const actionable = checklist?.requisitos.some((r) => actionStates.includes(r.estado)) ?? false;
   return (
     <section aria-labelledby="document-checklist-title" aria-busy={loading} className="space-y-3 rounded-2xl border border-line bg-white p-5">
       <h2 id="document-checklist-title" className="text-lg font-bold">
