@@ -94,8 +94,10 @@ test.describe('family portal (real backend)', () => {
     await expect(athleteCards(page)).toHaveCount(3);
     await expect(athleteCards(page).first()).toContainText(NAME(1));
     await expect(page.getByRole('link', { name: 'Ver todos los deportistas (12)' })).toBeVisible();
-    // It downloads only what it shows: the family and a page of 3 athletes.
-    expect([...portalRequests].sort()).toEqual(['/api/familia/deportistas?page=0&size=3', '/api/familia/mi-familia']);
+    // It downloads only what it shows: the family, a page of 3 athletes and the partial DNI checklist (U20) of exactly those 3.
+    await expect.poll(() => [...portalRequests].filter((url) => url.endsWith('/checklist-documental')).length).toBe(3);
+    const shown = athleteIds.slice(0, 3).map((id) => `/api/familia/deportistas/${id}/checklist-documental`);
+    expect([...portalRequests].sort()).toEqual(['/api/familia/deportistas?page=0&size=3', '/api/familia/mi-familia', ...shown].sort());
     await context.close();
   });
 
