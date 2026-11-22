@@ -405,6 +405,16 @@ Alcance: **solo `DNI_TUTOR_FRENTE` y `DNI_TUTOR_DORSO`**. Carga, reemplazo de un
 - **Revisión y descarga:** siguen en la ficha del deportista o del tutor (U16/U17/U19). La bandeja es de lectura y no audita, igual que los demás listados.
 - **Interfaz:** «Documentos pendientes» en el menú administrativo; cada fila enlaza a `/admin/deportistas/:id` o `/admin/familias/:familiaId/tutores/:tutorId`.
 
+## Checklist documental parcial del deportista (U20)
+
+`GET /api/familia/deportistas/{id}/checklist-documental` (FAMILIA) y `GET /api/admin/deportistas/{id}/checklist-documental` (ADMIN) devuelven el **mismo cálculo**, hecho en cada lectura sobre los documentos **vigentes** del deportista (no se guarda nada y no se agrega migración).
+
+- **Es parcial y lo dice:** la respuesta lleva `parcial: true` y `alcance: "DNI_DEPORTISTA"`. Evalúa únicamente `DNI_DEPORTISTA_FRENTE` y `DNI_DEPORTISTA_DORSO`. **No** es la elegibilidad para empadronarse: no existe un estado «listo para presentar» ni «empadronado», no hay porcentaje global, y tampoco entran los documentos de los tutores, la ficha médica (U21) ni la solicitud de licencia (U22).
+- **Estados de cada requisito (`requisitos[].estado`):** `CUMPLIDO` solo si el documento vigente está `APROBADO`; `EN_REVISION` si está `CARGADO`; `OBSERVADO` conserva su `motivoObservacion` (solo en ese estado); `FALTA` si no hay documento vigente. Un estado que ningún flujo produce para un DNI (`PENDIENTE`, `VENCIDO`) tampoco cumple ni espera revisión: se informa como `FALTA`. Una versión histórica (no vigente) nunca decide: si una observada fue reemplazada, cuenta el sucesor.
+- **Alcance:** idéntico al de la consulta de documentos. ADMIN: deportista de su escuela, incluso inactivo. FAMILIA: deportista de su familia activa con vínculo `ACTIVO`. Cualquier otro caso (otra familia, otra escuela, vínculo `PENDIENTE`/`RECHAZADO`/`REVOCADO`, id inexistente) es el mismo `404 DEPORTISTA_NO_ENCONTRADO`. La ruta no acepta parámetros de alcance.
+- **Lectura sin auditoría:** como la ficha y los listados, no entrega archivos y no audita; un indicador en el panel no debe generar un evento por cada carga de pantalla. La revisión y la descarga siguen auditadas en sus rutas.
+- **Qué NO decide (a propósito):** los requisitos del formulario federativo disponible son los de **2026** y los de 2027 no están confirmados, por eso el catálogo (`CatalogoRequisitosDocumentales`) no copia el formulario ni los vuelve reglas permanentes. Tampoco infiere por edad (la edad deportiva y la condición de «menor» del formulario son conceptos distintos) ni usa `tutor.parentesco` o la pertenencia a una familia para deducir responsables legales: el vínculo explícito tutor-deportista se resuelve antes de evaluar documentos de responsables. Las reglas siguientes (U21, U22) se agregan al catálogo sin cambiar este contrato.
+
 ## Descarga auditada para ADMIN (U16)
 
 `GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo` entrega el archivo de un documento **vigente** del deportista. Es la única lectura del puerto `AlmacenDocumentos` y es aditiva: `ContenidoLeido leer(DestinoPreparado destino, long maxBytes)` no cambia creación, inspección ni compensación.
