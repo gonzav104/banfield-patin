@@ -28,6 +28,8 @@ import com.banfieldpatin.backend.usuarios.Rol;
 class ChecklistDocumentalDbTest extends BaseVinculosDb {
 	@Autowired
 	ChecklistDocumentalService checklist;
+	@Autowired
+	com.banfieldpatin.backend.documentos.DocumentoRepository repositorio;
 	UUID familia;
 	UUID deportista;
 	UsuarioAutenticado familiar;
@@ -191,5 +193,20 @@ class ChecklistDocumentalDbTest extends BaseVinculosDb {
 		assertThat(contar("auditoria", escuelaA)).isEqualTo(auditoria);
 		assertThat(jdbc.sql("SELECT coalesce(json_agg(d ORDER BY id)::text,'[]') FROM gestion_patin.documento d WHERE escuela_id = :e")
 				.param("e", escuelaA).query(String.class).single()).isEqualTo(antes);
+	}
+
+	@Test
+	void laConsultaFamiliarDelRepositorioPorSiSolaRespetaElAlcanceSinDependerDelControlPrevio() {
+		documento(escuelaA, deportista, false, "DNI_DEPORTISTA_FRENTE", "APROBADO", true, 0);
+		var ajeno = deportista("AjenaRepo");
+		var otraFamilia = datos.familia(escuelaA, "Otra familia repo", true);
+		datos.vinculo(escuelaA, otraFamilia, ajeno, "ACTIVO", false, adminId);
+		documento(escuelaA, ajeno, false, "DNI_DEPORTISTA_FRENTE", "APROBADO", true, 1);
+		var tipos = List.of(TipoDocumento.DNI_DEPORTISTA_FRENTE, TipoDocumento.DNI_DEPORTISTA_DORSO);
+
+		assertThat(repositorio.requisitosFamilia(escuelaA, deportista, familia, tipos)).hasSize(1);
+		assertThat(repositorio.requisitosFamilia(escuelaA, ajeno, familia, tipos)).isEmpty(); // de otra familia
+		assertThat(repositorio.requisitosFamilia(escuelaB, deportista, familia, tipos)).isEmpty(); // de otra escuela
+		assertThat(repositorio.requisitosAdmin(escuelaB, deportista, tipos)).isEmpty();
 	}
 }

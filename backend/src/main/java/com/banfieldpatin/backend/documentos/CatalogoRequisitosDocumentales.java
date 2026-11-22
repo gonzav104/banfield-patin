@@ -7,8 +7,8 @@ import java.util.UUID;
 
 /**
  * Catálogo mínimo y cálculo del checklist documental del deportista (U20). Hoy solo pide los dos lados del DNI del deportista:
- * es lo que se decidió evaluar, no una regla federativa permanente. Los formularios de la Federación cambian cada año (lo
- * disponible es el de 2026 y los requisitos de 2027 no están confirmados), por eso el catálogo no copia el formulario ni
+ * es lo que se decidió evaluar, no una regla federativa permanente. El formulario de la Federación del que se dispone es el
+ * de 2026 y los requisitos de 2027 no están confirmados, por eso el catálogo no copia el formulario ni
  * decide nada por edad, por la condición de «menor» del formulario ni por los tutores: esas reglas se resuelven aparte.
  */
 public final class CatalogoRequisitosDocumentales {
