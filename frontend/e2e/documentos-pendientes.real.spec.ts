@@ -211,6 +211,8 @@ test('an observed document leaves the inbox and its replacement comes back marke
 });
 
 test('the route is ADMIN-only, takes no scope, validates the filter and exposes no file data', async () => {
+  // Its own pending document: the tutor's back, which no other test of this file uploads, so this test needs nothing from the others.
+  expect((await familyPost(`/api/familia/tutores/${tutorId}/documentos`, 'DNI_TUTOR_DORSO')).status(), 'upload DNI_TUTOR_DORSO').toBe(201);
   const csrf = await csrfHeaders(adminContext.request);
   const ok = await adminContext.request.get('/api/admin/documentos/pendientes?size=100&escuelaId=' + randomUUID(), { headers: csrf });
   expect(ok.status()).toBe(200);
