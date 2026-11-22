@@ -63,6 +63,18 @@ export interface FakeDocumentDownload {
   status: number;
 }
 
+/** One row of the pending-documents inbox (GET /admin/documentos/pendientes): only what the backend sends, never file data. */
+export interface FakePendingDocument {
+  id: string;
+  tipo: string;
+  creadoEn: string;
+  titularTipo: 'DEPORTISTA' | 'TUTOR';
+  titularId: string;
+  titularNombre: string;
+  familiaId: string | null;
+  reemplazo: boolean;
+}
+
 export type FakeInvitationStatus = 'PENDIENTE' | 'USADA' | 'REVOCADA' | 'EXPIRADA';
 
 interface FakeFamily {
@@ -238,6 +250,7 @@ export class FakeBackend {
   private portalFamilies = new Map<string, PortalFamily>();
   private athletes = new Map<string, FakeAthlete>();
   private documents = new Map<string, FakeDocument[]>();
+  private pendingInbox: FakePendingDocument[] = [];
   private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string; replaces?: string }>();
   /** The bytes of a stored document, by document id (an upload stores what it received). */
   private documentFiles = new Map<string, { file: Blob; disposition: string | null }>();
@@ -1268,6 +1281,12 @@ export class FakeBackend {
     return created;
   }
 
+  /** Rows of the pending-documents inbox: the mock cannot derive them, so a test states exactly what the backend would return. */
+  seedPendingInbox(rows: FakePendingDocument[]): this {
+    this.pendingInbox = [...rows];
+    return this;
+  }
+
   documentsOf(athleteId: string): FakeDocument[] {
     return this.documents.get(athleteId) ?? [];
   }
@@ -1298,6 +1317,20 @@ export class FakeBackend {
     return tutor ? this.families.some((f) => f.tutores.some((t) => t.id === id)) : this.adminAthletes.some((a) => a.id === id);
   }
 
+  /** Mirrors GET /api/admin/documentos/pendientes: ADMIN only, optional `titular`, oldest first (id breaks ties), page and size clamped. */
+  private pendingInboxRoute(params: URLSearchParams, current: FakeUser | undefined): { status: number; body?: unknown } {
+    if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+    if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+    const titular = params.get('titular');
+    if (titular !== null && titular !== 'DEPORTISTA' && titular !== 'TUTOR') return this.error(400, 'SOLICITUD_INVALIDA', 'Solicitud inválida.');
+    const page = Math.max(Number(params.get('page') ?? 0) || 0, 0);
+    const size = Math.min(Math.max(Number(params.get('size') ?? 20) || 20, 1), 100);
+    const rows = this.pendingInbox
+      .filter((row) => titular === null || row.titularTipo === titular)
+      .sort((a, b) => a.creadoEn.localeCompare(b.creadoEn) || a.id.localeCompare(b.id));
+    return { status: 200, body: { contenido: rows.slice(page * size, page * size + size), pagina: page, tamanio: size, totalElementos: rows.length } };
+  }
+
   /**
    * Mirrors the ADMIN document routes (U16): the list of current documents and the file of one of them. The file route requires the
    * CSRF header even though it is a GET (D2), then the session and the role; one 404 DOCUMENTO_NO_ENCONTRADO for an unknown athlete or a
@@ -1311,6 +1344,7 @@ export class FakeBackend {
     csrfHeader: string | null,
     body: unknown,
   ): { status: number; body?: unknown; headers?: Record<string, string> } | null {
+    if (method === 'get' && path === '/admin/documentos/pendientes') return this.pendingInboxRoute(params, current);
     // The same routes for an athlete and, since U19, for a tutor (`tutores`): the owner kind decides the scope and the types.
     const list = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
     const file = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
