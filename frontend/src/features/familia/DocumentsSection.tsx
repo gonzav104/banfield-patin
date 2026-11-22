@@ -14,6 +14,8 @@ const TITLES: Record<DniType, string> = {
   DNI_TUTOR_DORSO: 'DNI – dorso',
 };
 
+/** The anchor the partial checklist points to (the athlete sheet only): where the DNI actions already are. */
+export const DOCUMENTS_SECTION_ID = 'documentos-deportista';
 export const UPLOAD_DISABLED_TEXT = 'La carga de documentos no está habilitada por el momento.';
 export const AVAILABILITY_UNKNOWN_TEXT = 'No pudimos comprobar si la carga de documentos está disponible.';
 export const PRIVACY_NOTE =
@@ -46,7 +48,7 @@ export function DocumentsSection({ identity, athleteId, kind = 'deportista' }: {
   const unavailableText = availability.isError ? AVAILABILITY_UNKNOWN_TEXT : availability.data && !maxBytes ? UPLOAD_DISABLED_TEXT : null;
 
   return (
-    <section aria-labelledby="documents-title" className="space-y-4 rounded-2xl border border-line bg-white p-5">
+    <section id={tutor ? undefined : DOCUMENTS_SECTION_ID} tabIndex={-1} aria-labelledby="documents-title" className="space-y-4 rounded-2xl border border-line bg-white p-5 outline-none">
       <div className="space-y-2">
         <h2 id="documents-title" className="text-lg font-bold">
           {tutor ? 'Documentos del tutor' : 'Documentos del deportista'}

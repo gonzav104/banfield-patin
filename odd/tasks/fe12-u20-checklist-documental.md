@@ -14,7 +14,7 @@ Runner: Maven (`./mvnw`, `-Pdb-tests`), Vitest, Playwright real vía `.github/sc
 
 ## Tasks
 - [x] T1 · S1-S5 · inline · C1 backend · commit C1 (ver L2)
-- [ ] T2 · S6 · inline · C2 frontend familiar
+- [x] T2 · S6 · inline · C2 frontend familiar · commit C2 (ver L3)
 - [ ] T3 · S7 · inline · C3 frontend administrativo
 
 ## Log
@@ -23,3 +23,6 @@ Pedido del usuario: ver `S1`–`S8` (citas literales). Decisiones conocidas para
 
 ### L2 — C1 backend
 `CatalogoRequisitosDocumentales` (catálogo mínimo + cálculo puro), `ChecklistDocumentalService` (alcance como la consulta de documentos, 404 uniforme, solo lectura, sin auditoría), `ChecklistDocumentalController` (`GET /api/{admin|familia}/deportistas/{id}/checklist-documental`) y dos consultas por tipo en `DocumentoRepository`. Decisiones: respuesta `{deportistaId, parcial: true, alcance: "DNI_DEPORTISTA", requisitos[{tipo, estado, motivoObservacion}]}`; `EstadoRequisito` = CUMPLIDO | EN_REVISION | OBSERVADO | FALTA; `PENDIENTE`/`VENCIDO` (que ningún flujo produce para un DNI) se informan como FALTA; sin migración. Pruebas: `CatalogoRequisitosDocumentalesTest` 10, `ChecklistDocumentalDbTest` 13, `ChecklistDocumentalWebMvcTest` 4; guardas de rutas/OpenAPI/docs actualizadas deliberadamente; 6 mutaciones del cálculo y del alcance, todas detectadas. Suite normal verde.
+
+### L3 — C2 frontend familiar
+`features/documentos-checklist` (esquema zod estricto, mensajes, `DocumentChecklistView` compartida), `FamilyDocumentChecklist` en la ficha, `DniSummaryLine` en las tarjetas del panel (solo las 3 de la vista previa: sin N+1 sobre el listado completo), `familyKeys.checklist`, invalidación tras carga/reemplazo/refresco, ancla `documentos-deportista` para «Ir a cargar los documentos». El doble de backend (`fakeBackend`) calcula los cuatro estados desde los documentos. Pruebas: 9 en `document-checklist.test.tsx` + 12 en `documentos-checklist/*.test.ts`; se actualizaron a propósito 4 pruebas existentes cuyas expectativas enumeraban las peticiones o secciones de la ficha y del panel (ahora incluyen el checklist y las 3 consultas del panel). Dos mutaciones detectadas (invalidación; prioridad del resumen, esta última tras agregar la prueba unitaria que la cubre).

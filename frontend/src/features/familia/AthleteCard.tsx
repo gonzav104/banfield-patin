@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import { formatAge } from './age';
+import { DniSummaryLine } from './DniSummaryLine';
+import type { FamilyIdentity } from './identity';
 import type { Athlete } from './schemas';
 import { StatusBadge } from './StatusBadge';
 
@@ -12,7 +14,8 @@ function initials(athlete: Athlete): string {
  * backend reports it (`activo`). The status is text, not only colour. It never says "inscripto" or similar: it is not an
  * enrolment or a season status.
  */
-export function AthleteCard({ athlete }: { athlete: Athlete }) {
+/** With `summaryIdentity` (the dashboard) the card adds one line about the athlete's DNI (U20). */
+export function AthleteCard({ athlete, summaryIdentity }: { athlete: Athlete; summaryIdentity?: FamilyIdentity }) {
   return (
     <li>
       <Link
@@ -30,6 +33,7 @@ export function AthleteCard({ athlete }: { athlete: Athlete }) {
             {athlete.nombre} {athlete.apellido}
           </p>
           <p className="text-sm text-muted">{formatAge(athlete.edad)}</p>
+          {summaryIdentity ? <DniSummaryLine identity={summaryIdentity} athleteId={athlete.id} /> : null}
         </div>
         <StatusBadge tone={athlete.activo ? 'positive' : 'neutral'} srLabel="Estado: ">
           {athlete.activo ? 'Activo' : 'Inactivo'}

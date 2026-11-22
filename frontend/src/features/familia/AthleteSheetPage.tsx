@@ -4,6 +4,7 @@ import { Alert } from '@/components/ui/alert';
 import { SESSION_EXPIRED_MESSAGE } from '@/features/auth/messages';
 import { useFamilyAccount } from './account';
 import { DocumentsSection } from './DocumentsSection';
+import { FamilyDocumentChecklist } from './FamilyDocumentChecklist';
 import { AthleteNotFoundNotice, ErrorBlock, LoadingBlock } from './FamilyStates';
 import { useAthleteFichaState } from './ficha-state';
 import { identityKey, type FamilyIdentity } from './identity';
@@ -49,6 +50,7 @@ function AthleteSheet({ identity, athleteId }: { identity: FamilyIdentity | null
           </section>
           <SeasonCard season={state.season} />
           <p className="text-sm leading-relaxed text-muted">{SCHOOL_VS_SPORT_NOTE}</p>
+          {identity && athleteId ? <FamilyDocumentChecklist identity={identity} athleteId={athleteId} /> : null}
           {identity && athleteId ? <DocumentsSection identity={identity} athleteId={athleteId} /> : null}
         </>
       ) : (
