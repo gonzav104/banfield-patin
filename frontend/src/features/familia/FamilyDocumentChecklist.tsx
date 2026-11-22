@@ -15,7 +15,7 @@ export function FamilyDocumentChecklist({ identity, athleteId }: { identity: Fam
       error={checklist.isError ? checklistErrorMessage(ApiError.from(checklist.error).kind) : null}
       onRetry={() => void checklist.refetch()}
       actionsId={DOCUMENTS_SECTION_ID}
-      actionsLabel="Ir a cargar los documentos"
+      actionsLabel="Ir a los documentos"
     />
   );
 }

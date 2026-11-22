@@ -61,7 +61,7 @@ describe('partial document checklist in the athlete sheet (U20)', () => {
     // No overall percentage and no registration state anywhere in it.
     expect(region.textContent).not.toMatch(/%|LISTO_PARA_PRESENTAR|EMPADRONADO|completo/i);
 
-    await userEvent.click(within(region).getByRole('button', { name: 'Ir a cargar los documentos' }));
+    await userEvent.click(within(region).getByRole('button', { name: 'Ir a los documentos' }));
     expect(screen.getByRole('region', { name: 'Documentos del deportista' })).toHaveFocus();
   });
 
@@ -153,9 +153,9 @@ describe('DNI line in the family dashboard (U20)', () => {
     renderApp('/familia');
 
     const card = (name: string) => screen.findByRole('link', { name: new RegExp(`^${name}`) });
-    expect(await within(await card('Ana')).findByText('DNI del deportista: observado, hay que reemplazarlo')).toBeInTheDocument();
-    expect(await within(await card('Beto')).findByText('DNI del deportista: falta cargar')).toBeInTheDocument();
-    expect(await within(await card('Caro')).findByText('DNI del deportista: aprobado')).toBeInTheDocument();
+    expect(await within(await card('Ana')).findByText('DNI del deportista (frente y dorso): observado')).toBeInTheDocument();
+    expect(await within(await card('Beto')).findByText('DNI del deportista (frente y dorso): falta')).toBeInTheDocument();
+    expect(await within(await card('Caro')).findByText('DNI del deportista (frente y dorso): aprobado')).toBeInTheDocument();
     expect(screen.getByRole('main').textContent).not.toMatch(/%|LISTO_PARA_PRESENTAR|EMPADRONADO|empadronarse/i);
     // The reason of an observation is for the sheet, not the dashboard.
     expect(screen.queryByText(/Borroso/)).not.toBeInTheDocument();
@@ -168,7 +168,7 @@ describe('DNI line in the family dashboard (U20)', () => {
     const failing = own({ nombre: 'Beto' });
     backend.override('get', checklistUrl(failing.id), { status: 500, body: { codigo: 'ERROR_INTERNO', mensaje: 'x' } });
     renderApp('/familia');
-    expect(await screen.findByText('DNI del deportista: en revisión')).toBeInTheDocument();
+    expect(await screen.findByText('DNI del deportista (frente y dorso): en revisión')).toBeInTheDocument();
     expect(await screen.findByText('Documentación no disponible por ahora.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^Beto/ })).toHaveAttribute('href', `/familia/deportistas/${failing.id}`);
   });

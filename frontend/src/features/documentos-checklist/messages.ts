@@ -37,13 +37,17 @@ export function checklistErrorMessage(kind: string): string {
 
 /**
  * One line about the athlete's DNI for a summary (the family dashboard). The most urgent state wins: observed, then missing,
- * then under review, then approved. It says what is evaluated («DNI del deportista»): it is never a statement about the
+ * then under review, then approved. It describes the state (it does not promise an action: uploads may be disabled) and says
+ * what is evaluated («DNI del deportista (frente y dorso)»): it is never a statement about the
  * registration as a whole and carries no percentage.
  */
+/** The summary names what it evaluates, so «aprobado» is never read as «all the documentation is fine». */
+const DNI_PREFIX = 'DNI del deportista (frente y dorso): ';
+
 export function dniSummary(checklist: DocumentChecklist): { text: string; state: RequirementState } {
   const states = checklist.requisitos.map((r) => r.estado);
-  if (states.includes('OBSERVADO')) return { text: 'DNI del deportista: observado, hay que reemplazarlo', state: 'OBSERVADO' };
-  if (states.includes('FALTA')) return { text: 'DNI del deportista: falta cargar', state: 'FALTA' };
-  if (states.includes('EN_REVISION')) return { text: 'DNI del deportista: en revisión', state: 'EN_REVISION' };
-  return { text: 'DNI del deportista: aprobado', state: 'CUMPLIDO' };
+  if (states.includes('OBSERVADO')) return { text: `${DNI_PREFIX}observado`, state: 'OBSERVADO' };
+  if (states.includes('FALTA')) return { text: `${DNI_PREFIX}falta`, state: 'FALTA' };
+  if (states.includes('EN_REVISION')) return { text: `${DNI_PREFIX}en revisión`, state: 'EN_REVISION' };
+  return { text: `${DNI_PREFIX}aprobado`, state: 'CUMPLIDO' };
 }

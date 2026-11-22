@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { DNI_TYPES, TUTOR_DNI_TYPES, type DniType, type DocumentOwnerKind } from './api';
 import { DniSlot } from './DniSlot';
 import { ErrorBlock, LoadingBlock } from './FamilyStates';
@@ -48,7 +49,7 @@ export function DocumentsSection({ identity, athleteId, kind = 'deportista' }: {
   const unavailableText = availability.isError ? AVAILABILITY_UNKNOWN_TEXT : availability.data && !maxBytes ? UPLOAD_DISABLED_TEXT : null;
 
   return (
-    <section id={tutor ? undefined : DOCUMENTS_SECTION_ID} tabIndex={-1} aria-labelledby="documents-title" className="space-y-4 rounded-2xl border border-line bg-white p-5 outline-none">
+    <section id={tutor ? undefined : DOCUMENTS_SECTION_ID} tabIndex={tutor ? undefined : -1} aria-labelledby="documents-title" className={cn('space-y-4 rounded-2xl border border-line bg-white p-5', !tutor && 'outline-none')}>
       <div className="space-y-2">
         <h2 id="documents-title" className="text-lg font-bold">
           {tutor ? 'Documentos del tutor' : 'Documentos del deportista'}

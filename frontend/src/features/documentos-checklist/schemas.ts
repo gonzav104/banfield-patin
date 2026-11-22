@@ -19,6 +19,7 @@ export const documentChecklistSchema = z.object({
   deportistaId: z.string(),
   parcial: z.literal(true),
   alcance: z.string(),
-  requisitos: z.array(requirementSchema),
+  // A checklist always evaluates something: an empty list is a contract error, never «everything is approved».
+  requisitos: z.array(requirementSchema).min(1),
 });
 export type DocumentChecklist = z.infer<typeof documentChecklistSchema>;
