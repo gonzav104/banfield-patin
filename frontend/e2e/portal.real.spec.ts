@@ -141,15 +141,59 @@ test.describe('family portal (real backend)', () => {
 
   test('privacy: the API and the screen carry no DNI, CUIL, address or identifiers; nothing in storage or console', async () => {
     const { context, page } = await newContext();
-    const bodies: string[] = [];
     const logged: { type: string; text: string }[] = [];
     page.on('console', (message) => logged.push({ type: message.type(), text: message.text() }));
-    page.on('response', async (response) => {
-      if (new URL(response.url()).pathname.startsWith('/api/familia/')) bodies.push(await response.text());
+    // Every /api/familia answer is read by the test itself, in a route that fetches the real answer and hands it on to the page
+    // unchanged (reading it from the page's own response event lost bodies when the page navigated first: the dashboard now also
+    // asks for the DNI checklist of each visible athlete). A request that could not be fetched is recorded with its error.
+    const captured: { url: string; body: string | null; error: string | null }[] = [];
+    const pending = new Set<Promise<void>>();
+    const requested: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith('/api/familia/')) requested.push(`${url.pathname}${url.search}`);
     });
+    await context.route('**/api/familia/**', (route) => {
+      const capture = (async () => {
+        const target = new URL(route.request().url());
+        const url = `${target.pathname}${target.search}`;
+        try {
+          const response = await route.fetch();
+          const body = await response.text();
+          captured.push({ url, body, error: null });
+          await route.fulfill({ response, body }).catch(() => undefined); // the page may have left already: the answer was observed anyway
+        } catch (error) {
+          captured.push({ url, body: null, error: String(error).split('\n')[0] ?? 'unknown' });
+          await route.abort().catch(() => undefined);
+        }
+      })();
+      pending.add(capture);
+      void capture.finally(() => pending.delete(capture));
+      return capture;
+    });
+    /** Every capture finished (including the ones that start while waiting), before anything navigates or is read. */
+    const settle = async () => {
+      while (pending.size > 0) await Promise.all([...pending]);
+    };
     await loginFamilyUi(page, familyA);
+    await expect(athleteCards(page)).toHaveCount(3);
+    // The dashboard asks for the DNI checklist of its three athletes after drawing them: they are awaited by what they ARE (three
+    // captured answers), not by a quiet network, before leaving the page; then every capture is finished.
+    await expect.poll(() => captured.filter((r) => r.url.endsWith('/checklist-documental')).length).toBe(3);
+    await settle();
     await page.goto('/familia/deportistas');
     await expect(page.getByText('Página 1 de 2 · 12 en total')).toBeVisible();
+    await settle();
+    // A body that could not be read is a failure of the capture, never a silent pass; and the route neither lost nor duplicated a request.
+    expect(captured.filter((r) => r.error !== null).map((r) => `${r.url}: ${r.error}`)).toEqual([]);
+    expect(captured.map((r) => r.url).sort()).toEqual([...requested].sort());
+    const bodies = captured.map((r) => r.body ?? '');
+    // U20: the three visible athletes' partial DNI checklists are part of what is swept (and nothing more than the closed contract).
+    const checklistBodies = captured.filter((r) => r.url.endsWith('/checklist-documental'));
+    expect(checklistBodies.map((r) => r.url).sort()).toEqual(athleteIds.slice(0, 3).map((id) => `/api/familia/deportistas/${id}/checklist-documental`).sort());
+    for (const { body } of checklistBodies) {
+      expect(Object.keys(JSON.parse(body ?? 'null') as object).sort()).toEqual(['alcance', 'deportistaId', 'parcial', 'requisitos']);
+    }
 
     const everything = `${bodies.join('\n')}\n${await page.content()}\n${await page.locator('body').innerText()}`;
     for (const dni of dnis) expect(everything).not.toContain(dni);
