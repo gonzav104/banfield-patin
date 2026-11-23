@@ -75,6 +75,7 @@ import tools.jackson.databind.json.JsonMapper;
 		com.banfieldpatin.backend.documentos.carga.CargaTutorDocumentalController.class,
 		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class,
 		com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoController.class,
+		com.banfieldpatin.backend.familias.responsables.VinculosTutorAdminController.class,
 		com.banfieldpatin.backend.documentos.revision.RevisionDocumentoController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
@@ -146,6 +147,8 @@ abstract class BaseOpenApiWebMvc {
 	protected DocumentoPendienteService documentoPendienteService;
 	@MockitoBean
 	protected ChecklistDocumentalService checklistDocumentalService;
+	@MockitoBean
+	protected com.banfieldpatin.backend.familias.responsables.VinculosTutorConsultaAdmin vinculosTutorConsultaAdmin;
 	@MockitoBean
 	protected com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoService descargaDocumentoService;
 
