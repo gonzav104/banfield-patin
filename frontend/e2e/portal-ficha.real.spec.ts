@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { expect, test, type Browser, type BrowserContext, type Page, type Request } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page, type Request, type Response } from '@playwright/test';
 import { athleteFichaSchema } from '../src/features/familia/schemas';
 import { dbQuery, hasDisposableDb, updatedRows } from './support/db';
 import { leakPattern } from './support/leak';
@@ -52,11 +52,22 @@ const dnis: string[] = [];
  */
 const portalResponses: { url: string; status: number; body: string | null; captureError: string | null }[] = [];
 const pendingCaptures = new Set<Promise<void>>();
+/** Waits until no capture is pending, including the ones that start while waiting (a request issued late by the page). */
 const settleCaptures = async () => {
-  await Promise.all([...pendingCaptures]);
+  while (pendingCaptures.size > 0) await Promise.all([...pendingCaptures]);
 };
-/** Waits for the answers still being captured and only then closes the context. */
+/**
+ * Closes the context only when every answer routed so far has been captured. A sheet issues its document and checklist requests
+ * AFTER it renders, so a test that ends on the first visible element reaches this point while captures are still starting: a
+ * snapshot of the pending ones would miss those, and closing the context would kill them mid-flight («Target page, context or
+ * browser has been closed» / «Response has been disposed»), losing answers the sweep must inspect and failing the capture. So
+ * every capture settles (including the ones that start while waiting), then the route handlers still running are awaited and
+ * removed (`unrouteAll` with `wait`, which leaves no handler to be cut by the close), and only then the context closes. A
+ * request the page has not issued yet is not an observed answer: nothing is lost, and nothing is excluded from what was observed.
+ */
 const closeContext = async (context: BrowserContext) => {
+  await settleCaptures();
+  await context.unrouteAll({ behavior: 'wait' });
   await settleCaptures();
   await context.close();
 };
@@ -209,8 +220,9 @@ test.describe('flow of a family: list, sheet, back', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
     expect(await page.getByRole('heading', { level: 1 }).count()).toBe(1); // exactly one title
-    // U15 adds the documents section after the season (it is always shown, whether uploads are enabled or not).
-    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Documentos del deportista']);
+    // U15 adds the documents section after the season (it is always shown, whether uploads are enabled or not); U20 puts the
+    // partial DNI checklist right before it.
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Checklist de documentación', 'Documentos del deportista']);
 
     await page.keyboard.press('Shift+Tab'); // the way back sits right before the title in the reading order
     const back = page.getByRole('link', { name: 'Volver a deportistas' });
@@ -428,7 +440,22 @@ test.describe('sessions and identity changes', () => {
 
   test('a session lost while the sheet is on screen: the next request shows no data and asks to sign in', async () => {
     const { context, page } = await newContext();
+    // The sheet asks for its documents, the upload availability and the DNI checklist a few milliseconds AFTER its title is
+    // visible. If the session were lost in that gap those requests would go out without it, get their own 401 and log the user out
+    // before the click below, which would then wait for a link that is gone (the flake this test had). So the sheet's own answers
+    // are awaited first, while the session is still valid; the 401 that follows must come from the click.
+    // The checklist and documents answers are matched by THIS athlete's path: the dashboard (visited first, by the login) also asks
+    // for the checklist of its visible athletes, and that earlier answer must not satisfy the wait.
+    const sheetPath = `/api/familia/deportistas/${ids.complete}`;
+    const isAnswer = (path: string) => (response: Response) => response.request().method() === 'GET' && new URL(response.url()).pathname === path;
+    const sheetAnswers = Promise.all([
+      page.waitForResponse(isAnswer(`${sheetPath}/documentos`)),
+      page.waitForResponse(isAnswer('/api/familia/documentos/disponibilidad')),
+      page.waitForResponse(isAnswer(`${sheetPath}/checklist-documental`)),
+    ]);
+    sheetAnswers.catch(() => undefined); // a failure before the wait is the test's own failure; it is rethrown by the await below
     await openSheet(page, familyA, 'complete');
+    await sheetAnswers;
     await context.clearCookies();
     await page.getByRole('link', { name: 'Volver a deportistas' }).click(); // a new request: 401
 
@@ -621,12 +648,26 @@ test.describe('mobile', () => {
 test('privacy sweep: none of the portal answers this file OBSERVED carried a birth date, a DNI, a CUIL or an address', async () => {
   await settleCaptures(); // every body still being read is finished (and counted) before anything is asserted
   const isSheet = (r: { url: string }) => r.url.endsWith('/ficha');
+  const isChecklist = (r: { url: string }) => r.url.endsWith('/checklist-documental');
+  const isDocuments = (r: { url: string }) => /\/deportistas\/[^/]+\/documentos$/.test(r.url);
   const isList = (r: { url: string }) => r.url === '/api/familia/deportistas';
 
   // The scope is what this file really observed: the sheet and the list answers (plus the family summary), by the family
   // contexts of these tests. It says nothing about endpoints it never called, such as the 15-field detail endpoint.
   expect(portalResponses.filter(isSheet).length).toBeGreaterThan(20);
   expect(portalResponses.filter(isList).length).toBeGreaterThan(5);
+  // The sheet's document metadata (the answer that used to be lost) is part of the sweep too.
+  expect(portalResponses.filter(isDocuments).length).toBeGreaterThan(5);
+  // U20: every sheet also asks for the partial DNI checklist, and those answers are part of the sweep (a closed contract: no
+  // percentage, no registration state, no data beyond the two requirements).
+  const checklists = portalResponses.filter(isChecklist);
+  expect(checklists.length).toBeGreaterThan(5);
+  for (const checklist of checklists.filter((r) => r.status === 200)) {
+    const body = JSON.parse(checklist.body ?? 'null') as { parcial?: boolean; requisitos?: { tipo: string; estado: string }[] } & Record<string, unknown>;
+    expect(Object.keys(body).sort(), checklist.url).toEqual(['alcance', 'deportistaId', 'parcial', 'requisitos']);
+    expect(body.parcial).toBe(true);
+    expect(body.requisitos?.map((r) => r.tipo)).toEqual(['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO']);
+  }
   // A body that could not be read is a failure of the capture, never a silent pass.
   expect(portalResponses.filter((r) => r.captureError !== null).map((r) => `${r.status} ${r.url}: ${r.captureError}`)).toEqual([]);
   for (const response of portalResponses) expect(response.body, `${response.status} ${response.url}`).not.toMatch(SENSITIVE(dnis));

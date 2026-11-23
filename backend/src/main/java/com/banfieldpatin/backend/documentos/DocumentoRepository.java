@@ -1,4 +1,6 @@
 package com.banfieldpatin.backend.documentos;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -41,4 +43,14 @@ public interface DocumentoRepository extends Repository<Documento, UUID> {
     Page<DocumentoMetadatos> tutorFamilia(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId,
             @Param("familiaId") UUID familiaId, Pageable pagina);
+
+    /** Los documentos vigentes de ciertos tipos de un deportista (checklist U20): mismo alcance que las consultas anteriores. */
+    @Query(PROYECCION + DEPORTISTA + " and doc.tipo in :tipos" + ORDEN)
+    List<DocumentoMetadatos> requisitosAdmin(@Param("escuelaId") UUID escuelaId,
+            @Param("propietarioId") UUID propietarioId, @Param("tipos") Collection<TipoDocumento> tipos);
+
+    @Query(PROYECCION + DEPORTISTA_FAMILIA + " and doc.tipo in :tipos" + ORDEN)
+    List<DocumentoMetadatos> requisitosFamilia(@Param("escuelaId") UUID escuelaId,
+            @Param("propietarioId") UUID propietarioId, @Param("familiaId") UUID familiaId,
+            @Param("tipos") Collection<TipoDocumento> tipos);
 }

@@ -4,7 +4,7 @@ import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import { ApiError } from '@/lib/api-error';
 import { reviewAthleteDocument, type DocumentOwnerKind, type DocumentReviewAction } from './api';
-import { athleteDocumentsKey } from './hooks';
+import { athleteChecklistKey, athleteDocumentsKey } from './hooks';
 import type { AdminDocument } from './schemas';
 
 const REVIEWABLE_TYPES: Record<DocumentOwnerKind, readonly string[]> = {
@@ -83,6 +83,8 @@ export function useDocumentReview(athleteId: string, kind: DocumentOwnerKind = '
       if (current()) {
         setSelection(null);
         await client.invalidateQueries({ queryKey: key, exact: true });
+        // A review of the athlete's DNI changes the partial checklist (a tutor's does not).
+        if (kind === 'deportista') await client.invalidateQueries({ queryKey: athleteChecklistKey(athleteId), exact: true });
       }
       unsubscribe();
       active.current = null;

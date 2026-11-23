@@ -62,6 +62,14 @@ describe('tutor documents: navigation and states', () => {
     expect(backend.requests.filter((r) => r.url.includes('/documentos')).map((r) => r.url)).toContain(`${docsUrl(TUTOR.id)}?page=0&size=100`);
   });
 
+  it('the tutor documents section is exactly as before U20: no anchor, no programmatic focus target', async () => {
+    renderApp(`/familia/tutores/${TUTOR.id}`);
+    const region = await section();
+    expect(region).not.toHaveAttribute('id');
+    expect(region).not.toHaveAttribute('tabindex');
+    expect(region.className).not.toContain('outline-none');
+  });
+
   it.each([
     ['a tutor that is not in the family', '33333333-3333-4333-8333-333333333333'],
     ['an id that is not a UUID', 'no-es-un-uuid'],

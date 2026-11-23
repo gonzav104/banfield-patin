@@ -146,6 +146,7 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
         attempt.current = null;
         setState({ step: 'sent' });
         await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId, kind) });
+        if (kind === 'deportista') await queryClient.invalidateQueries({ queryKey: familyKeys.checklist(identity, athleteId) });
       } catch (error) {
         if (!mounted.current) return;
         const failure = uploadFailure(error, maxBytes, replaces !== null);
@@ -154,7 +155,10 @@ export function useDocumentUpload(options: { identity: FamilyIdentity; athleteId
           return;
         }
         drop(failure.message);
-        if (failure.action === 'refresh') await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId, kind) });
+        if (failure.action === 'refresh') {
+          await queryClient.invalidateQueries({ queryKey: familyKeys.documents(identity, athleteId, kind) });
+          if (kind === 'deportista') await queryClient.invalidateQueries({ queryKey: familyKeys.checklist(identity, athleteId) });
+        }
       }
     },
     [athleteId, drop, identity, kind, maxBytes, mutation, queryClient, releasePreview, replaces, tipo],

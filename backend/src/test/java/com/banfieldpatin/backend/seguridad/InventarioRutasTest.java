@@ -190,6 +190,8 @@ class InventarioRutasTest {
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
 				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias",
 				"GET /api/admin/deportistas/{deportistaId}/vinculos", "GET /api/admin/deportistas/{id}/documentos",
+				// Checklist documental parcial (U20): lectura calculada, sin escritura.
+				"GET /api/admin/deportistas/{id}/checklist-documental",
 				// Descarga auditada de un documento (U16): lectura, sin escritura del documento.
 				"GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo",
 				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision");
@@ -248,7 +250,7 @@ class InventarioRutasTest {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
-				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/tutores/{id}/documentos",
+				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/tutores/{id}/documentos",
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
 				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}",

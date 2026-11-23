@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchAthleteDocuments, fetchAthleteFicha, fetchAthletes, fetchMyFamily, fetchUploadAvailability, isAthleteId, type DocumentOwnerKind } from './api';
+import { fetchAthleteDocuments, fetchDocumentChecklist, fetchAthleteFicha, fetchAthletes, fetchMyFamily, fetchUploadAvailability, isAthleteId, type DocumentOwnerKind } from './api';
 import { identityKey, type FamilyIdentity } from './identity';
 
 /**
@@ -15,6 +15,9 @@ export const familyKeys = {
     ['familia', identity ? identityKey(identity) : 'sin-sesion', 'ficha', athleteId ?? 'sin-id'] as const,
   documents: (identity: FamilyIdentity | null, athleteId: string | undefined, kind: DocumentOwnerKind = 'deportista') =>
     ['familia', identity ? identityKey(identity) : 'sin-sesion', kind === 'tutor' ? 'documentos-tutor' : 'documentos', athleteId ?? 'sin-id'] as const,
+  /** User + family + athlete, like the sheet: another identity or athlete never shares an entry. */
+  checklist: (identity: FamilyIdentity | null, athleteId: string | undefined) =>
+    ['familia', identity ? identityKey(identity) : 'sin-sesion', 'checklist-documental', athleteId ?? 'sin-id'] as const,
   uploadAvailability: (identity: FamilyIdentity | null) =>
     ['familia', identity ? identityKey(identity) : 'sin-sesion', 'documentos-disponibilidad'] as const,
 };
@@ -65,6 +68,20 @@ export function useAthleteDocuments(identity: FamilyIdentity | null, athleteId: 
   return useQuery({
     queryKey: familyKeys.documents(identity, athleteId, kind),
     queryFn: () => fetchAthleteDocuments(athleteId as string, kind),
+    enabled: !!identity?.familyId && isAthleteId(athleteId),
+    staleTime: 30_000,
+    gcTime: 0,
+  });
+}
+
+/**
+ * The partial document checklist of ONE athlete (U20): same guards as the sheet. Short `staleTime` and `gcTime: 0` like the
+ * documents it is derived from: it is never kept once no screen shows it, and an upload or a refresh invalidates it.
+ */
+export function useDocumentChecklist(identity: FamilyIdentity | null, athleteId: string | undefined) {
+  return useQuery({
+    queryKey: familyKeys.checklist(identity, athleteId),
+    queryFn: () => fetchDocumentChecklist(athleteId as string),
     enabled: !!identity?.familyId && isAthleteId(athleteId),
     staleTime: 30_000,
     gcTime: 0,

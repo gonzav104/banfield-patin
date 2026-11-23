@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { documentChecklistSchema, type DocumentChecklist } from '@/features/documentos-checklist/schemas';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiGetBlob, apiWrite } from '@/lib/http';
 import {
@@ -79,6 +80,11 @@ export const ATHLETE_DOCUMENTS_PAGE_SIZE = 100;
 /** Whose documents a screen manages: an athlete (default) or, since U19, a tutor. Same routes, other owner. */
 export type DocumentOwnerKind = 'deportista' | 'tutor';
 const ownerPath = (kind: DocumentOwnerKind, id: string) => `/admin/${kind === 'tutor' ? 'tutores' : 'deportistas'}/${encodeURIComponent(id)}`;
+
+/** GET /api/admin/deportistas/{id}/checklist-documental (U20): the same PARTIAL checklist of the athlete's DNI the family sees. */
+export async function fetchAdminDocumentChecklist(athleteId: string): Promise<DocumentChecklist> {
+  return parse(documentChecklistSchema, await apiGet(`/admin/deportistas/${encodeURIComponent(athleteId)}/checklist-documental`));
+}
 
 /** GET /api/admin/{deportistas|tutores}/{id}/documentos: metadata of the CURRENT documents only (no file, no name, no MIME type). */
 export async function listAthleteDocuments(athleteId: string, kind: DocumentOwnerKind = 'deportista'): Promise<AdminDocument[]> {

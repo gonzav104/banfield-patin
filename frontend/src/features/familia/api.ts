@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { ApiError } from '@/lib/api-error';
 import { apiGet, apiWrite } from '@/lib/http';
+import { documentChecklistSchema, type DocumentChecklist } from '@/features/documentos-checklist/schemas';
 import type { PreparedDocument } from './image-normalization';
 import {
   athleteDocumentPageSchema,
@@ -84,6 +85,11 @@ export async function fetchAthleteDocuments(ownerId: string, kind: DocumentOwner
     throw new ApiError('validation', `El identificador ${ownerLabel(kind)} no es válido.`, { status: 400, code: 'SOLICITUD_INVALIDA' });
   }
   return parse(athleteDocumentPageSchema, await apiGet(`${ownerPath(kind, ownerId)}/documentos?page=0&size=100`)).contenido;
+}
+
+/** GET /api/familia/deportistas/{id}/checklist-documental (U20): the PARTIAL checklist of the athlete's DNI. */
+export async function fetchDocumentChecklist(athleteId: string): Promise<DocumentChecklist> {
+  return parse(documentChecklistSchema, await apiGet(`/familia/deportistas/${athleteId}/checklist-documental`));
 }
 
 export async function fetchUploadAvailability(): Promise<UploadAvailability> {

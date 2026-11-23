@@ -18,6 +18,7 @@ afterEach(() => backend.clearOverrides());
 const portalUrls = () => backend.requests.filter((r) => r.url.startsWith('/familia/')).map((r) => r.url);
 
 function addAthletes(count: number, familyId = 'familia-1') {
+  const created: { id: string }[] = [];
   for (let i = 1; i <= count; i += 1) {
     const athlete = backend.addAthlete({
       nombre: `Atleta ${String(i).padStart(2, '0')}`,
@@ -27,7 +28,9 @@ function addAthletes(count: number, familyId = 'familia-1') {
       extra: { fechaNacimiento: '2015-06-15' }, // an over-sharing server: the client must never show or keep it
     });
     backend.linkAthlete(familyId, athlete.id);
+    created.push(athlete);
   }
+  return created;
 }
 
 describe('family dashboard (/familia)', () => {
@@ -50,12 +53,14 @@ describe('family dashboard (/familia)', () => {
     expect(document.body.textContent).not.toMatch(/5555|marta@/);
   });
 
-  it('downloads only what it shows: the family and a page of 3 athletes', async () => {
-    addAthletes(5);
+  it('downloads only what it shows: the family, a page of 3 athletes and the DNI checklist of those 3 (never of the other 2)', async () => {
+    const athletes = addAthletes(5);
     renderApp('/familia');
     await screen.findByText('5 vinculados');
+    await waitFor(() => expect(portalUrls().filter((u) => u.endsWith('/checklist-documental'))).toHaveLength(3));
 
-    expect([...new Set(portalUrls())].sort()).toEqual(['/familia/deportistas?page=0&size=3', '/familia/mi-familia']);
+    const shown = athletes.slice(0, 3).map((a) => `/familia/deportistas/${a.id}/checklist-documental`).sort();
+    expect([...new Set(portalUrls())].sort()).toEqual(['/familia/deportistas?page=0&size=3', '/familia/mi-familia', ...shown].sort());
   });
 
   it('tells an account without a family apart, and requests nothing from /api/familia', async () => {

@@ -71,7 +71,7 @@ import tools.jackson.databind.json.JsonMapper;
 		MfaAdminController.class, FamiliaAdminController.class, FamiliaGestionAdminController.class,
 		InvitacionAdminController.class, RegistroController.class, TutorAdminController.class,
 		DeportistaAdminController.class, VinculoAdminController.class, FamiliaPortalController.class, TemporadaAdminController.class, DeportistaTemporadaAdminController.class,
-		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoPendienteAdminController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class,
+		FamiliaPortalTemporadasController.class, FamiliaPortalFichaController.class, DocumentoAdminController.class, DocumentoPendienteAdminController.class, ChecklistDocumentalController.class, DocumentoFamiliaController.class, com.banfieldpatin.backend.documentos.carga.CargaDocumentalController.class,
 		com.banfieldpatin.backend.documentos.carga.CargaTutorDocumentalController.class,
 		com.banfieldpatin.backend.documentos.carga.DisponibilidadCargaController.class,
 		com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoController.class,
@@ -144,6 +144,8 @@ abstract class BaseOpenApiWebMvc {
 	protected DocumentoConsultaService documentoConsultaService;
 	@MockitoBean
 	protected DocumentoPendienteService documentoPendienteService;
+	@MockitoBean
+	protected ChecklistDocumentalService checklistDocumentalService;
 	@MockitoBean
 	protected com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoService descargaDocumentoService;
 

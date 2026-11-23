@@ -1313,6 +1313,19 @@ export class FakeBackend {
     return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
   }
 
+  /** Mirrors the PARTIAL checklist of the athlete's DNI (U20): the same four states, computed from the current documents. */
+  private documentChecklist(athleteId: string) {
+    const requisitos = ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'].map((tipo) => {
+      const doc = this.documentsOf(athleteId).find((d) => d.tipo === tipo);
+      if (!doc) return { tipo, estado: 'FALTA', motivoObservacion: null };
+      if (doc.estado === 'APROBADO') return { tipo, estado: 'CUMPLIDO', motivoObservacion: null };
+      if (doc.estado === 'CARGADO') return { tipo, estado: 'EN_REVISION', motivoObservacion: null };
+      if (doc.estado === 'OBSERVADO') return { tipo, estado: 'OBSERVADO', motivoObservacion: doc.motivoObservacion };
+      return { tipo, estado: 'FALTA', motivoObservacion: null };
+    });
+    return { deportistaId: athleteId, parcial: true, alcance: 'DNI_DEPORTISTA', requisitos };
+  }
+
   private adminOwnerExists(id: string, tutor: boolean): boolean {
     return tutor ? this.families.some((f) => f.tutores.some((t) => t.id === id)) : this.adminAthletes.some((a) => a.id === id);
   }
@@ -1345,6 +1358,13 @@ export class FakeBackend {
     body: unknown,
   ): { status: number; body?: unknown; headers?: Record<string, string> } | null {
     if (method === 'get' && path === '/admin/documentos/pendientes') return this.pendingInboxRoute(params, current);
+    const checklist = method === 'get' ? /^\/admin\/deportistas\/([^/]+)\/checklist-documental$/.exec(path) : null;
+    if (checklist) {
+      if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+      if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+      if (!this.adminOwnerExists(checklist[1]!, false)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      return { status: 200, body: this.documentChecklist(checklist[1]!) };
+    }
     // The same routes for an athlete and, since U19, for a tutor (`tutores`): the owner kind decides the scope and the types.
     const list = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
     const file = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
@@ -1520,6 +1540,13 @@ export class FakeBackend {
     if (replacement && method === 'post') return this.replaceDocument(replacement[2]!, replacement[3]!, body, idempotencyKey, family, replacement[1] === 'tutores');
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
+    const checklist = /^\/familia\/deportistas\/([^/]+)\/checklist-documental$/.exec(path);
+    if (checklist) {
+      // Mirrors GET /api/familia/deportistas/{id}/checklist-documental: the athlete must be an ACTIVE link of the family, ONE 404 otherwise.
+      if (!UUID_FORMAT.test(checklist[1]!)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!this.ownerInFamily(family, checklist[1]!, false)) return this.ownerNotFound(false);
+      return { status: 200, body: this.documentChecklist(checklist[1]!) };
+    }
     if (path === '/familia/documentos/disponibilidad') {
       return { status: 200, body: { habilitada: this.documentUpload.enabled, maxBytes: this.documentUpload.enabled ? this.documentUpload.maxBytes : null } };
     }

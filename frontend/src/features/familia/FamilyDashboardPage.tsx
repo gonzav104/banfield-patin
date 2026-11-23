@@ -61,7 +61,7 @@ function AthletesSummary({ identity }: { identity: FamilyIdentity }) {
       </div>
       <ul className="space-y-3">
         {contenido.map((athlete) => (
-          <AthleteCard key={athlete.id} athlete={athlete} />
+          <AthleteCard key={athlete.id} athlete={athlete} summaryIdentity={identity} />
         ))}
       </ul>
       <Button asChild variant="outline" block>

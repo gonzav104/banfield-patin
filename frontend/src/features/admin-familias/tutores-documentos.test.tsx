@@ -35,6 +35,17 @@ async function openTutor() {
 }
 
 describe('tutor documents in the administrative detail (U19)', () => {
+  it('the tutor «Documentos» section is exactly as before U20: no anchor, no programmatic focus target', async () => {
+    await openTutor();
+    await within(section()).findByText('Este tutor no tiene documentos vigentes.');
+    expect(section()).not.toHaveAttribute('id');
+    expect(section()).not.toHaveAttribute('tabindex');
+    expect(section().className).not.toContain('outline-none');
+    // The partial checklist is about the athlete's DNI: a tutor's ficha neither shows nor requests it.
+    expect(screen.queryByRole('region', { name: 'Checklist de documentación' })).not.toBeInTheDocument();
+    expect(backend.requests.some((r) => r.url.includes('checklist'))).toBe(false);
+  });
+
   it('says so when the tutor has no current documents', async () => {
     await openTutor();
     expect(await within(section()).findByText('Este tutor no tiene documentos vigentes.')).toBeInTheDocument();
