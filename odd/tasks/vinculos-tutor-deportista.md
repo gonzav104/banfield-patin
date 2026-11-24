@@ -16,6 +16,12 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - S9 — «Diseñar e implementar la separación de roles Flyway/runtime para el futuro despliegue.» «Reproducir esa separación en PostgreSQL 17 y CI, sin modificar los permisos de Supabase real.» «Demostrar que el rol del backend puede ejecutar sus operaciones legítimas, pero no alterar las marcas privadas, sus triggers ni asumir la identidad propietaria.»
 - S10 — «Implementar la alternativa validada de marcas privadas en V14, siempre que no aparezca evidencia de que se aplicó en otro entorno persistente.» «Comprobar que se recupera el comportamiento de concurrencia anterior a V14.» «Conservar el ajuste estricto de InventarioRutasTest.» «Ejecutar las suites completas de backend y PostgreSQL, más las pruebas específicas de integridad y concurrencia.» «Completar revisión independiente y Gentle AI.»
 
+- S11 — «Crear la siguiente migración disponible, previsiblemente V15. No modificar V14.» «Implementar funciones SECURITY DEFINER de alcance mínimo para los cierres permitidos.» «Restringir su ejecución al rol correspondiente y revocar los permisos de PUBLIC.» «Utilizar propietarios adecuados, nombres de objetos calificados y search_path seguro.» «No usar SQL dinámico innecesario.» «Comprobar que el runtime no pueda modificar directamente tutor_deportista, alterar los triggers ni manipular las marcas privadas.» «Verificar que ninguna función permita cerrar vínculos de otra escuela mediante identificadores arbitrarios.» «Si no existe un contexto de autorización de escuela verificable dentro de PostgreSQL, documentar expresamente el límite de la garantía y asegurar el control de autorización del servicio Java.»
+- S12 — «Integrar el cierre, la operación sobre el registro padre y la auditoría en una misma transacción, respetando el orden de bloqueos existente.» «Desactivar tutor: cerrar sus vigencias abiertas.» «Desactivar familia: cerrar las vigencias correspondientes.» «Desactivar deportista: cerrar sus vigencias.» «Revocar familia_deportista: cerrar únicamente las vigencias de esa relación.» «Reactivar registros padre: nunca reabrir vigencias anteriores.» «Repetir una operación ya aplicada: conservar la semántica de idempotencia y evitar auditorías duplicadas.» «Mantener las revisiones optimistas, el manejo de conflictos y los contratos existentes.»
+- S13 — «Probar con PostgreSQL 17 real» los casos de L12. «Realizar revisión independiente y aplicar el procedimiento nativo de Gentle AI.» «Crear commits locales pequeños y coherentes después de superar sus verificaciones y revisiones.» «No autorizo push, PR, merge, despliegue ni cambios en Supabase.» «No comenzar C2-B, C3, U21 ni U22.»
+
+- S14 — «Incorporar una protección transaccional que rechace la secuencia baja → cierre de vigencias → reactivación del mismo padre dentro de una única transacción.» «Aplicar la protección a tutor, familia, deportista y familia_deportista, según las operaciones de cierre previstas en C2-A.» «La protección no debe poder eludirse mediante SET CONSTRAINTS ALL IMMEDIATE, SET CONSTRAINTS ALL DEFERRED ni invocaciones SQL directas autorizadas.» «Mantener permitida la reactivación en una transacción posterior, sin reabrir vigencias históricas.» «Conservar el comportamiento idempotente de operaciones repetidas que no producen cambios efectivos.» «Mantener el cierre, el cambio de estado del padre y la auditoría como una operación atómica.» «No conceder al runtime UPDATE general sobre tutor_deportista ni acceso directo a las marcas privadas.» «No modificar V14 ni ampliar el alcance de las funciones SECURITY DEFINER.» Casos y revisión nueva: L14.
+
 ## Tasks
 
 - [ ] C1 · S1–S2, S7–S8 · implementación inline; verificación independiente sin bloqueantes · riesgo 1/2 (invariantes e aislamiento) · C1-A `5ac5824` revisado; C1-B contiene consultas y contrato, su comprobación nativa se registra en el siguiente corte.
@@ -24,6 +30,10 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 
 - [x] C1-D · S10 · inventario estricto · inline · RED (GET no inventariado), GREEN 28/28 · `f94fd82` (Gentle AI: `under_budget`).
 - [ ] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · inline, con verificación independiente · riesgos 1/2/4 · implementación y focos verificados; suite PG integral y RDD pendientes.
+
+- [ ] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · base `159c738`.
+- [ ] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4.
+- [ ] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
 
 ## Log
 
@@ -213,3 +223,179 @@ Responder en español.
 - Revisión independiente: integridad y concurrencia pasaron (73 pruebas focales sobre la primera versión). Detectó que el lock de activación de temporadas no funciona con solo SELECT en escuela y que una ACL de columna a PUBLIC escapaba al chequeo de tabla en Flyway. Se concedió UPDATE exclusivamente en `escuela.actualizado_en` y se incorporó el chequeo efectivo de ACLs por columna. Recheck independiente 3/3 con el servicio real y rechazo de alteración del estado de escuela y del historial Flyway.
 - Suite backend normal: 1.450/1.450. PostgreSQL 17.11 completo: primera corrida 881 pruebas, 0 fallos de aserción y 2 errores de conexión V5 antes de ejecutar sus escenarios. Una corrida final con loopback IPv4 explícito ejecutó 882 pruebas (0 fallos de aserción, 3 errores de conexión V5, sin omisiones). Pasaron en esa corrida `V14MarcasPrivadasDbTest` 68/68, `V14VigenciasDbTest` 6/6 y `VinculosConcurrenciaDbTest` 21/21. No se aumentaron esperas, cambiaron V5 ni excluyeron pruebas.
 - Corte C1-E sin commit y sin aprobación Gentle AI: falta una corrida PostgreSQL 17 completa verde en un runner Linux con Docker local y publicación no autorizada. Ajuste de rutas C1-D `f94fd82`, `under_budget`. No se contactó Supabase, no se modificó main/C2-A ni el PR #52.
+
+
+### L9 — Evidencia recuperada: C1 cerrado; inicio de C2
+
+- C1-B `680eb0cea725d9e6f5f2c62d2f81ff834241cd7a` sobre C1-A. Gentle AI aprobado y reconocido, sin bloqueantes.
+- Avisos C1-B: distinguir en el nombre de la prueba el mapeo HTTP de la comparación de alcance en DB y cubrir una fila real en el contrato JSON (revisión string, campos de cierre y sin datos sensibles). No reabren C1.
+- C2 conservará la barrera de alta apagada hasta que todos los escritores cierren antes de cambiar estado. Primero se comprueban los cierres de servicios existentes con una vigencia sintética en PostgreSQL.
+
+### L10 — Evidencia recuperada: C2-A: cierres en servicios existentes
+
+- RED: 3/3 servicios escribían el padre antes de cerrar y V14 rechazaba el cambio por las FKs de estado. GREEN: 28/28 pruebas PostgreSQL (cierres y regresión de vínculos y familia).
+- El bloqueo exclusivo se toma solo para una baja efectiva después de validar la revisión, antes de tocar las vigencias. Los no-op conservan la comprobación optimista al commit; bloquearlos rompía una regresión de activación/desactivación solapada. La sonda de espera de familia observa tanto el UPDATE original como el bloqueo explícito nuevo.
+- C2-A no agrega operaciones públicas ni habilita altas. Quedan comandos de tutor y escrituras explícitas, verificación completa de carreras y documentación del contrato de C2.
+
+### L11 — Evidencia recuperada: verificación independiente y compatibilidad de C1
+
+- C2-A: el verificador reprodujo tres `500 ERROR_INTERNO` por bloqueos reales. La corrección local traduce excepciones JPA de bloqueo y SQLSTATE JDBC 55P03/40P01 a la excepción de concurrencia existente, sin capturar otros fallos SQL.
+- Regresión fijada en `CierreVigenciasConcurrenciaDbTest`: 6/6, incluidas tres esperas reales que devuelven `409 CONFLICTO_CONCURRENCIA` sin cambios en datos ni auditoría. Revalidación independiente 6/6. Suites del candidato: 34/34 PostgreSQL y 115/115 unitarias/WebMvc.
+- Funcionalidad C1: el inventario estricto de `V2MigracionEstaticaTest` aún espera V1–V13 y rechaza V14. Los dos commits C1 ya reconocidos no se reescriben. No se confirma C2-A ni se publica C1 hasta resolver si se agrega un commit correctivo independiente de C1 para preservar su PR futuro autónomo.
+
+### L12 — 2026-11-24 · Aprobación de C2-A
+
+Apruebo el cambio de diseño de C2-A: implementar una migración posterior a V14 con funciones de cierre de vigencias de alcance limitado.
+
+Continuá trabajando en el worktree persistente:
+
+~/worktrees/banfield-c2a
+
+Rama: feat/vinculos-tutor-deportista-c2a
+
+Base: main, merge commit 159c738a326662efcda4e4b6ce572ee880f410d5.
+
+### Objetivo
+
+Completar C2-A sin conceder al rol banfield_runtime permisos generales de escritura sobre tutor_deportista ni sobre las marcas privadas.
+
+### Implementación autorizada
+
+1. Crear la siguiente migración disponible, previsiblemente V15. No modificar V14.
+2. Implementar funciones SECURITY DEFINER de alcance mínimo para los cierres permitidos.
+3. Restringir su ejecución al rol correspondiente y revocar los permisos de PUBLIC.
+4. Utilizar propietarios adecuados, nombres de objetos calificados y search_path seguro.
+5. No usar SQL dinámico innecesario.
+6. Comprobar que el runtime no pueda modificar directamente tutor_deportista, alterar los triggers ni manipular las marcas privadas.
+7. Verificar que ninguna función permita cerrar vínculos de otra escuela mediante identificadores arbitrarios.
+8. Si no existe un contexto de autorización de escuela verificable dentro de PostgreSQL, documentar expresamente el límite de la garantía y asegurar el control de autorización del servicio Java.
+9. Integrar el cierre, la operación sobre el registro padre y la auditoría en una misma transacción, respetando el orden de bloqueos existente.
+
+### Reglas funcionales
+
+- Desactivar tutor: cerrar sus vigencias abiertas.
+- Desactivar familia: cerrar las vigencias correspondientes.
+- Desactivar deportista: cerrar sus vigencias.
+- Revocar familia_deportista: cerrar únicamente las vigencias de esa relación.
+- Reactivar registros padre: nunca reabrir vigencias anteriores.
+- Repetir una operación ya aplicada: conservar la semántica de idempotencia y evitar auditorías duplicadas.
+- Mantener las revisiones optimistas, el manejo de conflictos y los contratos existentes.
+
+### Validación
+
+Probar con PostgreSQL 17 real:
+
+- Roles migrador/runtime separados.
+- Intentos de escritura directa denegados.
+- Invocaciones fuera de alcance y entre escuelas.
+- Concurrencia alta/baja y baja/reactivación.
+- Orden de bloqueos y ausencia de nuevos interbloqueos.
+- Rollback completo, incluida auditoría.
+- Operaciones existentes y carga documental.
+- Suites backend y PostgreSQL pertinentes.
+
+Realizar revisión independiente y aplicar el procedimiento nativo de Gentle AI.
+
+### Protección del trabajo
+
+Trabajar exclusivamente en el worktree persistente.
+
+Crear commits locales pequeños y coherentes después de superar sus verificaciones y revisiones. No volver a depender de un directorio temporal como única copia del trabajo.
+
+Podés continuar autónomamente dentro del alcance aprobado y corregir los problemas detectados por las pruebas. Detenete si aparece un cambio sustancial de arquitectura, una vulnerabilidad sin solución clara o un conflicto con las reglas aprobadas.
+
+### Restricciones
+
+Autorizo implementación local, pruebas, revisiones y commits locales de C2-A.
+
+No autorizo push, PR, merge, despliegue ni cambios en Supabase.
+
+No comenzar C2-B, C3, U21 ni U22.
+
+### Entrega
+
+Presentar:
+- Migración implementada.
+- Funciones y permisos.
+- Cambios en servicios Java.
+- Resultados de pruebas y revisiones.
+- Commits locales.
+- Riesgos pendientes.
+- Estado de preparación de C2-A para un PR independiente.
+
+Responder en español.
+
+
+### L13 — Evidencia de C2-A1 (sin commit)
+
+- RED: 4 casos PostgreSQL fallaron por ausencia de la función de cierre.
+- GREEN: regresión V14/V15 inicial 80/80 (PostgreSQL 17.11); candidato con carreras V15 13/13; inventario estricto 7/7. V14 intacta.
+- Verificación independiente: 13/13 PostgreSQL y 7/7 inventario; 14/14 sondas adicionales de actualización desde V14 poblada, exclusión entre escuelas y rollback, sin bloqueantes. Estos resultados todavía no verifican auditoría ni carreras por los servicios Java.
+- Evaluación Gentle AI: riesgo alto (V15, SECURITY DEFINER y permisos de runtime); revisión nativa pendiente.
+
+
+### L14 — Aprobación de la protección de reactivación
+
+La validación nativa anterior (R1-001, `review-e7a60f84e839d53f`) terminó `escalated`, sin aprobación. Esta aprobación de alcance habilita un candidato distinto, no una repetición de aquel linaje.
+
+Apruebo extender V15 para impedir la reactivación de un registro padre dentro de la misma transacción en la que su baja cerró vigencias tutor–deportista.
+
+Continuar en el worktree persistente:
+~/worktrees/banfield-c2a
+
+### Alcance aprobado
+
+1. Incorporar una protección transaccional que rechace la secuencia baja → cierre de vigencias → reactivación del mismo padre dentro de una única transacción.
+2. Aplicar la protección a tutor, familia, deportista y familia_deportista, según las operaciones de cierre previstas en C2-A.
+3. La protección no debe poder eludirse mediante SET CONSTRAINTS ALL IMMEDIATE, SET CONSTRAINTS ALL DEFERRED ni invocaciones SQL directas autorizadas.
+4. Mantener permitida la reactivación en una transacción posterior, sin reabrir vigencias históricas.
+5. Conservar el comportamiento idempotente de operaciones repetidas que no producen cambios efectivos.
+6. Mantener el cierre, el cambio de estado del padre y la auditoría como una operación atómica.
+7. No conceder al runtime UPDATE general sobre tutor_deportista ni acceso directo a las marcas privadas.
+8. No modificar V14 ni ampliar el alcance de las funciones SECURITY DEFINER.
+
+### Validaciones
+
+Probar expresamente la secuencia que detectó Gentle AI:
+
+- Baja que cierra vigencias.
+- SET CONSTRAINTS para adelantar la guarda.
+- Reactivación dentro de la misma transacción.
+- Intento de COMMIT.
+
+La operación debe rechazarse y no dejar cambios parciales confirmados.
+
+Probar además reactivación en una transacción posterior, concurrencia entre sesiones, aislamiento por escuela, rollback, savepoints e idempotencia.
+
+Verificar que el mecanismo no introduce nuevos interbloqueos ni altera operaciones existentes.
+
+### Revisión obligatoria
+
+La revisión nativa anterior terminó sin aprobación. No considerarla válida para el nuevo candidato.
+
+Después de implementar y probar la corrección, ejecutar una nueva revisión independiente y el procedimiento nativo completo de Gentle AI.
+
+Resolver los hallazgos bloqueantes y no crear commits hasta obtener la aprobación correspondiente.
+
+### Límites
+
+Autorizo corregir V15 localmente, ejecutar pruebas y solicitar una nueva revisión.
+
+No autorizo push, PR, merge, despliegue ni cambios en Supabase.
+
+No iniciar C2-B, C3, U21 ni U22.
+
+Si la protección no puede demostrarse sin ampliar significativamente el diseño o los privilegios, detenerse y presentar las alternativas.
+
+### Entrega
+
+Informar la solución implementada, la prueba de reproducción del fallo, el resultado de las suites, el dictamen de Gentle AI y si C2-A está listo para continuar con la integración Java.
+
+### L15 — Reproducción y autorización de implementación
+
+«La prueba de regresión confirmó el defecto de V15 en los cuatro registros padre.»
+«Rechazar inmediatamente una reactivación cuando la misma transacción haya efectuado una baja que cerró vigencias del mismo registro.»
+«No aceptar una corrección que solo cambie la expectativa de la prueba o retrase el rechazo hasta un punto que pueda eludirse.»
+«No crear commits hasta completar las revisiones requeridas.»
+
+RED en PostgreSQL 17.11: 4/4 fallaron al esperar el rechazo; la reactivación y el COMMIT no emitieron error. Log `/tmp/banfield-c2a-reactivacion-red.vfZY8a.log`. La corrección comprueba la reactivación en el UPDATE con metadatos transaccionales del cierre, sin sumar privilegios ni cambiar la guarda diferida.
