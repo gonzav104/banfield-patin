@@ -190,6 +190,7 @@ class InventarioRutasTest {
 				"PUT /api/admin/deportistas/{id}", "POST /api/admin/deportistas/{id}/activar",
 				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias",
 				"GET /api/admin/deportistas/{deportistaId}/vinculos", "GET /api/admin/deportistas/{id}/documentos",
+				"GET /api/admin/deportistas/{deportistaId}/vinculos-tutores",
 				// Checklist documental parcial (U20): lectura calculada, sin escritura.
 				"GET /api/admin/deportistas/{id}/checklist-documental",
 				// Descarga auditada de un documento (U16): lectura, sin escritura del documento.
