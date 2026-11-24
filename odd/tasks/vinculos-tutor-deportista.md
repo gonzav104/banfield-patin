@@ -13,11 +13,17 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - S7 — «Documentar expresamente que V14 debe instalarse antes del backend nuevo y que no podrán habilitarse altas mientras existan instancias antiguas capaces de realizar escrituras incompatibles.» «No habilitar un rollback inseguro si ya existen vigencias abiertas.» «Mantener DOCUMENTOS_CARGA_HABILITADA y DOCUMENTOS_STORAGE_HABILITADO en false por defecto.» «No comenzar U21 ni U22.»
 - S8 — «Aplicar las revisiones independientes y el procedimiento Gentle AI correspondiente.» «Mantener los cambios divididos en commits locales coherentes, sin squash.» «La autorización es exclusivamente para implementación, pruebas, revisiones y commits locales.» «No autorizo push, PR, merge ni despliegue.»
 
+- S9 — «Diseñar e implementar la separación de roles Flyway/runtime para el futuro despliegue.» «Reproducir esa separación en PostgreSQL 17 y CI, sin modificar los permisos de Supabase real.» «Demostrar que el rol del backend puede ejecutar sus operaciones legítimas, pero no alterar las marcas privadas, sus triggers ni asumir la identidad propietaria.»
+- S10 — «Implementar la alternativa validada de marcas privadas en V14, siempre que no aparezca evidencia de que se aplicó en otro entorno persistente.» «Comprobar que se recupera el comportamiento de concurrencia anterior a V14.» «Conservar el ajuste estricto de InventarioRutasTest.» «Ejecutar las suites completas de backend y PostgreSQL, más las pruebas específicas de integridad y concurrencia.» «Completar revisión independiente y Gentle AI.»
+
 ## Tasks
 
 - [ ] C1 · S1–S2, S7–S8 · implementación inline; verificación independiente sin bloqueantes · riesgo 1/2 (invariantes e aislamiento) · C1-A `5ac5824` revisado; C1-B contiene consultas y contrato, su comprobación nativa se registra en el siguiente corte.
 - [ ] C2 · S3–S5, S7–S8 · bloqueado por C1; riesgo 2/4 (ADMIN y carreras entre escritores) · commit(s) pendiente(s).
 - [ ] C3 · S6–S8 · bloqueado por C2; riesgo 2 (privacidad y roles) · commit(s) pendiente(s).
+
+- [x] C1-D · S10 · inventario estricto · inline · RED (GET no inventariado), GREEN 28/28 · `f94fd82` (Gentle AI: `under_budget`).
+- [ ] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · inline, con verificación independiente · riesgos 1/2/4 · implementación y focos verificados; suite PG integral y RDD pendientes.
 
 ## Log
 
@@ -168,3 +174,42 @@ Responder en español.
 - PostgreSQL/Flyway/Hibernate: 7/7. WebMvc/OpenAPI: 12/12. No se tocó el checkout principal.
 - C1-A: `5ac582491d395e8b797f6e82af6c37c97a51a320`, directo de `57cf7a9`; 338 líneas, V14, mapeo y pruebas. Gentle AI: aprobado y reconocimiento exacto confirmado. Sin correcciones bloqueantes.
 - Avisos informativos R1-001 y R3-001: agregar sondas que aíslen las FKs del actor de alta y de cierre al verificar las escrituras de C2; las FKs existen, pero una prueba con varios campos inválidos no prueba cada una por separado.
+
+
+### L7 — Corrección local del PR #52
+
+> Confirmación del proyecto: Banfield todavía NO tiene el backend desplegado en ningún servidor.
+>
+> La instancia Supabase identificada registra únicamente V1–V4. No hay V14 aplicada allí.
+>
+> Con esta información, continuá la corrección local de C1 del PR #52.
+>
+> Objetivos:
+>
+> 1. Diseñar e implementar la separación de roles Flyway/runtime para el futuro despliegue.
+> 2. Reproducir esa separación en PostgreSQL 17 y CI, sin modificar los permisos de Supabase real.
+> 3. Implementar la alternativa validada de marcas privadas en V14, siempre que no aparezca evidencia de que se aplicó en otro entorno persistente.
+> 4. Demostrar que el rol del backend puede ejecutar sus operaciones legítimas, pero no alterar las marcas privadas, sus triggers ni asumir la identidad propietaria.
+> 5. Comprobar que se recupera el comportamiento de concurrencia anterior a V14.
+> 6. Conservar el ajuste estricto de InventarioRutasTest.
+> 7. Ejecutar las suites completas de backend y PostgreSQL, más las pruebas específicas de integridad y concurrencia.
+> 8. Completar revisión independiente y Gentle AI.
+> 9. Preparar commits correctivos locales sin reescribir los tres commits de C1 ya publicados.
+>
+> No acceder ni modificar la base Supabase real. No publicar cambios en el PR #52 hasta nueva autorización.
+>
+> Preservar el checkout principal y los cambios pendientes de C2-A.
+>
+> Si la implementación necesita alterar de manera importante la arquitectura de permisos o no puede garantizar las invariantes, detenerse e informar el bloqueo.
+>
+> Al finalizar, presentar los resultados de pruebas, revisiones, commits locales y riesgos pendientes.
+
+- Rama correctiva local sobre `ef717f0`: `fix/c1-integridad-concurrencia`. Se mantiene C1 como un único PR independiente; dos commits correctivos, sin reescritura ni publicación. Pronóstico: 500–750 líneas propias (incluye pruebas concurrentes y procedimiento de roles, no se recortan pruebas por tamaño).
+- RED comprobado en PostgreSQL 17: las claves únicas de estado en los cuatro padres hacen que un UPDATE de estado espere el bloqueo `KEY SHARE` previo; el mismo escenario de servicio no espera en `57cf7a9`. El prototipo de marcas descartable es evidencia de diseño, no la verificación de este candidato.
+
+### L8 — Correctivo local verificado en foco; suite integral pendiente
+
+- V14: se trasladaron cuatro claves de estado a marcas privadas sin backfill. Se preservaron las FKs permanentes y de estado inmediatas, la unicidad parcial y la guarda de historial. Con `tutor_deportista` vacía, los cuatro cambios de estado conservan compatibilidad con `KEY SHARE`; el escenario de servicio que fallaba volvió a pasar. Roles de producción: propietario sin login, sesión Flyway separada y runtime sin DML en `tutor_deportista`, sin membresía ni acceso privado. `prod` conserva validación Hibernate y no inicia Flyway.
+- Revisión independiente: integridad y concurrencia pasaron (73 pruebas focales sobre la primera versión). Detectó que el lock de activación de temporadas no funciona con solo SELECT en escuela y que una ACL de columna a PUBLIC escapaba al chequeo de tabla en Flyway. Se concedió UPDATE exclusivamente en `escuela.actualizado_en` y se incorporó el chequeo efectivo de ACLs por columna. Recheck independiente 3/3 con el servicio real y rechazo de alteración del estado de escuela y del historial Flyway.
+- Suite backend normal: 1.450/1.450. PostgreSQL 17.11 completo: primera corrida 881 pruebas, 0 fallos de aserción y 2 errores de conexión V5 antes de ejecutar sus escenarios. Una corrida final con loopback IPv4 explícito ejecutó 882 pruebas (0 fallos de aserción, 3 errores de conexión V5, sin omisiones). Pasaron en esa corrida `V14MarcasPrivadasDbTest` 68/68, `V14VigenciasDbTest` 6/6 y `VinculosConcurrenciaDbTest` 21/21. No se aumentaron esperas, cambiaron V5 ni excluyeron pruebas.
+- Corte C1-E sin commit y sin aprobación Gentle AI: falta una corrida PostgreSQL 17 completa verde en un runner Linux con Docker local y publicación no autorizada. Ajuste de rutas C1-D `f94fd82`, `under_budget`. No se contactó Supabase, no se modificó main/C2-A ni el PR #52.
