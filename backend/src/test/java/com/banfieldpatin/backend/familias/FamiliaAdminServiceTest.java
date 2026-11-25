@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
@@ -52,6 +53,7 @@ class FamiliaAdminServiceTest {
 	private TutorRepository tutores;
 	private FamiliaDeportistaRepository vinculos;
 	private AuditoriaService auditoria;
+	private CierreVigenciasTutor cierres;
 	private FamiliaAdminService servicio;
 
 	@BeforeEach
@@ -60,7 +62,9 @@ class FamiliaAdminServiceTest {
 		tutores = mock(TutorRepository.class);
 		vinculos = mock(FamiliaDeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
-		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria, mock(jakarta.persistence.EntityManager.class));
+		cierres = mock(CierreVigenciasTutor.class);
+		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria,
+				mock(jakarta.persistence.EntityManager.class), cierres);
 		when(familias.saveAndFlush(any(Familia.class))).thenAnswer(inv -> {
 			Familia f = inv.getArgument(0);
 			if (f.getId() == null) {
@@ -239,6 +243,8 @@ class FamiliaAdminServiceTest {
 
 		assertThat(detalle.activa()).isFalse();
 		assertThat(f.isActiva()).isFalse();
+		verify(familias).saveAndFlush(f);
+		verifyNoInteractions(cierres);
 	}
 
 	@Test
@@ -262,6 +268,9 @@ class FamiliaAdminServiceTest {
 
 		assertThat(detalle.activa()).isFalse();
 		assertThat(f.isActiva()).isFalse();
+		var orden = org.mockito.Mockito.inOrder(cierres, familias);
+		orden.verify(cierres).deFamilia(admin, familiaId);
+		orden.verify(familias).saveAndFlush(f);
 		EventoAuditoria evento = unicoEvento();
 		assertThat(evento.accion()).isEqualTo(AccionAuditoria.FAMILIA_DESACTIVADA);
 		assertThat(evento.detalle()).isEmpty();
@@ -276,6 +285,7 @@ class FamiliaAdminServiceTest {
 
 		verify(auditoria, org.mockito.Mockito.times(1)).registrar(any());
 		verify(familias, org.mockito.Mockito.times(1)).saveAndFlush(any());
+		verify(cierres).deFamilia(admin, familiaId);
 	}
 
 	@Test

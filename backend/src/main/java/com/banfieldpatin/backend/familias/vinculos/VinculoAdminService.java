@@ -38,6 +38,7 @@ import com.banfieldpatin.backend.familias.vinculos.dto.ResultadoVinculacion;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculacionRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculoRespuesta;
 import com.banfieldpatin.backend.familias.vinculos.dto.VinculosDeDeportista;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 /**
@@ -82,16 +83,18 @@ public class VinculoAdminService {
 	private final AuditoriaService auditoria;
 	private final Clock reloj;
 	private final LockTimeoutVinculos lockTimeout;
+	private final CierreVigenciasTutor cierres;
 
 	public VinculoAdminService(FamiliaRepository familias, DeportistaRepository deportistas,
 			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, Clock reloj,
-			LockTimeoutVinculos lockTimeout) {
+			LockTimeoutVinculos lockTimeout, CierreVigenciasTutor cierres) {
 		this.familias = familias;
 		this.deportistas = deportistas;
 		this.vinculos = vinculos;
 		this.auditoria = auditoria;
 		this.reloj = reloj;
 		this.lockTimeout = lockTimeout;
+		this.cierres = cierres;
 	}
 
 	public static ExcepcionNegocio vinculoNoEncontrado() {
@@ -267,6 +270,7 @@ public class VinculoAdminService {
 	@Transactional
 	public VinculoRespuesta revocar(UsuarioAutenticado admin, UUID familiaId, UUID deportistaId, long versionEsperada,
 			DatosSolicitud datos) {
+		CierreVigenciasTutor.exigirAdmin(admin);
 		lockTimeout.aplicar();
 		UUID escuelaId = admin.escuelaId();
 		deportistas.bloquearParaVincular(escuelaId, List.of(deportistaId));
@@ -278,12 +282,16 @@ public class VinculoAdminService {
 		}
 		boolean eraPrincipal = vinculo.isEsPrincipal();
 		UUID vinculoId = vinculo.getId();
-		if (vinculo.getEstado() == EstadoVinculo.ACTIVO
-				&& vinculos.revocarSiActivo(escuelaId, familiaId, deportistaId) == 1) {
-			auditoria.registrar(new EventoAuditoria(escuelaId, admin.id(), AccionAuditoria.VINCULO_REVOCADO, RECURSO,
-					vinculoId, Map.of("familiaId", familiaId, "deportistaId", deportistaId, "eraPrincipal", eraPrincipal),
-					datos));
-			incrementarRevision(escuelaId, List.of(deportistaId));
+		if (vinculo.getEstado() == EstadoVinculo.ACTIVO) {
+			cierres.deVinculo(admin, vinculo.getFamiliaId(), vinculo.getDeportistaId());
+			int filas = CierreVigenciasTutor.confirmarBaja("fk_td_fd_activo",
+					() -> vinculos.revocarSiActivo(escuelaId, familiaId, deportistaId));
+			if (filas == 1) {
+				auditoria.registrar(new EventoAuditoria(escuelaId, admin.id(), AccionAuditoria.VINCULO_REVOCADO, RECURSO,
+						vinculoId, Map.of("familiaId", familiaId, "deportistaId", deportistaId, "eraPrincipal", eraPrincipal),
+						datos));
+				incrementarRevision(escuelaId, List.of(deportistaId));
+			}
 		}
 		// Proyeccion leida despues del incremento: trae la revision posterior a la operacion.
 		return vinculos.respuesta(escuelaId, familiaId, deportistaId).orElseThrow(VinculoAdminService::vinculoNoEncontrado);

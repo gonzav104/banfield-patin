@@ -90,18 +90,18 @@ class FamiliaConcurrenciaDbTest extends BaseDbTest {
         try { assertThat(latch.await(15, TimeUnit.SECONDS)).isTrue(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new AssertionError(e); }
     }
-    private void esperarBloqueo(Future<?> futuro) throws Exception {
+    private void esperarBloqueo(Future<?> futuro, String patron) throws Exception {
         long limite = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < limite) {
             long esperando = jdbc.sql("""
                     SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()
-                    AND wait_event_type='Lock' AND lower(query) LIKE '%update%familia%'
-                    """).query(Long.class).single();
+                    AND wait_event_type='Lock' AND lower(query) LIKE :patron
+                    """).param("patron", patron).query(Long.class).single();
             if (esperando > 0) return;
-            assertThat(futuro.isDone()).as("la segunda escritura debe alcanzar el UPDATE bloqueado").isFalse();
+            assertThat(futuro.isDone()).as("la segunda escritura debe alcanzar el bloqueo esperado").isFalse();
             Thread.sleep(20);
         }
-        throw new AssertionError("No se observo el UPDATE bloqueado en PostgreSQL");
+        throw new AssertionError("No se observó la sentencia bloqueada en PostgreSQL: " + patron);
     }
 
     @Test void detalleAltaYNoOpMantienenElContratoYNoCreanUsuarios() throws Exception {
@@ -178,7 +178,8 @@ class FamiliaConcurrenciaDbTest extends BaseDbTest {
                     .andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"))
                     .andReturn().getResponse().getStatus();
         });
-        try { esperarBloqueo(b); } finally { confirmar.countDown(); }
+        String patron = "desactivar".equals(metodo) ? "%cerrar_vigencias_tutor%" : "%update%familia%";
+        try { esperarBloqueo(b, patron); } finally { confirmar.countDown(); }
         a.get(15, TimeUnit.SECONDS);
         assertThat(b.get(15, TimeUnit.SECONDS)).isEqualTo(409);
     }

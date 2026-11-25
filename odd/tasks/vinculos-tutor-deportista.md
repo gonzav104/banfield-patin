@@ -31,7 +31,7 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - [x] C1-D · S10 · inventario estricto · inline · RED (GET no inventariado), GREEN 28/28 · `f94fd82` (Gentle AI: `under_budget`).
 - [ ] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · inline, con verificación independiente · riesgos 1/2/4 · implementación y focos verificados; suite PG integral y RDD pendientes.
 
-- [ ] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · base `159c738`.
+- [x] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · `6418186`, revisión nativa aprobada y reconocida.
 - [ ] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4.
 - [ ] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
 
@@ -399,3 +399,21 @@ Informar la solución implementada, la prueba de reproducción del fallo, el res
 «No crear commits hasta completar las revisiones requeridas.»
 
 RED en PostgreSQL 17.11: 4/4 fallaron al esperar el rechazo; la reactivación y el COMMIT no emitieron error. Log `/tmp/banfield-c2a-reactivacion-red.vfZY8a.log`. La corrección comprueba la reactivación en el UPDATE con metadatos transaccionales del cierre, sin sumar privilegios ni cambiar la guarda diferida.
+
+
+### L16 — Integración Java C2-A2/A3
+
+«Continuá con la integración Java de C2-A. No repitas la implementación SQL ni la revisión de V15.»
+«Cada operación debe utilizar las funciones restringidas de V15, verificar el alcance de escuela y conservar cierre, modificación del padre, revisión optimista y auditoría en una misma transacción.»
+«Obtener actor y escuela desde la sesión autenticada. No confiar en identificadores arbitrarios enviados por el cliente.»
+«No modificar V14 ni reescribir el commit V15.»
+
+Base congelada `64181868c79653f5f2b4a072f79033f0bcd257f4` (V15, árbol `a24bf23472cfd7222cc6bbc2e7d27eb358d8df60`, reconocimiento del linaje `review-5d7c0d7b9f0696a3`). C2-A2 conecta familia, deportista y revocación sin cambiar HTTP; C2-A3 agrega el comando ADMIN de tutor. El relevamiento delegado de solo lectura verificó el orden padre → marca → vigencias, con deportista primero en la revocación y sin inversión respecto de la carga documental. Se conservan el lock_timeout configurado, los controles de revisión y la auditoría de V15 sin duplicarla.
+
+### L17 — Retomar y verificar C2-A2
+
+«Continuar únicamente con el trabajo pendiente, sin repetir las pruebas exitosas salvo que los cambios posteriores lo justifiquen.»
+«Verificar que el tratamiento de conflictos bajo REPEATABLE READ se limite al conflicto identificado, sin ocultar otras violaciones de integridad.»
+«Ejecutar las suites completas de backend y PostgreSQL 17 sobre el candidato definitivo.»
+
+C2-A2: las tres operaciones ADMIN existentes cierran antes de escribir el padre, sin cambios de contrato ni SQL de migración. V15 audita por vigencia y Java mantiene la auditoría de la transición del padre. El foco anterior verificó 65/65 (concurrencia y HTTP) y luego 10/10 (incluido el timeout real). En PostgreSQL, un alta invisible bajo REPEATABLE READ impide confirmar la baja por la FK de la marca; una transacción nueva ve el alta y permite reintentar el comando entero. La traducción solo acepta SQLSTATE 23503 y el nombre exacto de la FK esperada. RED negativo de otro SQLSTATE: 1/3; GREEN 3/3 unitarias y 10/10 PG17 con el ajuste. No se repitió la regresión documental verde: se ejecutará con las suites completas del candidato definitivo después de C2-A3.

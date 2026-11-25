@@ -4,6 +4,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.compartido.RelojConfig;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
@@ -22,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * por varias clases para que el contexto se cachee una sola vez (el contenedor tiene max_connections acotado).
  */
 @TestConfiguration
-@Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class, LockTimeoutVinculos.class,
+@Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class, LockTimeoutVinculos.class, CierreVigenciasTutor.class,
 		FamiliaPortalService.class, FamiliaPortalTemporadasService.class, FamiliaPortalFichaService.class, AuditoriaService.class, RelojConfig.class })
 class ConfigFamiliasAdminDb {
 

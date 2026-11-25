@@ -30,6 +30,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
@@ -64,6 +65,7 @@ class VinculoAdminServiceTest {
 	private FamiliaDeportistaRepository vinculos;
 	private AuditoriaService auditoria;
 	private LockTimeoutVinculos lockTimeout;
+	private CierreVigenciasTutor cierres;
 	private VinculoAdminService servicio;
 	/** Estado (id, esPrincipal) de cada entidad en el momento exacto de cada saveAndFlush. */
 	private final List<String> escrituras = new ArrayList<>();
@@ -75,8 +77,9 @@ class VinculoAdminServiceTest {
 		vinculos = mock(FamiliaDeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
 		lockTimeout = mock(LockTimeoutVinculos.class);
+		cierres = mock(CierreVigenciasTutor.class);
 		servicio = new VinculoAdminService(familias, deportistas, vinculos, auditoria,
-				Clock.fixed(AHORA, ZoneOffset.UTC), lockTimeout);
+				Clock.fixed(AHORA, ZoneOffset.UTC), lockTimeout, cierres);
 		when(vinculos.saveAndFlush(any(FamiliaDeportista.class))).thenAnswer(inv -> {
 			FamiliaDeportista fd = inv.getArgument(0);
 			if (fd.getId() == null) {
@@ -412,9 +415,10 @@ class VinculoAdminServiceTest {
 		VinculoRespuesta respuesta = servicio.revocar(admin, familiaId, d1, 0L, DATOS);
 
 		assertThat(respuesta.vinculoId()).isEqualTo(fd.getId());
-		InOrder orden = inOrder(deportistas, vinculos, auditoria);
+		InOrder orden = inOrder(deportistas, vinculos, cierres, auditoria);
 		orden.verify(deportistas).bloquearParaVincular(escuelaId, List.of(d1));
 		orden.verify(vinculos).buscarVinculo(escuelaId, familiaId, d1);
+		orden.verify(cierres).deVinculo(admin, familiaId, d1);
 		orden.verify(vinculos).revocarSiActivo(escuelaId, familiaId, d1);
 		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
 		EventoAuditoria evento = eventos(1).get(0);

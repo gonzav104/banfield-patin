@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import com.banfieldpatin.backend.compartido.bd.LockTimeoutTransaccion;
 
 /**
- * Acota la espera del bloqueo de fila del deportista SOLO en las transacciones de vinculos: aplica el plazo de
+ * Acota la espera de los bloqueos de vínculos y cierres de vigencias: aplica el plazo de
  * {@link VinculosPropiedades} con el mecanismo comun {@link LockTimeoutTransaccion}.
  */
 @Component
