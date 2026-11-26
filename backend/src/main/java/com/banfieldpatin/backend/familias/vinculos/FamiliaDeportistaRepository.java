@@ -158,10 +158,6 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	 * Primer tramo del alcance de la FAMILIA: FROM y JOIN de vinculo, familia y deportista por id Y escuela. Una consulta del
 	 * portal puede agregar mas JOIN entre este tramo y {@link #ALCANCE_FAMILIA_FILTRO}.
 	 */
-	String ALCANCE_FAMILIA_SELECT_RESPONSABLES = """
-			select new com.banfieldpatin.backend.familias.portal.dto.ResponsableDeFamilia(t.id, t.nombre, t.apellido, v.tipo)
-			""";
-
 	String ALCANCE_FAMILIA_JOINS = """
 			 from FamiliaDeportista fd
 			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
@@ -209,6 +205,11 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
 
 	// ---------- responsables vigentes para la FAMILIA (solo lectura) ----------
+
+	/** Proyeccion de la lectura familiar de responsables: cuatro campos y nada mas (sin DNI, contactos, versiones ni ids de vigencia). */
+	String ALCANCE_FAMILIA_SELECT_RESPONSABLES = """
+			select new com.banfieldpatin.backend.familias.portal.dto.ResponsableDeFamilia(t.id, t.nombre, t.apellido, v.tipo)
+			""";
 
 	/** El deportista es propio (alcance completo de la familia). Decide el 404 uniforme sin cargar ningún dato personal. */
 	@Query("select count(fd) > 0" + ALCANCE_FAMILIA + """
