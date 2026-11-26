@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
+import com.banfieldpatin.backend.familias.responsables.EscrituraVigenciasTutor;
+import com.banfieldpatin.backend.familias.responsables.ResponsablesAdminService;
 import com.banfieldpatin.backend.compartido.RelojConfig;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
@@ -24,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @TestConfiguration
 @Import({ FamiliaAdminService.class, TutorAdminService.class, DeportistaAdminService.class, VinculoAdminService.class, LockTimeoutVinculos.class, CierreVigenciasTutor.class,
+		ResponsablesAdminService.class, EscrituraVigenciasTutor.class,
 		FamiliaPortalService.class, FamiliaPortalTemporadasService.class, FamiliaPortalFichaService.class, AuditoriaService.class, RelojConfig.class })
 class ConfigFamiliasAdminDb {
 
