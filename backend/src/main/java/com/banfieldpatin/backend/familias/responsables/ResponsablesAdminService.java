@@ -172,22 +172,27 @@ public class ResponsablesAdminService {
 	private static void exigirRevisiones(ResponsableAlta pedido, Familia familia, Deportista deportista, Tutor tutor,
 			long versionVinculos) {
 		List<DetalleError> obsoletas = new ArrayList<>();
-		if (pedido.versionFamilia() != familia.getVersion()) {
+		if (cambio(pedido.versionFamilia(), familia.getVersion())) {
 			obsoletas.add(new DetalleError("versionFamilia", "La revisión de la familia cambió."));
 		}
-		if (pedido.versionDeportista() != deportista.getVersion()) {
+		if (cambio(pedido.versionDeportista(), deportista.getVersion())) {
 			obsoletas.add(new DetalleError("versionDeportista", "La revisión del deportista cambió."));
 		}
-		if (pedido.versionTutor() != tutor.getVersion()) {
+		if (cambio(pedido.versionTutor(), tutor.getVersion())) {
 			obsoletas.add(new DetalleError("versionTutor", "La revisión del tutor cambió."));
 		}
-		if (pedido.versionVinculos() != versionVinculos) {
+		if (cambio(pedido.versionVinculos(), versionVinculos)) {
 			obsoletas.add(new DetalleError("versionVinculos", "La revisión de los vínculos del deportista cambió."));
 		}
 		if (!obsoletas.isEmpty()) {
 			throw new ExcepcionNegocio(HttpStatus.CONFLICT, "EDICION_DESACTUALIZADA",
 					FamiliaAdminService.edicionDesactualizada().getMessage(), obsoletas);
 		}
+	}
+
+	/** Compara por valor (nunca por referencia) la revisión observada, ya validada como no nula, con la vigente. */
+	private static boolean cambio(Long observada, long vigente) {
+		return observada.longValue() != vigente;
 	}
 
 	/** SHA-256 hexadecimal; {@code -} distingue el tipo ausente del tipo SIN_DETERMINAR. */
