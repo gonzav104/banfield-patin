@@ -17,10 +17,10 @@ Runner: Maven (`./mvnw`, `-Pdb-tests` para PostgreSQL 17 con Testcontainers). Es
 La corrección de metadatos de la versión vigente de un apto en estado CARGADO o APROBADO la deja en CARGADO (la aprobación se RETIRA y debe volver a revisarse) y se audita con los nombres de campos cambiados. Un apto OBSERVADO no se corrige: se reemplaza (nueva versión con sus propios metadatos). Lo impone V17 con el trigger `trg_documento_apto_metadatos` (`APTO_METADATOS_NO_EDITABLES`), no solo el servicio. Nunca queda un documento APROBADO con datos distintos a los revisados.
 
 ## Tasks
-- [ ] T1 · S2 S4 S8 · inline · Corte 1: V17, integridad, regla de vigencia, estado derivado y consultas (migración + `documentos/apto/*` hechos; pendiente tests, endpoints, inventarios, docs)
-- [ ] T2 · S3 S5 S6 · inline · Corte 2: carga FAMILIA con metadatos (motor + controller escritos; pendiente tests de RED/GREEN, actualizar `V6OperacionCargaDbTest:143`)
-- [ ] T3 · S6 S7 · inline · Corte 3: revisión/descarga de APTO, corrección ADMIN, bandeja, retención (pendiente)
-- [ ] T4 · S1 S9 · inline · Docs (`DOCUMENTOS`, `ROADMAP`, `DECISIONES O3`, `SEGURIDAD`, `TEMPORADAS`), suites completas, Gentle AI, commits
+- [x] T1 · S2 S4 S8 · inline · Corte 1: V17, integridad, regla de vigencia, estado derivado y consultas · commits 61be92a, 6f17007
+- [x] T2 · S3 S5 S6 · inline · Corte 2: carga FAMILIA con metadatos, huella idempotente, reemplazo de apto observado · commit 61be92a
+- [x] T3 · S6 S7 · inline · Corte 3: revisión/descarga de APTO, corrección ADMIN con retiro de aprobación, bandeja · commit 6f17007
+- [x] T4 · S1 S9 · inline · Docs, suites completas, Gentle AI, commits · commits 0d76caa, d5f83c6
 
 Route: todo inline (una sola cadena de cambios dependientes en el motor; sin unidades paralelas independientes → sin Writer trigger).
 
@@ -30,3 +30,8 @@ Pedido del usuario (aprobación del plan U21): ver `S1`–`S9` (citas y precisio
 
 ### L2 — avance 2026-11-26
 V17 escrita; paquete `documentos/apto` (regla, estado, validación); motor de carga extendido (metadatos en operación y documento, reemplazo hereda temporada, unicidad por temporada). Compila. Próximo: tests RED→GREEN del corte 1/2.
+
+### L3 — cierre local 2026-11-26
+Commits locales sobre e64124d: 61be92a (V17 + carga), 6f17007 (lectura, revisión, corrección), 0d76caa (docs), d5f83c6 (V17 con roles separados + enum). Suites limpias sobre d5f83c6: normal 1523/1523, PostgreSQL 1045/1045. Orden real: el código del motor se escribió antes que sus tests (la compactación invirtió el RED); los tests verifican estado real en BD y respuestas.
+Revisión Gentle AI: el candidato completo (2571 líneas) excedió el presupuesto del revisor (`lens_context_budget_exceeded`, sin autoridad creada) y se revisó en dos candidatos con consentimiento por candidato: 61be92a (lentes risk, resilience, reliability: 0 hallazgos, acknowledged) y 6f17007 (4 lentes: 2 sugerencias de legibilidad; se aplicó el uso del enum y se dejó el controlador duplicado por simetría con el checklist U20; acknowledged). La suite PostgreSQL detectó que `V16EscriturasVigenciasDbTest` asumía una sola migración pendiente: se fijó en V16 y se agregó la prueba de V17 con roles separados.
+Pendiente / limitaciones: retención y borrado de aptos vencidos (sin política), regla 2027 sin confirmar, frontend (segundo PR), `V5OperacionDbTest` es inestable por Docker (pasó aislado).
