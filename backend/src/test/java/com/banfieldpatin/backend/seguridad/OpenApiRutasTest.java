@@ -27,7 +27,8 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 	/** Rutas que responden 201 (se verifican contra los controladores en OpenApiEstadosRealesTest). */
 	static final Set<String> CREAN = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/invitaciones", "POST /api/auth/registro/invitacion",
 			"POST /api/admin/familias", "POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas",
-			"POST /api/admin/temporadas", "POST /api/admin/deportistas/{deportistaId}/temporadas");
+			"POST /api/admin/temporadas", "POST /api/admin/deportistas/{deportistaId}/temporadas",
+			"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores");
 	/** Rutas que responden 204 sin cuerpo. */
 	static final Set<String> SIN_CONTENIDO = Set.of("POST /api/auth/logout", "POST /api/admin/usuarios/{id}/mfa/reiniciar");
 
@@ -79,7 +80,7 @@ class OpenApiRutasTest extends BaseOpenApiWebMvc {
 		// Los 201 llevan Location (salvo el registro, que responde 201 sin Location); los 204 no tienen cuerpo.
 		for (String operacion : CREAN) {
 			assertThat(operacionDe(documento, operacion).path("responses").path("201").path("headers").has("Location"))
-					.as("Location en " + operacion).isEqualTo(!java.util.Set.of("POST /api/auth/registro/invitacion", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo").contains(operacion));
+					.as("Location en " + operacion).isEqualTo(!java.util.Set.of("POST /api/auth/registro/invitacion", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/deportistas/{deportistaId}/vinculos-tutores").contains(operacion));
 		}
 		for (String operacion : SIN_CONTENIDO) {
 			assertThat(operacionDe(documento, operacion).path("responses").path("204").has("content"))

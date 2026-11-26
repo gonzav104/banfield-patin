@@ -150,6 +150,8 @@ abstract class BaseOpenApiWebMvc {
 	@MockitoBean
 	protected com.banfieldpatin.backend.familias.responsables.VinculosTutorConsultaAdmin vinculosTutorConsultaAdmin;
 	@MockitoBean
+	protected com.banfieldpatin.backend.familias.responsables.ResponsablesAdminService responsablesAdminService;
+	@MockitoBean
 	protected com.banfieldpatin.backend.documentos.descarga.DescargaDocumentoService descargaDocumentoService;
 
 	@MockitoBean

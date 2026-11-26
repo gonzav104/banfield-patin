@@ -92,6 +92,7 @@ class LockTimeoutVinculosTest {
 				}
 			}
 		}
-		assertThat(usuarios).containsExactlyInAnyOrder("VinculoAdminService", "CierreVigenciasTutor", "TutorAdminService");
+		assertThat(usuarios).containsExactlyInAnyOrder("VinculoAdminService", "CierreVigenciasTutor", "TutorAdminService",
+				"ResponsablesAdminService");
 	}
 }
