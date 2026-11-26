@@ -119,8 +119,9 @@ export interface CreateInput {
 }
 
 /**
- * POST .../vinculos-tutores with the observed revisions and the key. A 2xx for another tutor, or with another declared type, is not a
- * confirmation. A reply to a REPEATED request may be a responsibility that was closed later: it is returned as is (the caller tells it apart).
+ * POST .../vinculos-tutores with the observed revisions and the key. A 2xx for another tutor or family is not a confirmation. A reply to a
+ * REPEATED request is the original responsibility as it is NOW: it may have been closed, or had its declared type edited, after the
+ * original alta, so neither the closure nor the type is compared with the request (the server already proved the request is the same).
  */
 export async function createResponsable(input: CreateInput): Promise<Responsable> {
   const { observation, tipo, key } = input;
@@ -132,7 +133,7 @@ export async function createResponsable(input: CreateInput): Promise<Responsable
     versionTutor: observation.versionTutor,
     versionVinculos: observation.versionVinculos,
   }, undefined, { headers: { 'Idempotency-Key': key } }));
-  if (row.tutorId !== observation.candidate.tutorId || row.familiaId !== observation.candidate.familiaId || row.tipo !== tipo) throw mismatch();
+  if (row.tutorId !== observation.candidate.tutorId || row.familiaId !== observation.candidate.familiaId) throw mismatch();
   return row;
 }
 

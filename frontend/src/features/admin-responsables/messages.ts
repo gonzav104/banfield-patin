@@ -66,7 +66,7 @@ export const ADD_STALE = 'Los datos cambiaron mientras decidías. Volvé a elegi
 export const ADD_DISABLED = 'El alta de responsables no está habilitada por el momento. No se agregó nada.';
 export const ADD_REJECTED = 'No se pudo agregar el responsable. Consultá el estado vigente antes de volver a intentar.';
 export const ADD_CONSULTED = 'Consultamos el estado vigente. El responsable ya figura en la lista y no hace falta repetir la solicitud.';
-export const ADD_PENDING_BLOCK = 'Hay un alta sin confirmar para este deportista. Resolvela antes de iniciar otra.';
+export const ADD_PENDING_BLOCK = 'Hay un alta sin confirmar para este deportista.';
 
 /* ---- Edit and revoke ---- */
 export const EDIT_BUTTON = 'Cambiar tipo';

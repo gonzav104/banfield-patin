@@ -66,7 +66,11 @@ export function TutorStatusControl({ tutor, familyId, onNotice }: { tutor: Tutor
   }
 
   async function consult() {
-    await detail.refetch();
+    const result = await detail.refetch();
+    if (result.isError) {
+      setIssue({ kind: 'uncertain', message: 'No pudimos consultar el estado vigente del tutor. No se reintentó la operación. Podés volver a consultar.' });
+      return;
+    }
     setOpen(null);
     onNotice('Mostramos el estado vigente del tutor.');
   }

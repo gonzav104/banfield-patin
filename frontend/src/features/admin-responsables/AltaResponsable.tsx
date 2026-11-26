@@ -12,7 +12,7 @@ import { forgetAttempt, pendingAttempt, rememberAttempt } from './attempts';
 import { useCandidates, useCreateResponsable, useObserveCandidate } from './hooks';
 import {
   ADD_BACK, ADD_BUTTON, ADD_CANDIDATES_EMPTY, ADD_CANDIDATES_INTRO, ADD_CANDIDATES_LEGEND, ADD_CANDIDATES_LOADING, ADD_CONFIRM, ADD_CONFLICT,
-  ADD_CONSULT, ADD_CONSULTED, ADD_CONTINUE, ADD_DISABLED, ADD_DONE, ADD_DONE_REPLAY, ADD_OBSERVING, ADD_REJECTED, ADD_RETRY_SAME, ADD_SENDING,
+  ADD_CONSULT, ADD_CONSULTED, ADD_PENDING_BLOCK, ADD_CONTINUE, ADD_DISABLED, ADD_DONE, ADD_DONE_REPLAY, ADD_OBSERVING, ADD_REJECTED, ADD_RETRY_SAME, ADD_SENDING,
   ADD_STALE, ADD_TIPO_HELP, ADD_TIPO_LABEL, ADD_TITLE, ADD_UNCERTAIN, responsablesErrorMessage,
 } from './messages';
 
@@ -106,10 +106,10 @@ export function AltaResponsable({ athleteId, athleteActive, disabled, onDone }: 
     if (sending.current) return;
     sending.current = true;
     try {
-      const open = await listOpenResponsables(athleteId);
+      const vigentes = await listOpenResponsables(athleteId);
       await invalidateResponsableQueries(client);
       if (!alive.current) return;
-      if (open.some((r) => r.tutorId === request.observation.candidate.tutorId)) {
+      if (vigentes.some((r) => r.tutorId === request.observation.candidate.tutorId)) {
         forgetAttempt(linkIdentity(client), athleteId);
         setOpen(false);
         onDone(ADD_CONSULTED);
@@ -127,7 +127,7 @@ export function AltaResponsable({ athleteId, athleteActive, disabled, onDone }: 
   return (
     <>
       <Button type="button" disabled={disabled || !athleteActive || busy} onClick={openDialog}>{ADD_BUTTON}</Button>
-      {pendingBlocked && !open ? <p role="status" className="text-sm text-muted">Hay un alta sin confirmar para este deportista. Abrí «{ADD_BUTTON}» para resolverla.</p> : null}
+      {pendingBlocked && !open ? <p role="status" className="text-sm text-muted">{ADD_PENDING_BLOCK} Abrí «{ADD_BUTTON}» para resolverla.</p> : null}
       {open ? (
         <ConfirmDialog title={ADD_TITLE} busy={busy} returnFocus={returnFocus.current} onCancel={close}
           description={<p className="text-sm text-muted">{TIPO_DISCLAIMER}</p>}>

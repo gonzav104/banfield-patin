@@ -214,6 +214,23 @@ describe('alta: confirmation, key and outcomes', () => {
     expect(within(next).getByRole('radio')).toHaveAccessibleName(/Beto Benitez/);
   });
 
+  it('retrying after a lost answer still succeeds when the type was edited meanwhile: the reply is the original as it is now', async () => {
+    const { athlete } = seed();
+    backend.override('post', base(athlete.id), 'lost', { once: true });
+    open(athlete.id);
+    let dialog = await openAlta();
+    await chooseAndContinue(dialog, /Ana Alvarez/);
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de responsable (opcional)'), 'Madre');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar alta' }));
+    expect(await within(dialog).findByText(/No pudimos confirmar si el responsable se agregó/)).toBeInTheDocument();
+    backend.responsablesOf(athlete.id)[0]!.tipo = 'PADRE'; // another administrator edited the type after the real commit
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reintentar la misma solicitud' }));
+    expect(await screen.findByText('Responsable agregado.')).toBeInTheDocument();
+    expect(backend.responsablesOf(athlete.id)).toHaveLength(1);
+    dialog = await openAlta();
+    expect(await within(dialog).findAllByRole('radio')).toHaveLength(1); // resolved: the next alta starts clean
+  });
+
   it('consulting after a lost answer finds the responsable, resolves the pending request and sends nothing more', async () => {
     const { athlete } = seed();
     backend.override('post', base(athlete.id), 'lost', { once: true });

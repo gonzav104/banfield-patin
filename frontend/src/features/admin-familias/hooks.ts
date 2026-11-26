@@ -84,12 +84,6 @@ export function useCreateTutor() {
 const currentUserId = (queryClient: QueryClient): string | null => queryClient.getQueryData<AuthUser | null>(sessionKey)?.id ?? null;
 
 /**
- * After a confirmed edit the response (the current state of the tutor, with its new revision) replaces the cached detail and the
- * family (its summary of tutors) is refreshed from the server. Editing a tutor does not move the family revision. A write is not
- * cancelled when the session changes while it is in flight: if its answer arrives for ANOTHER identity than the one that issued it,
- * it is dropped (it must never put the previous identity's full detail, DNI included, back in a cache that was just cleared).
- */
-/**
  * Activate / deactivate a tutor. The answer replaces the cached detail; the family is refreshed; and because deactivating closes the
  * tutor's responsibilities (and a reactivated tutor becomes eligible again), every responsibility and candidate read is invalidated.
  * An answer for another identity than the one that sent it is dropped, like in every private write.
@@ -111,6 +105,12 @@ export function useChangeTutorStatus() {
   });
 }
 
+/**
+ * After a confirmed edit the response (the current state of the tutor, with its new revision) replaces the cached detail and the
+ * family (its summary of tutors) is refreshed from the server. Editing a tutor does not move the family revision. A write is not
+ * cancelled when the session changes while it is in flight: if its answer arrives for ANOTHER identity than the one that issued it,
+ * it is dropped (it must never put the previous identity's full detail, DNI included, back in a cache that was just cleared).
+ */
 export function useUpdateTutor() {
   const queryClient = useQueryClient();
   return useMutation<TutorDetail, ApiError, { tutorId: string; familyId: string; datos: TutorUpdateInput; version: string; familyVersion: string }, { identity: string | null }>({

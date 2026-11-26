@@ -165,4 +165,23 @@ describe('tutor detail: activate and deactivate', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reactivar tutor' })).toBeInTheDocument());
     expect(statusPosts()).toHaveLength(1);
   });
+
+  it('if consulting after a lost answer fails too, the page shows its read error with a retry and never claims the state was shown', async () => {
+    const { family, ana } = seed();
+    backend.override('post', `/admin/tutores/${ana.id}/desactivar`, 'lost', { once: true });
+    backend.signIn('marcos@example.com');
+    renderApp(tutorPath(family.id, ana.id));
+    await userEvent.click(await screen.findByRole('button', { name: 'Desactivar tutor' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Desactivar tutor' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar desactivación' }));
+    await within(dialog).findByText(/No podemos confirmar el resultado/);
+    backend.override('get', `/admin/tutores/${ana.id}`, { status: 500, body: { codigo: 'ERROR', mensaje: 'x' } }, { once: true });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Consultar estado vigente' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText('Mostramos el estado vigente del tutor.')).not.toBeInTheDocument();
+    expect(statusPosts()).toHaveLength(1); // never repeated
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByRole('button', { name: 'Reactivar tutor' })).toBeInTheDocument(); // the lost write had really happened
+    expect(statusPosts()).toHaveLength(1);
+  });
 });
