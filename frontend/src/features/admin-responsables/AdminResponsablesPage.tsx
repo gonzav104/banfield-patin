@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { AthleteNotFound } from '@/features/admin-deportistas/AthleteNotFound';
@@ -14,8 +14,11 @@ import { LinksNotice, LinksReadError } from '@/features/admin-vinculos/LinksUi';
 import { tipoLabel } from '@/features/responsables/tipo';
 import { ApiError } from '@/lib/api-error';
 import { RESPONSABLES_PAGE_SIZE } from './api';
+import { AltaResponsable } from './AltaResponsable';
+import { ResponsableRowActions } from './ResponsableRowActions';
 import { useResponsables } from './hooks';
 import {
+  ADD_INACTIVE_NOTE,
   BACK_TO_ATHLETE,
   causeLabel,
   CURRENT_EMPTY,
@@ -41,7 +44,7 @@ const absent = (error: ApiError) => error.status === 404 || error.status === 400
 const totalPages = (total: number) => Math.max(1, Math.ceil(total / RESPONSABLES_PAGE_SIZE));
 
 /** One responsibility: name and declared type, and when it began. In the history a closed one also says why it ended; state is text, never only colour. */
-function Item({ item, history }: { item: Responsable; history: boolean }) {
+function Item({ item, history, actions }: { item: Responsable; history: boolean; actions?: ReactNode }) {
   const closed = item.cerradoEn !== null;
   return (
     <li className="space-y-1 py-3 first:pt-0 last:pb-0">
@@ -56,11 +59,12 @@ function Item({ item, history }: { item: Responsable; history: boolean }) {
         Desde {day(item.creadoEn)}
         {closed && item.cerradoEn && item.causaCierre ? ` · Hasta ${day(item.cerradoEn)} · ${causeLabel(item.causaCierre)}` : ''}
       </p>
+      {actions}
     </li>
   );
 }
 
-function PagedList({ athleteId, historial, empty }: { athleteId: string; historial: boolean; empty: string }) {
+function PagedList({ athleteId, historial, empty, onDone }: { athleteId: string; historial: boolean; empty: string; onDone?: (notice: string) => void }) {
   const [page, setPage] = useState(0);
   const query = useResponsables(athleteId, historial, page, true);
   if (query.isPending) return <LoadingBlock label={SCREEN_LOADING} />;
@@ -84,7 +88,8 @@ function PagedList({ athleteId, historial, empty }: { athleteId: string; histori
       ) : (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-white p-5">
           {data.contenido.map((item) => (
-            <Item key={item.id} item={item} history={historial} />
+            <Item key={item.id} item={item} history={historial}
+              actions={!historial && onDone && item.cerradoEn === null ? <ResponsableRowActions athleteId={athleteId} row={item} disabled={query.isFetching} onDone={onDone} /> : undefined} />
           ))}
         </ul>
       )}
@@ -102,6 +107,7 @@ function ResponsablesScreen() {
   const athleteId = valid ? id : '';
   const header = useAthleteHeader(athleteId, valid);
   const [history, setHistory] = useState(false);
+  const [notice, setNotice] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
   const ready = !!header.data;
   useEffect(() => {
@@ -149,7 +155,12 @@ function ResponsablesScreen() {
         <h2 id="responsables-vigentes" className="text-lg font-bold">
           {CURRENT_TITLE}
         </h2>
-        <PagedList athleteId={athlete.id} historial={false} empty={CURRENT_EMPTY} />
+        {notice ? <p role="status" className="rounded-lg border border-line p-4">{notice}</p> : null}
+        <div className="space-y-2">
+          <AltaResponsable athleteId={athlete.id} athleteActive={athlete.activo} disabled={false} onDone={setNotice} />
+          {athlete.activo ? null : <p className="text-sm text-muted">{ADD_INACTIVE_NOTE}</p>}
+        </div>
+        <PagedList athleteId={athlete.id} historial={false} empty={CURRENT_EMPTY} onDone={setNotice} />
       </section>
       <section aria-labelledby="responsables-historial" className="space-y-3">
         <h2 id="responsables-historial" className="text-lg font-bold">

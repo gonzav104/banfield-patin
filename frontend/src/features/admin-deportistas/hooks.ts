@@ -1,3 +1,4 @@
+import { invalidateResponsableQueries } from '@/features/responsables/keys';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
@@ -56,7 +57,8 @@ function useAthleteWrite<TInput extends { id: string }>(write: (input: TInput) =
     onSuccess: (saved, _input, context) => {
       if (context?.identity !== currentUserId(queryClient)) return;
       queryClient.setQueryData(athleteDetailKey(saved.id), saved);
-      return queryClient.invalidateQueries({ queryKey: athletesKey });
+      // Deactivating an athlete closes its open responsibilities as a side effect.
+      return Promise.all([queryClient.invalidateQueries({ queryKey: athletesKey }), invalidateResponsableQueries(queryClient)]);
     },
   });
 }

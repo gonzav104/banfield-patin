@@ -260,6 +260,8 @@ export class FakeBackend {
   private adminLinks: FakeAdminLink[] = [];
   private adminLinkVersions = new Map<string, number>();
   private responsables: FakeResponsable[] = [];
+  private altaEnabled = false;
+  private altaKeys = new Map<string, { huella: string; id: string }>();
   private seasons: FakeSeason[] = [];
   private sportsRows: FakeSportsRow[] = [];
   private invitations: FakeInvitation[] = [];
@@ -400,6 +402,7 @@ export class FakeBackend {
       if (family.activa !== target) {
         family.activa = target;
         family.version += 1;
+        if (!target) this.closeOpen((r) => r.familyId === family.id, 'FAMILIA_INACTIVA');
       }
     } else if (family.nombreReferencia !== name) {
       family.nombreReferencia = name;
@@ -884,6 +887,32 @@ export class FakeBackend {
     item.version += 1;
   }
 
+  /** The product default is disabled; a test turns the alta flag on explicitly, like the disposable E2E backend does. */
+  setAltaResponsables(enabled: boolean): this {
+    this.altaEnabled = enabled;
+    return this;
+  }
+
+  /** An open responsibility of a tutor that EXISTS in a family (so the alta can find the tutor and its revision). */
+  responsablesOf(athleteId: string): FakeResponsable[] {
+    return this.responsables.filter((r) => r.athleteId === athleteId);
+  }
+
+  private closeOpen(match: (r: FakeResponsable) => boolean, causa: FakeClosureCause): void {
+    for (const r of this.responsables) {
+      if (r.cerradoEn === null && match(r)) {
+        r.cerradoEn = '2026-04-01T12:00:00Z';
+        r.causaCierre = causa;
+        r.version += 1;
+      }
+    }
+  }
+
+  private responsableView(r: FakeResponsable) {
+    return { id: r.id, familiaId: r.familyId, tutorId: r.tutorId, nombreTutor: r.nombre, apellidoTutor: r.apellido, tipo: r.tipo,
+      creadoEn: r.creadoEn, cerradoEn: r.cerradoEn, causaCierre: r.causaCierre, version: String(r.version) };
+  }
+
   /** The count of links the ADMIN model holds (every state). */
   adminLinkCount(): number {
     return this.adminLinks.length;
@@ -955,7 +984,10 @@ export class FakeBackend {
       if ((body as { versionEsperada?: string })?.versionEsperada !== String(this.adminLinkVersions.get(athlete.id) ?? athlete.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Revisión desactualizada.');
       if (write[3] === 'revocar' && link.estado === 'REVOCADO') return { status: 200, body: this.linkView(link) };
       if (link.estado !== 'ACTIVO') return this.error(409, 'VINCULO_NO_ACTIVO', 'Vínculo no activo.');
-      if (write[3] === 'revocar') this.changeAdminLinkBehindTheScenes(link.id, { estado: 'REVOCADO' });
+      if (write[3] === 'revocar') {
+        this.changeAdminLinkBehindTheScenes(link.id, { estado: 'REVOCADO' });
+        this.closeOpen((r) => r.athleteId === link.athleteId && r.familyId === link.familyId, 'FAMILIA_DEPORTISTA_REVOCADA');
+      }
       else if (!link.esPrincipal) {
         this.adminLinks.filter((l) => l.athleteId === athlete.id).forEach((l) => { l.esPrincipal = false; });
         this.changeAdminLinkBehindTheScenes(link.id, { esPrincipal: true });
@@ -1087,6 +1119,7 @@ export class FakeBackend {
     if (athlete.activo !== target) {
       athlete.activo = target;
       athlete.version += 1;
+      if (!target) this.closeOpen((r) => r.athleteId === athlete.id, 'DEPORTISTA_INACTIVO');
     }
     return { status: 200, body: this.athleteDetail(athlete) };
   }
@@ -1122,20 +1155,104 @@ export class FakeBackend {
     return { contenido: items.slice(page * size, page * size + size), pagina: page, tamanio: size, totalElementos: items.length };
   }
 
-  /** Mirrors GET /api/admin/deportistas/{id}/vinculos-tutores: open ones by default, `historial=true` adds the closed ones; newest first. */
-  private responsablesAdminRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined): { status: number; body?: unknown } | null {
-    const match = /^\/admin\/deportistas\/([^/]+)\/vinculos-tutores$/.exec(path);
-    if (!match || method !== 'get') return null;
+  /**
+   * Mirrors /api/admin/deportistas/{id}/vinculos-tutores: GET (open ones by default, `historial=true` adds closed ones, newest first),
+   * POST (the idempotent alta: flag 503, key, strict body, 404, replay, the four revisions, states, duplicate), PUT {id} (type) and
+   * POST {id}/revocar. A closed responsibility is never reopened or edited.
+   */
+  private responsablesAdminRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined, body?: unknown, idempotencyKey: string | null = null): { status: number; body?: unknown } | null {
+    const match = /^\/admin\/deportistas\/([^/]+)\/vinculos-tutores(?:\/([^/]+)(\/revocar)?)?$/.exec(path);
+    if (!match) return null;
     if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
     if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
-    if (!this.adminAthletes.some((a) => a.id === match[1])) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
-    const historial = params.get('historial') === 'true';
-    const rows = this.responsables
-      .filter((r) => r.athleteId === match[1] && (historial || r.cerradoEn === null))
-      .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn) || b.id.localeCompare(a.id))
-      .map((r) => ({ id: r.id, familiaId: r.familyId, tutorId: r.tutorId, nombreTutor: r.nombre, apellidoTutor: r.apellido, tipo: r.tipo,
-        creadoEn: r.creadoEn, cerradoEn: r.cerradoEn, causaCierre: r.causaCierre, version: String(r.version) }));
-    return { status: 200, body: this.page(rows, params) };
+    const athlete = this.adminAthletes.find((a) => a.id === match[1]);
+    const itemId = match[2];
+    if (method === 'get' && !itemId) {
+      if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      const historial = params.get('historial') === 'true';
+      const rows = this.responsables
+        .filter((r) => r.athleteId === athlete.id && (historial || r.cerradoEn === null))
+        .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn) || b.id.localeCompare(a.id))
+        .map((r) => this.responsableView(r));
+      return { status: 200, body: this.page(rows, params) };
+    }
+    if (method === 'post' && !itemId) return this.createResponsable(athlete, body, idempotencyKey);
+    if (!itemId || (method !== 'put' && !(method === 'post' && match[3]))) return null;
+    const item = this.responsables.find((r) => r.id === itemId && r.athleteId === match[1]);
+    if (!athlete || !item) return this.error(404, 'RESPONSABLE_NO_ENCONTRADO', 'El responsable no existe.');
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = method === 'put' ? ['tipo', 'versionEsperada'] : ['versionEsperada'];
+    if (Object.keys(input).some((k) => !allowed.includes(k)) || typeof input.versionEsperada !== 'string' || !/^[0-9]{1,19}$/.test(input.versionEsperada)
+      || (method === 'put' && !Object.hasOwn(input, 'tipo'))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const tipos = ['MADRE', 'PADRE', 'TUTOR_LEGAL', 'OTRO_RESPONSABLE', 'SIN_DETERMINAR'];
+    if (method === 'put' && input.tipo !== null && !tipos.includes(input.tipo as string)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (String(item.version) !== input.versionEsperada) return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    if (item.cerradoEn !== null) return this.error(409, 'ESTADO_INCOMPATIBLE', 'El estado actual no permite esta operación.');
+    if (method === 'put') {
+      if (item.tipo !== input.tipo) {
+        item.tipo = input.tipo as FakeResponsableTipo;
+        item.version += 1;
+      }
+    } else {
+      this.closeOpen((r) => r.id === item.id, 'REVOCACION_ADMIN');
+    }
+    return { status: 200, body: this.responsableView(item) };
+  }
+
+  private createResponsable(athlete: FakeAdminAthlete | undefined, body: unknown, key: string | null): { status: number; body?: unknown } {
+    if (!this.altaEnabled) return this.error(503, 'ALTA_RESPONSABLES_DESHABILITADA', 'El alta de responsables no está habilitada.');
+    if (key === null || !UUID_FORMAT.test(key)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    const input = (body ?? {}) as Record<string, unknown>;
+    const allowed = ['tutorId', 'tipo', 'versionFamilia', 'versionDeportista', 'versionTutor', 'versionVinculos'];
+    const revisions = ['versionFamilia', 'versionDeportista', 'versionTutor', 'versionVinculos'];
+    const tipos = ['MADRE', 'PADRE', 'TUTOR_LEGAL', 'OTRO_RESPONSABLE', 'SIN_DETERMINAR'];
+    if (Object.keys(input).some((k) => !allowed.includes(k)) || typeof input.tutorId !== 'string'
+      || revisions.some((k) => typeof input[k] !== 'string' || !/^[0-9]{1,19}$/.test(input[k]))
+      || (input.tipo !== undefined && input.tipo !== null && !tipos.includes(input.tipo as string))) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    if (!athlete) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    const tipo = (input.tipo ?? null) as FakeResponsableTipo;
+    const huella = `${athlete.id}|${input.tutorId}|${tipo ?? '-'}`;
+    const previous = this.altaKeys.get(key);
+    if (previous) {
+      if (previous.huella !== huella) return this.error(409, 'IDEMPOTENCY_KEY_REUTILIZADA', 'La clave de idempotencia ya se usó con otro contenido.');
+      return { status: 201, body: this.responsableView(this.responsables.find((r) => r.id === previous.id)!) };
+    }
+    const found = this.findTutor(input.tutorId);
+    if (!found) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.');
+    const { tutor, family } = found;
+    const stale: { campo: string; mensaje: string }[] = [];
+    if (String(family.version) !== input.versionFamilia) stale.push({ campo: 'versionFamilia', mensaje: 'La revisión de la familia cambió.' });
+    if (String(athlete.version) !== input.versionDeportista) stale.push({ campo: 'versionDeportista', mensaje: 'La revisión del deportista cambió.' });
+    if (String(tutor.version ?? 0) !== input.versionTutor) stale.push({ campo: 'versionTutor', mensaje: 'La revisión del tutor cambió.' });
+    if (String(this.adminLinkVersions.get(athlete.id) ?? athlete.version) !== input.versionVinculos) stale.push({ campo: 'versionVinculos', mensaje: 'La revisión de los vínculos del deportista cambió.' });
+    if (stale.length > 0) return { status: 409, body: { codigo: 'EDICION_DESACTUALIZADA', mensaje: 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.', detalles: stale } };
+    const linked = this.adminLinks.some((l) => l.familyId === family.id && l.athleteId === athlete.id && l.estado === 'ACTIVO');
+    if (!family.activa || !athlete.activo || !tutor.activo || !linked) return this.error(409, 'ESTADO_INCOMPATIBLE', 'El estado actual no permite esta operación.');
+    if (this.responsables.some((r) => r.athleteId === athlete.id && r.tutorId === tutor.id && r.cerradoEn === null)) {
+      return this.error(409, 'RESPONSABLE_YA_VIGENTE', 'El tutor ya es responsable vigente del deportista.');
+    }
+    const created = this.addResponsable(athlete.id, family.id, { nombre: tutor.nombre, apellido: tutor.apellido, tipo, tutorId: tutor.id, creadoEn: '2026-05-01T12:00:00Z' });
+    this.altaKeys.set(key, { huella, id: created.id });
+    return { status: 201, body: this.responsableView(created) };
+  }
+
+  /** Mirrors POST /admin/tutores/{id}/activar|desactivar: 404, the revision (even when the state already matches), then an idempotent change; deactivating closes its open responsibilities. */
+  private writeTutorStatus(id: string, action: 'activar' | 'desactivar', body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (Object.keys(input).some((k) => k !== 'versionEsperada') || typeof input.versionEsperada !== 'string' || !/^[0-9]{1,19}$/.test(input.versionEsperada)) {
+      return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+    }
+    const found = this.findTutor(id);
+    if (!found) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.');
+    const { tutor, family } = found;
+    if (String(tutor.version ?? 0) !== input.versionEsperada) return this.error(409, 'EDICION_DESACTUALIZADA', 'El registro fue modificado. Es necesario volver a cargarlo antes de guardar.');
+    const target = action === 'activar';
+    if (tutor.activo !== target) {
+      tutor.activo = target;
+      tutor.version = (tutor.version ?? 0) + 1;
+      if (!target) this.closeOpen((r) => r.tutorId === tutor.id, 'TUTOR_INACTIVO');
+    }
+    return { status: 200, body: this.tutorFull(tutor, family.id) };
   }
 
   private invitationsRoute(
@@ -1205,6 +1322,8 @@ export class FakeBackend {
       return { status: 200, body: this.tutorFull(found.tutor, found.family.id) };
     }
     if (method === 'put' && tutorDetail) return this.updateTutor(tutorDetail[1]!, body);
+    const tutorStatus = /^\/admin\/tutores\/([^/]+)\/(activar|desactivar)$/.exec(path);
+    if (method === 'post' && tutorStatus) return this.writeTutorStatus(tutorStatus[1]!, tutorStatus[2] as 'activar' | 'desactivar', body);
     const tutorCreate = /^\/admin\/familias\/([^/]+)\/tutores$/.exec(path);
     if (method === 'post' && tutorCreate) return this.createTutor(tutorCreate[1]!, body);
     const familyWrite = /^\/admin\/familias\/([^/]+)(?:\/(activar|desactivar))?$/.exec(path);
@@ -1829,7 +1948,7 @@ export class FakeBackend {
     }
 
     const parsed = new URL(url, 'http://fake.local');
-    const responsables = this.responsablesAdminRoute(method, parsed.pathname, parsed.searchParams, current);
+    const responsables = this.responsablesAdminRoute(method, parsed.pathname, parsed.searchParams, current, body, idempotencyKey);
     if (responsables) return responsables;
     const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader, body);
     if (adminDocuments) return adminDocuments;

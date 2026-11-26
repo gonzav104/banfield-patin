@@ -162,7 +162,9 @@ test.describe('tutor detail (real backend)', () => {
     await expect(page.getByText('Madre', { exact: true })).toBeVisible();
     const text = await page.locator('body').innerText();
     expect(text).not.toMatch(/versi[oó]n|revisi[oó]n/i);
-    await expect(page.getByRole('button', { name: /editar|desactivar|eliminar/i })).toHaveCount(0);
+    // Since C3 the tutor detail offers its state control (confirmed in a dialog); there is still no deletion and no edit button.
+    await expect(page.getByRole('button', { name: /editar|eliminar|borrar/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Desactivar tutor' })).toHaveCount(1);
 
     for (const value of [realDni, ...PII]) {
       expect(page.url()).not.toContain(value);

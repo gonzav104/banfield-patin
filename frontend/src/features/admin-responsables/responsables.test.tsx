@@ -139,7 +139,7 @@ describe('responsables of an athlete: what the administrator sees (mock backend)
     expect(writes()).toEqual([]);
   });
 
-  it('is reachable from the athlete detail through a link, and the screen it opens is read-only', async () => {
+  it('is reachable from the athlete detail through a link, and merely opening the screen writes nothing', async () => {
     const { athlete } = seed();
     backend.signIn('marcos@example.com');
     renderApp(`/admin/deportistas/${athlete.id}`);
@@ -147,7 +147,6 @@ describe('responsables of an athlete: what the administrator sees (mock backend)
     expect(within(card).getByRole('link', { name: 'Ver responsables' })).toHaveAttribute('href', path(athlete.id));
     await userEvent.click(within(card).getByRole('link', { name: 'Ver responsables' }));
     await screen.findByRole('region', { name: 'Responsables vigentes' });
-    expect(screen.queryByRole('button', { name: /agregar|revocar|editar|activar|desactivar/i })).not.toBeInTheDocument();
     expect(writes()).toEqual([]);
   });
 });
