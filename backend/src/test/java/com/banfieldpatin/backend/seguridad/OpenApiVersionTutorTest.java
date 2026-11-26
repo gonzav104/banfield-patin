@@ -21,6 +21,19 @@ class OpenApiVersionTutorTest extends BaseOpenApiWebMvc {
         }
     }
 
+    @Test void comandosDeEstadoUsanSoloLaRevisionDecimalDelTutor() throws Exception {
+        var api = arbol();
+        var comando = api.path("components").path("schemas").path("TutorVersionEsperada");
+        assertThat(comando.path("properties").propertyNames()).containsExactly("versionEsperada");
+        assertThat(comando.path("properties").path("versionEsperada").path("type").asText()).isEqualTo("string");
+        assertThat(comando.path("required").toString()).contains("versionEsperada");
+        for (String operacion : new String[] { "activar", "desactivar" }) {
+            assertThat(api.path("paths").path("/api/admin/tutores/{id}/" + operacion).path("post").path("requestBody")
+                    .path("content").path("application/json").path("schema").path("$ref").asText())
+                    .isEqualTo("#/components/schemas/TutorVersionEsperada");
+        }
+    }
+
     @Test void elResumenDelTutorEnElDetalleDeFamiliaNoTraeRevision() throws Exception {
         var schemas = arbol().path("components").path("schemas");
         assertThat(schemas.path("TutorResumen").path("properties").has("version")).isFalse();

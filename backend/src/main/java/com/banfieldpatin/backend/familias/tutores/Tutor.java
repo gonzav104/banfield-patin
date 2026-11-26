@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 /**
  * Mapeo de gestion_patin.tutor (V1): sin asociaciones (UUID planos). La escuela y la familia son inmutables
  * ({@code updatable = false}); {@code usuario_id} NO se mapea (la vinculacion tutor-usuario no es parte de este
- * modulo); {@code activo} nace en true y no se modifica (los tutores no se desactivan). Los datos personales se cambian
+ * modulo); {@code activo} nace en true y cambia solo mediante los comandos de estado. Los datos personales se cambian
  * solo con {@link #actualizar}, que informa los NOMBRES de los campos modificados (nunca sus valores).
  */
 @Entity
@@ -52,10 +52,10 @@ public class Tutor {
 
 	private String parentesco;
 
-	@Column(nullable = false, updatable = false)
+	@Column(nullable = false)
 	private boolean activo;
 
-	/** Revision de escritura (FE-05/U4): avanza solo cuando cambian datos del tutor; el predicado del UPDATE lo hace atomico. */
+	/** Revision de escritura (FE-05/U4): avanza cuando cambian datos o el estado del tutor; el predicado del UPDATE lo hace atomico. */
 	@Version
 	@Column(nullable = false)
 	private long version;
@@ -74,6 +74,14 @@ public class Tutor {
 		t.parentesco = parentesco;
 		t.activo = true;
 		return t;
+	}
+
+	void activar() {
+		activo = true;
+	}
+
+	void desactivar() {
+		activo = false;
 	}
 
 	/** Reemplazo completo de los datos personales; devuelve los nombres de los campos cuyo valor cambio. */

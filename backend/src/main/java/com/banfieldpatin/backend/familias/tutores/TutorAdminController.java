@@ -18,6 +18,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
+import com.banfieldpatin.backend.familias.tutores.dto.TutorVersionEsperada;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,5 +55,17 @@ public class TutorAdminController {
 	public TutorRespuesta actualizar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
 			@Valid @RequestBody TutorActualizacion solicitud, HttpServletRequest request) {
 		return servicio.actualizar(UsuarioAutenticado.desde(jwt), id, solicitud, DatosSolicitud.de(request));
+	}
+
+	@PostMapping("/tutores/{id}/activar")
+	public TutorRespuesta activar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+			@Valid @RequestBody TutorVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.activar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(), DatosSolicitud.de(request));
+	}
+
+	@PostMapping("/tutores/{id}/desactivar")
+	public TutorRespuesta desactivar(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+			@Valid @RequestBody TutorVersionEsperada solicitud, HttpServletRequest request) {
+		return servicio.desactivar(UsuarioAutenticado.desde(jwt), id, solicitud.versionEsperada(), DatosSolicitud.de(request));
 	}
 }

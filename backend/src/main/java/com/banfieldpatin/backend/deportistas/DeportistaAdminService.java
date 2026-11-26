@@ -26,6 +26,7 @@ import com.banfieldpatin.backend.deportistas.dto.DeportistaDetalle;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaResumen;
 import com.banfieldpatin.backend.deportistas.dto.DeportistaSolicitud;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.persistence.EntityManager;
@@ -36,7 +37,7 @@ import jakarta.persistence.LockModeType;
  * escuela es indistinguible de uno inexistente (mismo 404). DNI y CUIL se normalizan aqui otra vez antes de persistir.
  * El DNI es unico por escuela INCLUSO entre inactivos (el indice de V1 no es parcial): una comprobacion previa da el
  * codigo amable (DNI_DUPLICADO si el titular esta activo, DNI_RESERVADO_POR_INACTIVO si no) y la base arbitra la carrera
- * (el perdedor recibe DNI_DUPLICADO). Activar/desactivar NO toca vinculos ni familias. La auditoria se escribe en la
+ * (el perdedor recibe DNI_DUPLICADO). Activar/desactivar no modifica vínculos familiares; la baja cierra las vigencias de tutores. La auditoria se escribe en la
  * transaccion del cambio, solo cuando hubo un cambio real y solo con ids y NOMBRES de campos: nunca se registra ni se
  * audita un DNI, un CUIL ni ningun otro dato personal.
  */
@@ -50,11 +51,14 @@ public class DeportistaAdminService {
 	private final DeportistaRepository deportistas;
 	private final AuditoriaService auditoria;
 	private final EntityManager em;
+	private final CierreVigenciasTutor cierres;
 
-	public DeportistaAdminService(DeportistaRepository deportistas, AuditoriaService auditoria, EntityManager em) {
+	public DeportistaAdminService(DeportistaRepository deportistas, AuditoriaService auditoria, EntityManager em,
+			CierreVigenciasTutor cierres) {
 		this.deportistas = deportistas;
 		this.auditoria = auditoria;
 		this.em = em;
+		this.cierres = cierres;
 	}
 
 	public static ExcepcionNegocio deportistaNoEncontrado() {
@@ -143,9 +147,12 @@ public class DeportistaAdminService {
 
 	@Transactional
 	public DeportistaDetalle desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		CierreVigenciasTutor.exigirAdmin(admin);
 		Deportista deportista = cargarParaModificar(admin, id, versionEsperada);
-		if (deportista.desactivar()) {
-			deportistas.saveAndFlush(deportista);
+		if (deportista.isActivo()) {
+			cierres.deDeportista(admin, deportista.getId());
+			deportista.desactivar();
+			CierreVigenciasTutor.confirmarBaja("fk_td_deportista_activo", () -> deportistas.saveAndFlush(deportista));
 			registrar(admin, AccionAuditoria.DEPORTISTA_DESACTIVADO, deportista, Map.of(), datos);
 		}
 		return DeportistaDetalle.de(deportista);

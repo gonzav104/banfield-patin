@@ -32,6 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.banfieldpatin.backend.compartido.RelojConfig;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.compartido.error.ManejadorGlobalErrores;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.seguridad.CookieBearerTokenResolver;
 import com.banfieldpatin.backend.seguridad.CookieSesion;
 import com.banfieldpatin.backend.seguridad.JwtConfig;
@@ -81,6 +82,8 @@ class DeportistaLogsSinDocumentosWebMvcTest {
 	AuditoriaService auditoria;
 	@MockitoBean
 	EntityManager em;
+	@MockitoBean
+	CierreVigenciasTutor cierres;
 
 	private final UUID escuelaId = UUID.randomUUID();
 	private final UUID id = UUID.randomUUID();

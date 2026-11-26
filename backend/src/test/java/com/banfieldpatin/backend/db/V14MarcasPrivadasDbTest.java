@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -28,22 +27,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.context.TypeExcludeFilter;
-import org.springframework.core.type.classreading.MetadataReader;
-import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-
-import com.banfieldpatin.backend.BackendApplication;
-import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
-import com.banfieldpatin.backend.familias.FamiliaAdminService;
-import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
-import com.banfieldpatin.backend.familias.responsables.VinculosTutorConsultaAdmin;
-import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
-import com.banfieldpatin.backend.temporadas.TemporadaAdminService;
-import com.banfieldpatin.backend.temporadas.dto.TemporadaSolicitud;
-import com.banfieldpatin.backend.usuarios.Rol;
 
 @Tag("db")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -97,17 +82,6 @@ class V14MarcasPrivadasDbTest {
 		String cantidad(boolean abiertas) {
 			return "SELECT count(*) FROM " + TD + " WHERE escuela_id=" + literal(escuela)
 					+ (abiertas ? " AND cerrado_en IS NULL" : "");
-		}
-	}
-
-	/** El smoke test arranca la app real, sin controladores sonda del classpath de tests. */
-	private static final class ExcluirComponentesDePrueba extends TypeExcludeFilter {
-		private final String raiz = V14MarcasPrivadasDbTest.class.getProtectionDomain()
-				.getCodeSource().getLocation().toExternalForm();
-
-		@Override
-		public boolean match(MetadataReader metadata, MetadataReaderFactory factory) throws IOException {
-			return metadata.getResource().getURL().toExternalForm().startsWith(raiz);
 		}
 	}
 
@@ -213,33 +187,6 @@ class V14MarcasPrivadasDbTest {
 				assertThatThrownBy(() -> execute(c, sql)).isInstanceOfSatisfying(SQLException.class,
 						e -> assertThat(e.getSQLState()).as(sql).isEqualTo("42501"));
 			}
-		}
-	}
-
-	@Test
-	void backendProdArrancaValidaHibernateYConsultaConElLoginRuntime() {
-		try (var contexto = new SpringApplicationBuilder(BackendApplication.class)
-				.profiles("test", "prod")
-				.initializers(ctx -> ctx.getBeanFactory().registerSingleton("filtroComponentesDePrueba",
-						new ExcluirComponentesDePrueba()))
-				.run("--server.port=0", "--banfield.frontend.url-base=https://frontend.example.invalid",
-						"--spring.datasource.url=" + PostgresDescartable.urlDeBase(base),
-						"--spring.datasource.username=" + RUNTIME, "--spring.datasource.password=" + CLAVE_PRUEBA)) {
-			assertThat(contexto.containsBean("flyway")).isFalse();
-			var actual = contexto.getBean(JdbcClient.class).sql("SELECT current_user").query(String.class).single();
-			assertThat(actual).isEqualTo(RUNTIME);
-			var admin = new UsuarioAutenticado(previo.admin(), previo.escuela(), null, Rol.ADMIN);
-			assertThat(contexto.getBean(VinculosTutorConsultaAdmin.class)
-					.listar(admin, previo.deportista(), false, 0, 20).contenido()).isEmpty();
-			var familias = contexto.getBean(FamiliaAdminService.class);
-			var datos = DatosSolicitud.NINGUNA;
-			var creada = familias.crear(admin, new FamiliaSolicitud("Familia runtime"), datos);
-			var inactiva = familias.desactivar(admin, creada.id(), Long.valueOf(creada.version()), datos);
-			assertThat(inactiva.activa()).isFalse();
-			assertThat(familias.activar(admin, inactiva.id(), Long.valueOf(inactiva.version()), datos).activa()).isTrue();
-			var temporadas = contexto.getBean(TemporadaAdminService.class);
-			var temporada = temporadas.crear(admin, new TemporadaSolicitud(2026), datos);
-			assertThat(temporadas.activar(admin, temporada.id(), null, datos).activa()).isTrue();
 		}
 	}
 

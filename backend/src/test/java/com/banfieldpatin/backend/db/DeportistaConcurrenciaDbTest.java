@@ -273,7 +273,7 @@ class DeportistaConcurrenciaDbTest extends BaseDbTest {
     @Test void unaEdicionConfirmadaMientrasSeDesactivaRechazaLaDesactivacion() throws Exception {
         MvcResult desactivacion = carrera(() -> deportistasSvc.actualizar(admin, deportista, cambio("Banfield", 0), DATOS),
                 () -> mvc.perform(comando(post(ruta() + "/desactivar"), version("\"0\""))).andReturn(),
-                "%update%deportista%");
+                "%cerrar_vigencias_tutor%");
         assertConflicto(desactivacion, "EDICION_DESACTUALIZADA");
         assertThat(activo()).isTrue();
         assertThat(localidad()).isEqualTo("Banfield");
@@ -283,7 +283,7 @@ class DeportistaConcurrenciaDbTest extends BaseDbTest {
     @Test void activarYDesactivarConcurrentesSobreLaMismaRevisionDejanUnSoloGanador() throws Exception {
         MvcResult activar = carrera(() -> deportistasSvc.desactivar(admin, deportista, 0L, DATOS),
                 () -> mvc.perform(comando(post(ruta() + "/desactivar"), version("\"0\""))).andReturn(), // mismo estado final
-                "%update%deportista%");
+                "%cerrar_vigencias_tutor%");
         // Aunque el estado final ya coincidia, la segunda opera con una revision que dejo de ser vigente: se rechaza.
         assertConflicto(activar, "EDICION_DESACTUALIZADA");
         assertThat(activo()).isFalse();
@@ -318,7 +318,7 @@ class DeportistaConcurrenciaDbTest extends BaseDbTest {
         MvcResult desactivacion = carrera(() -> vinculosSvc.vincular(admin, familia,
                 List.of(new com.banfieldpatin.backend.familias.vinculos.dto.DeportistaAVincular(deportista, 0L)), DATOS),
                 () -> mvc.perform(comando(post(ruta() + "/desactivar"), version("\"0\""))).andReturn(),
-                "%update%deportista%");
+                "%cerrar_vigencias_tutor%");
         // La revision cubre datos personales y estado, no los vinculos: la desactivacion espero, vio la misma revision y se aplico.
         assertThat(desactivacion.getResponse().getStatus()).isEqualTo(200);
         assertThat((String) JsonPath.read(desactivacion.getResponse().getContentAsString(), "$.version")).isEqualTo("1");

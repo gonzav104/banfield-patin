@@ -17,20 +17,22 @@ import com.banfieldpatin.backend.deportistas.DocumentoIdentidad;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
+import com.banfieldpatin.backend.familias.vinculos.LockTimeoutVinculos;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 
 /**
- * Alta, edicion y lectura de tutores para ADMIN. La escuela y el actor salen siempre del JWT; un id de otra escuela es
+ * Alta, edición, estado y lectura de tutores para ADMIN. La escuela y el actor salen siempre del JWT; un id de otra escuela es
  * indistinguible de uno inexistente (mismo 404). Alta y edicion exigen una familia ACTIVA y las revisiones observadas
  * (FE-05/U4): el orden de comprobaciones es 404 (familia o tutor) -> 409 FAMILIA_INACTIVA -> revision de la familia ->
  * revision del tutor (409 EDICION_DESACTUALIZADA, incluso si el valor ya coincide) -> bloqueos -> escritura. Una familia
- * inactiva rechaza TODO, incluso una edicion identica y con revisiones viejas, sin escribir ni auditar. Las lecturas
+ * inactiva rechaza altas y ediciones, incluso si son idénticas o tienen revisiones viejas. Las lecturas
  * no dependen del estado de la familia. El DNI es opcional, se normaliza y NO es unico. La auditoria lleva ids y
  * NOMBRES de campos, nunca valores personales.
  *
@@ -52,13 +54,17 @@ public class TutorAdminService {
 	private final FamiliaRepository familias;
 	private final AuditoriaService auditoria;
 	private final EntityManager em;
+	private final CierreVigenciasTutor cierres;
+	private final LockTimeoutVinculos lockTimeout;
 
 	public TutorAdminService(TutorRepository tutores, FamiliaRepository familias, AuditoriaService auditoria,
-			EntityManager em) {
+			EntityManager em, CierreVigenciasTutor cierres, LockTimeoutVinculos lockTimeout) {
 		this.tutores = tutores;
 		this.familias = familias;
 		this.auditoria = auditoria;
 		this.em = em;
+		this.cierres = cierres;
+		this.lockTimeout = lockTimeout;
 	}
 
 	public static ExcepcionNegocio tutorNoEncontrado() {
@@ -106,6 +112,40 @@ public class TutorAdminService {
 					Map.of("familiaId", tutor.getFamiliaId().toString(), "camposModificados", cambios), datos);
 		}
 		return TutorRespuesta.de(tutor);
+	}
+
+	/** Cambia solo el estado del tutor; no reabre vigencias ni requiere revisar su familia. */
+	@Transactional
+	public TutorRespuesta activar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Tutor tutor = cargarParaCambiarEstado(admin, id, versionEsperada);
+		if (!tutor.isActivo()) {
+			lockTimeout.aplicar();
+			tutor.activar();
+			tutores.saveAndFlush(tutor);
+			registrar(admin, AccionAuditoria.TUTOR_ACTIVADO, tutor, Map.of(), datos);
+		}
+		return TutorRespuesta.de(tutor);
+	}
+
+	/** V15 cierra y audita las vigencias; Java registra la transición del tutor en la misma transacción. */
+	@Transactional
+	public TutorRespuesta desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		Tutor tutor = cargarParaCambiarEstado(admin, id, versionEsperada);
+		if (tutor.isActivo()) {
+			cierres.deTutor(admin, tutor.getFamiliaId(), tutor.getId());
+			tutor.desactivar();
+			CierreVigenciasTutor.confirmarBaja("fk_td_tutor_activo", () -> tutores.saveAndFlush(tutor));
+			registrar(admin, AccionAuditoria.TUTOR_DESACTIVADO, tutor, Map.of(), datos);
+		}
+		return TutorRespuesta.de(tutor);
+	}
+
+	private Tutor cargarParaCambiarEstado(UsuarioAutenticado admin, UUID id, Long versionEsperada) {
+		CierreVigenciasTutor.exigirAdmin(admin);
+		Tutor tutor = cargar(admin, id);
+		exigirRevisionDelTutor(tutor, versionEsperada);
+		em.lock(tutor, LockModeType.OPTIMISTIC);
+		return tutor;
 	}
 
 	private Tutor cargar(UsuarioAutenticado admin, UUID id) {

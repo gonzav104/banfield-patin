@@ -58,21 +58,25 @@ class TutorTest {
 
 	@Test
 	void actualizarNoTocaLaEscuelaLaFamiliaNiElEstado() {
-		Tutor t = tutor();
-
-		t.actualizar("Otra", "Persona", null, null, null, null);
-
-		assertThat(t.getEscuelaId()).isEqualTo(escuelaId);
-		assertThat(t.getFamiliaId()).isEqualTo(familiaId);
-		assertThat(t.isActivo()).isTrue();
+		for (boolean activo : new boolean[] { true, false }) {
+			Tutor t = tutor();
+			if (!activo) {
+				t.desactivar();
+			}
+			t.actualizar("Otra", "Persona", null, null, null, null);
+			assertThat(t.getEscuelaId()).isEqualTo(escuelaId);
+			assertThat(t.getFamiliaId()).isEqualTo(familiaId);
+			assertThat(t.isActivo()).isEqualTo(activo);
+		}
 	}
 
 	@Test
-	void laFamiliaLaEscuelaYElEstadoSonInmutablesEnElMapeo() throws Exception {
-		for (String campo : new String[] { "familiaId", "escuelaId", "activo" }) {
+	void familiaYEscuelaSonInmutablesYElMapeoAdmiteElCambioDeEstado() throws Exception {
+		for (String campo : new String[] { "familiaId", "escuelaId" }) {
 			Field f = Tutor.class.getDeclaredField(campo);
 			assertThat(f.getAnnotation(Column.class).updatable()).as(campo).isFalse();
 		}
+		assertThat(Tutor.class.getDeclaredField("activo").getAnnotation(Column.class).updatable()).isTrue();
 	}
 
 	@Test

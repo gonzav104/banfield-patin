@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.TestPropertySource;
 
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
@@ -53,6 +54,9 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 
 	@Autowired
 	LockTimeoutVinculos lockTimeout;
+
+	@Autowired
+	CierreVigenciasTutor cierres;
 	@Autowired
 	FamiliaRepository familias;
 	@Autowired
@@ -166,7 +170,7 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 				ignorarExistentes
 						? Map.of("principalesActivos", args -> List.of(), "deFamiliaYDeportistas", args -> List.of())
 						: Map.of("principalesActivos", args -> List.of()));
-		return new VinculoAdminService(familias, sinBloqueo, sinComprobaciones, auditoria, reloj, lockTimeout);
+		return new VinculoAdminService(familias, sinBloqueo, sinComprobaciones, auditoria, reloj, lockTimeout, cierres);
 	}
 
 	@Test
@@ -239,7 +243,7 @@ class VinculoServiceDbTest extends BaseVinculosDb {
 		FamiliaRepository inventa = decorar(FamiliaRepository.class, familias, Map.of("findByIdAndEscuelaId",
 				args -> Optional.of(FixturesDominio.familia((UUID) args[0], (UUID) args[1], true))));
 		VinculoAdminService servicioConFamiliaFalsa = new VinculoAdminService(inventa, deportistas, repositorio, auditoria,
-				reloj, lockTimeout);
+				reloj, lockTimeout, cierres);
 
 		Throwable e = catchThrowable(() -> transaccion.execute(s -> vigente.usando(servicioConFamiliaFalsa).vincular(admin, inexistente, List.of(d), DATOS)));
 

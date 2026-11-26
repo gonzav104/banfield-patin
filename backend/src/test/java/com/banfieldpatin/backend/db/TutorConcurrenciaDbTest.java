@@ -302,13 +302,12 @@ class TutorConcurrenciaDbTest extends BaseDbTest {
     }
 
     @Test void unaAltaEnCursoHaceEsperarALaDesactivacionYAmbasQuedanOrdenadas() throws Exception {
-        // La alta (revision 0) escribe y sigue abierta: la desactivacion NO puede confirmarse en medio. Esta direccion queda ordenada
-        // tambien por la FK tutor->familia (comprobado quitando el FOR SHARE: la espera sigue); la que SI depende del bloqueo explicito
-        // es la contraria (alta o edicion contra una desactivacion ya iniciada), cubierta por las tres pruebas anteriores.
+        // El alta con revisión 0 mantiene FOR SHARE sobre la familia hasta confirmar. La baja
+        // espera al tomar el bloqueo del padre en la función de cierre, antes del UPDATE.
         MvcResult desactivacion = carrera(() -> tutoresSvc.crear(admin, familia,
                 new TutorSolicitud("Eva", "Nueva", null, null, null, null, 0L), DATOS),
                 () -> mvc.perform(comando(post("/api/admin/familias/" + familia + "/desactivar"), "{\"versionEsperada\":\"0\"}")).andReturn(),
-                "%update%familia%");
+                "%cerrar_vigencias_tutor%");
         assertThat(desactivacion.getResponse().getStatus()).isEqualTo(200); // despues de la alta, con la revision que no se movio
         assertThat(tutores()).isEqualTo(2);
         assertThat(versionFamilia()).isEqualTo(1);

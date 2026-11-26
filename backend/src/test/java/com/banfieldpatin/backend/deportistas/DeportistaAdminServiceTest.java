@@ -32,6 +32,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
@@ -65,6 +66,7 @@ class DeportistaAdminServiceTest {
 	private DeportistaRepository deportistas;
 	private AuditoriaService auditoria;
 	private EntityManager em;
+	private CierreVigenciasTutor cierres;
 	private DeportistaAdminService servicio;
 
 	@BeforeEach
@@ -72,7 +74,8 @@ class DeportistaAdminServiceTest {
 		deportistas = mock(DeportistaRepository.class);
 		auditoria = mock(AuditoriaService.class);
 		em = mock(EntityManager.class);
-		servicio = new DeportistaAdminService(deportistas, auditoria, em);
+		cierres = mock(CierreVigenciasTutor.class);
+		servicio = new DeportistaAdminService(deportistas, auditoria, em, cierres);
 		when(deportistas.saveAndFlush(any(Deportista.class))).thenAnswer(inv -> {
 			Deportista d = inv.getArgument(0);
 			if (d.getId() == null) {
@@ -428,7 +431,9 @@ class DeportistaAdminServiceTest {
 
 		assertThat(r.activo()).isFalse();
 		assertThat(d.isActivo()).isFalse();
-		verify(deportistas).saveAndFlush(d);
+		var orden = org.mockito.Mockito.inOrder(cierres, deportistas);
+		orden.verify(cierres).deDeportista(admin, id);
+		orden.verify(deportistas).saveAndFlush(d);
 		EventoAuditoria evento = unicoEvento();
 		assertThat(evento.accion()).isEqualTo(AccionAuditoria.DEPORTISTA_DESACTIVADO);
 		assertThat(evento.detalle()).isEmpty();
@@ -442,7 +447,7 @@ class DeportistaAdminServiceTest {
 
 		assertThat(r.activo()).isFalse();
 		verify(deportistas, never()).saveAndFlush(any());
-		verifyNoInteractions(auditoria);
+		verifyNoInteractions(auditoria, cierres);
 	}
 
 	@Test
@@ -575,11 +580,10 @@ class DeportistaAdminServiceTest {
 	}
 
 	@Test
-	void elServicioNoTieneDependenciaConVinculosNiFamiliasPorLoQueNuncaLosToca() {
-		// F4: activar/desactivar y editar solo hablan con el repositorio de deportistas, la auditoria y el gestor de
-		// entidades (solo para el bloqueo optimista del propio deportista, FE-05/U6).
+	void elServicioNoDependeDeRepositoriosDeFamiliaNiDeVinculos() {
+		// C2-A añade únicamente el puerto de cierre de vigencias; no habilita mutar familias ni vínculos familiares.
 		assertThat(DeportistaAdminService.class.getDeclaredConstructors()).hasSize(1);
 		assertThat(DeportistaAdminService.class.getDeclaredConstructors()[0].getParameterTypes())
-				.containsExactly(DeportistaRepository.class, AuditoriaService.class, EntityManager.class);
+				.containsExactly(DeportistaRepository.class, AuditoriaService.class, EntityManager.class, CierreVigenciasTutor.class);
 	}
 }

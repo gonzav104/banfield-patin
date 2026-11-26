@@ -30,11 +30,12 @@ import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorResumen;
 import com.banfieldpatin.backend.familias.vinculos.ConteoVinculos;
 import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
 /**
  * Gestion administrativa de familias. La escuela y el actor salen siempre del JWT ({@link UsuarioAutenticado}); un id
- * de otra escuela es indistinguible de uno inexistente (mismo 404). Activar/desactivar NO tiene cascada: no toca
+ * de otra escuela es indistinguible de uno inexistente (mismo 404). La baja cierra las vigencias de tutores; activar/desactivar no modifica
  * tutores, vinculos, deportistas, usuarios ni invitaciones. La auditoria se escribe en la transaccion del cambio y
  * solo cuando hubo un cambio real (las llamadas idempotentes no escriben nada).
  */
@@ -48,14 +49,17 @@ public class FamiliaAdminService {
 	private final FamiliaDeportistaRepository vinculos;
 	private final AuditoriaService auditoria;
 	private final EntityManager em;
+	private final CierreVigenciasTutor cierres;
 
 	public FamiliaAdminService(FamiliaRepository familias, TutorRepository tutores,
-			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, EntityManager em) {
+			FamiliaDeportistaRepository vinculos, AuditoriaService auditoria, EntityManager em,
+			CierreVigenciasTutor cierres) {
 		this.familias = familias;
 		this.tutores = tutores;
 		this.vinculos = vinculos;
 		this.auditoria = auditoria;
 		this.em = em;
+		this.cierres = cierres;
 	}
 
 	public static ExcepcionNegocio familiaNoEncontrada() {
@@ -126,9 +130,12 @@ public class FamiliaAdminService {
 
 	@Transactional
 	public FamiliaDetalle desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
+		CierreVigenciasTutor.exigirAdmin(admin);
 		Familia familia = cargarParaModificar(admin, id, versionEsperada);
-		if (familia.desactivar()) {
-			familias.saveAndFlush(familia);
+		if (familia.isActiva()) {
+			cierres.deFamilia(admin, familia.getId());
+			familia.desactivar();
+			CierreVigenciasTutor.confirmarBaja("fk_td_familia_activa", () -> familias.saveAndFlush(familia));
 			registrar(admin, AccionAuditoria.FAMILIA_DESACTIVADA, familia, Map.of(), datos);
 		}
 		return detalle(familia, admin.escuelaId());
