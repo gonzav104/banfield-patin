@@ -33,7 +33,7 @@ export function ConfirmDialog({ title, busy, onCancel, returnFocus, description,
       className="m-auto w-[calc(100%_-_2rem)] max-w-lg rounded-xl border border-line bg-white p-6 text-ink shadow-lg backdrop:bg-black/50"
       onKeyDown={(event) => {
         if (event.key !== 'Tab') return;
-        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)'));
         const first = buttons[0];
         const last = buttons.at(-1);
         if (!first || !last) { event.preventDefault(); return; }

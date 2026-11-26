@@ -24,3 +24,16 @@ export function tipoLabel(tipo: ResponsableTipo | null): string {
 
 export const TIPO_DISCLAIMER =
   'El tipo lo declara el club. No acredita representación legal ni cambia quién puede ver datos o subir documentos.';
+
+/** Options of a type selector. The empty value is "nobody declared it" (`null`), never SIN_DETERMINAR, which is its own option. */
+export const TIPO_OPTIONS: { value: ResponsableTipo | ''; label: string }[] = [
+  { value: '', label: TIPO_SIN_DECLARAR },
+  ...responsableTipoSchema.options.map((value) => ({ value, label: LABELS[value] })),
+];
+
+/** A selector value back to a declared type: an empty or unknown value is `null`, never a guess. */
+export function tipoFromValue(value: string): ResponsableTipo | null {
+  const parsed = responsableTipoSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
