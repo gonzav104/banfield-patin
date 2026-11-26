@@ -86,10 +86,8 @@ BEGIN
         RETURNING id INTO v_id;
     EXCEPTION WHEN unique_violation THEN
         GET STACKED DIAGNOSTICS v_restriccion = CONSTRAINT_NAME;
-        IF v_restriccion = 'uq_td_par_vigente' THEN
-            RAISE SQLSTATE 'BP413' USING MESSAGE = 'El responsable ya tiene una vigencia abierta';
-        END IF;
-        -- Misma clave en una transacción concurrente: si ya es visible se resuelve como repetición.
+        -- PostgreSQL informa el primer índice que detecta: una repetición concurrente de la misma clave puede llegar
+        -- por el índice del par. La clave se resuelve siempre primero; solo después se decide si es un duplicado.
         SELECT * INTO v_previa FROM gestion_patin.tutor_deportista td
         WHERE td.escuela_id = p_escuela AND td.solicitud_id = p_solicitud;
         IF FOUND THEN
@@ -98,6 +96,12 @@ BEGIN
             END IF;
             RETURN QUERY SELECT v_previa.id, false;
             RETURN;
+        END IF;
+        -- Con un snapshot que no ve la fila concurrente no se puede distinguir un duplicado de una repetición:
+        -- se pide repetir la solicitud en una transacción nueva, que la resuelve sin ambigüedad.
+        IF v_restriccion = 'uq_td_par_vigente'
+           AND current_setting('transaction_isolation') = 'read committed' THEN
+            RAISE SQLSTATE 'BP413' USING MESSAGE = 'El responsable ya tiene una vigencia abierta';
         END IF;
         RAISE serialization_failure USING MESSAGE = 'Conflicto de concurrencia en el alta; repetir la solicitud';
     END;

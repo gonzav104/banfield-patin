@@ -71,6 +71,11 @@ class V16EscriturasVigenciasDbTest {
 			}
 			s.execute("GRANT USAGE ON SCHEMA gestion_patin TO " + AJENO);
 		}
+		// Peor orden posible: el índice del par vigente se evalúa antes que el de la clave de idempotencia.
+		try (var c = admin.getConnection(); var s = c.createStatement()) {
+			s.execute("ALTER TABLE " + TABLA + " DROP CONSTRAINT uq_td_solicitud, "
+					+ "ADD CONSTRAINT uq_td_solicitud UNIQUE (escuela_id, solicitud_id)");
+		}
 	}
 
 	@AfterAll
