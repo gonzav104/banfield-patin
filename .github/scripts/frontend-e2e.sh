@@ -14,6 +14,8 @@
 #
 # Variables opcionales:
 #   E2E_PG_PORT (puerto local de la base, 55432 por defecto).
+#   E2E_ALTA_RESPONSABLES (true por defecto SOLO en esta base descartable de E2E; false prueba la bandera apagada, como en produccion. El
+#               valor por defecto del backend sigue siendo false).
 #   E2E_SHARD   (numero de shard, segun frontend/e2e/shards.json). Sin ella corre la suite COMPLETA, como siempre. Con ella corre solo
 #               los archivos de ese shard, en una base, un backend y unas credenciales propios: los shards de CI son runners distintos
 #               y cada uno tiene su administrador. Dos shards no pueden correr a la vez en la misma maquina (mismos puertos 8080/5173).
@@ -137,6 +139,7 @@ setsid env \
   BOOTSTRAP_ADMIN_HABILITADO=true BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" BOOTSTRAP_ADMIN_NOMBRE=Admin \
   BOOTSTRAP_ADMIN_APELLIDO=CI BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
   DOCUMENTOS_CARGA_HABILITADA=true DOCUMENTOS_STORAGE_HABILITADO=true \
+  BANFIELD_RESPONSABLES_ALTA_HABILITADA="${E2E_ALTA_RESPONSABLES:-true}" \
   SUPABASE_URL="http://127.0.0.1:${STORAGE_PORT}" SUPABASE_BUCKET_DOCUMENTOS="$STORAGE_BUCKET" \
   SUPABASE_SERVICE_ROLE_KEY="$STORAGE_CREDENTIAL" \
   BANFIELD_DOCUMENTOS_CARGA_SCANNERHOST=127.0.0.1 BANFIELD_DOCUMENTOS_CARGA_SCANNERPUERTO="$CLAMD_PORT" \

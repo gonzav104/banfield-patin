@@ -11,7 +11,8 @@
       "portal-ficha.real.spec.ts",
       "portal.real.spec.ts",
       "temporadas-gestion.real.spec.ts",
-      "tutores-edicion.real.spec.ts"
+      "tutores-edicion.real.spec.ts",
+      "responsables-portal.real.spec.ts"
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",
@@ -26,7 +27,8 @@
       "familias-tutores.real.spec.ts",
       "vinculos-consulta.real.spec.ts",
       "vinculos-gestion.real.spec.ts",
-      "vinculos-vinculacion.real.spec.ts"
+      "vinculos-vinculacion.real.spec.ts",
+      "responsables-admin.real.spec.ts"
     ]
   }
 }
