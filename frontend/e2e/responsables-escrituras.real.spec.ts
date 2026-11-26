@@ -212,6 +212,9 @@ test('the type is edited with its revision (null stays apart from SIN_DETERMINAR
   dialog = page.getByRole('dialog', { name: 'Cambiar el tipo declarado' });
   await dialog.getByLabel('Tipo de responsable').selectOption({ label: 'Sin declarar' });
   await dialog.getByRole('button', { name: 'Guardar tipo' }).click();
+  // The dialog lives inside the list item and its selector also says «Sin declarar»: wait for it to close, then read the row itself.
+  await expect(dialog).toBeHidden();
+  await expect(ana).not.toContainText('Sin determinar');
   await expect(ana).toContainText('Sin declarar');
   expect((await rows(false)).find((r) => r.tutorId === ids.ana)!.tipo).toBeNull();
 
