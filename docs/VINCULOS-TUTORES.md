@@ -84,7 +84,7 @@ El historial es irreversible: un trigger rechaza `DELETE`, la reapertura y cualq
 
 ## Lectura de responsables en el panel y en el portal familiar (C3, primer corte)
 
-C3 empieza por la **lectura**; el alta, la edición y la revocación desde la interfaz son el segundo corte y no existen todavía en el frontend. Nada de esto cambia permisos documentales, el checklist U20 ni la bandera de altas.
+C3 empieza por la **lectura** (este apartado); el alta, la edición, la revocación y el estado del tutor desde la interfaz son el segundo corte (apartado siguiente). Nada de esto cambia permisos documentales, el checklist U20 ni la bandera de altas.
 
 ### Portal familiar
 
@@ -105,4 +105,38 @@ En el frontend, el bloque «Responsables» de la ficha del deportista (`/familia
 ### E2E
 
 El backend descartable de los E2E habilita `banfield.responsables.alta-habilitada` solo para sembrar vigencias por la API real (`BANFIELD_RESPONSABLES_ALTA_HABILITADA`, que el script `frontend-e2e.sh` pone en `true` salvo que `E2E_ALTA_RESPONSABLES=false`). El valor por defecto del backend sigue siendo `false` y no se habilita ningún entorno real.
+
+## Escrituras desde el panel ADMIN (C3, segundo corte)
+
+Pantalla `/admin/deportistas/:id/responsables`: «Agregar responsable» sobre los vigentes, y «Cambiar tipo» y «Revocar» en cada responsable vigente (nunca en el historial); y, en el detalle del tutor, «Desactivar tutor» / «Reactivar tutor». Todo usa los contratos de C2-A y C2-B sin cambiarlos, en diálogos modales nativos con foco inicial en «Cancelar», `Escape` solo cuando no hay un pedido en curso y retorno del foco al botón que los abrió.
+
+### Alta
+
+1. **Candidatos.** Se leen con lecturas ya existentes y sin pedir fichas completas: los vínculos del deportista (solo familias con vínculo `ACTIVO`), cada una de esas familias **una sola vez** (tutores con el DNI ya enmascarado) y todas las páginas de los responsables vigentes (para excluir a quien ya lo es). Solo se ofrecen tutores **activos** de familias **activas** que todavía no son responsables. Con el deportista inactivo el botón queda deshabilitado y se explica por qué.
+2. **Revisiones al elegir.** Al continuar se leen juntos el tutor, la familia, el deportista, sus vínculos y los vigentes: se validan los estados (con los mismos códigos que usa el servidor) y las cuatro revisiones (`versionFamilia`, `versionDeportista`, `versionTutor`, `versionVinculos`) como cadenas decimales dentro de BIGINT. Lo que ya no es cierto no llega a la confirmación.
+3. **Confirmación.** Tipo opcional: «Sin declarar» (`null`, no se envía) es distinto de «Sin determinar» (`SIN_DETERMINAR`). Se recuerda que el tipo es un dato declarado.
+
+### `Idempotency-Key`
+
+La clave **nace al abrirse la confirmación**, se conserva en todos los reintentos de esa misma solicitud y solo se descarta ante una respuesta **definitiva**. Una confirmación nueva siempre usa una clave nueva.
+
+| Resultado | Qué pasa con la clave |
+| --- | --- |
+| `201` | se descarta; la lista se refresca. Si la respuesta es una vigencia ya cerrada (repetición tardía) se avisa que esa solicitud ya se había procesado |
+| `409 EDICION_DESACTUALIZADA`, `ESTADO_INCOMPATIBLE`, `RESPONSABLE_YA_VIGENTE`, `IDEMPOTENCY_KEY_REUTILIZADA`, `404`, `400` | se descarta: no se creó nada; hay que volver a elegir y la siguiente confirmación usa otra clave |
+| `503 ALTA_RESPONSABLES_DESHABILITADA` | se descarta; aviso informativo, sin reintento |
+| `409 CONFLICTO_CONCURRENCIA` | no se registró nada: se ofrece repetir **la misma solicitud con la misma clave** |
+| red caída, `5xx`, respuesta malformada | **incierto**: el servidor pudo crearla. La solicitud (clave y cuerpo) se **conserva en memoria**, por identidad y deportista, aunque se cierre el diálogo; al reabrir, la interfaz lleva directo a «Reintentar la misma solicitud» (que devuelve la original o la crea una sola vez) o a «Consultar responsables vigentes» (si el tutor ya figura, se resuelve sin reenviar). No se puede iniciar otra alta equivalente hasta resolverla |
+
+El doble envío está bloqueado (un cierre `useRef` más el estado del `useMutation`); nada se reintenta automáticamente. La solicitud pendiente nunca se guarda en `localStorage`, la URL ni los registros.
+
+### Tipo, revocación y estado del tutor
+
+- **Cambiar tipo** y **Revocar** envían la revisión de la fila **al abrir el diálogo**. Una revisión obsoleta, un responsable que dejó de estar vigente o un `404` no aplican nada, refrescan las listas y lo dicen. Sin cambio efectivo el guardado está deshabilitado. La revocación es irreversible y lo explica; una respuesta perdida se **verifica consultando**, nunca repitiendo.
+- **Desactivar tutor** cierra todas sus responsabilidades vigentes de forma irreversible y **reactivarlo no las reabre** (hace falta una nueva confirmación); ambos lo dicen en el diálogo.
+- **Invalidación.** Cerrar una responsabilidad no es solo una escritura directa: desactivar un tutor, una familia o un deportista, y revocar un vínculo familiar, refrescan todas las lecturas de vigentes, historial y candidatos (`invalidateResponsableQueries`), para que ninguna pantalla muestre un responsable que ya no existe ni ofrezca a un tutor que dejó de ser elegible.
+
+### Bandera y E2E
+
+La interfaz no puede conocer la bandera de antemano: el botón se ve y un `503 ALTA_RESPONSABLES_DESHABILITADA` se muestra como aviso, sin error ni reintento. En CI, los shards 1 y 2 corren el backend descartable con la bandera encendida (solo para sembrar y probar las escrituras) y el **shard 3 la apaga** (`E2E_ALTA_RESPONSABLES=false`, como en producción) y prueba que el servidor rechaza el alta antes de leer o escribir y que la pantalla no crea nada. El valor por defecto del backend sigue siendo `false`.
 
