@@ -121,8 +121,10 @@ class V16EscriturasVigenciasDbTest {
 
 	@Test
 	void v17LaAplicaElMigradorYElRuntimeOperaElAptoSinBorradoNiPermisosNuevos() {
-		assertThat(flyway().load().migrate().migrationsExecuted).isLessThanOrEqualTo(1);
+		flyway().load().migrate();
 		flyway().load().validate();
+		// Aplicada por el migrador y vigente: V17 es la última versión del esquema.
+		assertThat(flyway().load().info().current().getVersion().getVersion()).isEqualTo("17");
 		var c = casoBase();
 		var cliente = JdbcClient.create(runtime);
 		UUID temporada = new DatosDb(JdbcClient.create(admin)).temporada(c.escuela(), 2026, false);
