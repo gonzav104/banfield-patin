@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api-error';
 import { isSafeFamilyId, isSafeTutorId } from './api';
 import { BackToListLink } from './FamilyNotFound';
 import { useTutorDetail } from './hooks';
+import { TutorStatusControl } from './TutorStatusControl';
 import { isNotFound } from './messages';
 import type { TutorDetail } from './schemas';
 import { TUTOR_NOT_FOUND_TEXT, TUTOR_NOT_FOUND_TITLE, TUTOR_SAVED_NOTICE, tutorDetailErrorMessage } from './tutor-messages';
@@ -51,7 +52,7 @@ function Row({ label, children, breakAll = false }: { label: string; children: s
  * own). The notice after a saved edit travels in the navigation state: a flag, never data.
  */
 function Detail({ tutor, familyId, saved }: { tutor: TutorDetail; familyId: string; saved: boolean }) {
-  const [notice] = useState<string | null>(saved ? TUTOR_SAVED_NOTICE : null);
+  const [notice, setNotice] = useState<string | null>(saved ? TUTOR_SAVED_NOTICE : null);
   return (
     <div className="max-w-3xl space-y-6">
       <BackToFamily familyId={familyId} />
@@ -85,6 +86,7 @@ function Detail({ tutor, familyId, saved }: { tutor: TutorDetail; familyId: stri
           </Row>
         </dl>
       </section>
+      <TutorStatusControl tutor={tutor} familyId={familyId} onNotice={setNotice} />
       <AthleteDocumentsSection athleteId={tutor.id} kind="tutor" />
     </div>
   );

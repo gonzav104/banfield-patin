@@ -99,3 +99,17 @@ export async function updateTutor(input: { tutorId: string; datos: TutorUpdateIn
     }),
   );
 }
+
+export type TutorStatusAction = 'activar' | 'desactivar';
+
+/**
+ * POST /api/admin/tutores/{id}/activar|desactivar with the revision seen when the confirmation was opened. The answer must be the same
+ * tutor in the requested state: anything else is a malformed answer, never a confirmation. Deactivating closes its open responsibilities
+ * (irreversibly); reactivating never reopens them.
+ */
+export async function changeTutorStatus(input: { id: string; action: TutorStatusAction; version: string }): Promise<TutorDetail> {
+  const tutor = parse(tutorDetailSchema, await apiWrite('post', `/admin/tutores/${encodeURIComponent(input.id)}/${input.action}`, { versionEsperada: input.version }));
+  if (tutor.id !== input.id || tutor.activo !== (input.action === 'activar')) throw new ApiError('server', 'El servidor respondió con datos que no corresponden.');
+  return tutor;
+}
+

@@ -2,6 +2,7 @@ import { getFamily } from '@/features/admin-familias/api';
 import { familyDetailKey } from '@/features/admin-familias/hooks';
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
+import { invalidateResponsableQueries } from '@/features/responsables/keys';
 import { ApiError } from '@/lib/api-error';
 import { useIsMutating, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { changeLink, getAthleteLinks, getFamilyAthletes, linkFamilyAthletes, type LinkBatchSnapshot } from './api';
@@ -51,6 +52,8 @@ export function useChangeLink(athleteId: string) {
       if (!context.identity || context.identity !== identity()) return;
       // A principal change affects two rows. Never publish the single POST row as a complete GET snapshot.
       await Promise.all([
+        // Revoking a family link closes the responsibilities of that family's tutors as a side effect.
+        invalidateResponsableQueries(client),
         client.invalidateQueries({ queryKey: athleteLinksKey(input.athleteId) }),
         client.invalidateQueries({ queryKey: ['admin', 'families'] }),
         ...[...new Set(input.familyIds)].flatMap((id) => [

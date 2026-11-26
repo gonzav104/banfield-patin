@@ -2,7 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import type { ApiError } from '@/lib/api-error';
-import { changeFamilyStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, updateTutor, type FamilyListParams, type FamilyStatusAction } from './api';
+import { invalidateResponsableQueries } from '@/features/responsables/keys';
+import { changeFamilyStatus, changeTutorStatus, createFamily, createTutor, getFamily, getTutor, listFamilies, updateFamily, updateTutor, type FamilyListParams, type FamilyStatusAction, type TutorStatusAction } from './api';
 import type { FamilyDetail, TutorDetail, TutorInput, TutorUpdateInput } from './schemas';
 
 /** Prefix of every family-related query (list, detail and the invitation picker): one invalidation refreshes them all. */
@@ -41,7 +42,8 @@ function useFamilyWrite<TInput extends { id: string }>(write: (input: TInput) =>
     mutationFn: write,
     onSuccess: (saved) => {
       queryClient.setQueryData(familyDetailKey(saved.id), saved);
-      return queryClient.invalidateQueries({ queryKey: familiesKey });
+      // Deactivating a family closes the responsibilities of its tutors as a side effect.
+      return Promise.all([queryClient.invalidateQueries({ queryKey: familiesKey }), invalidateResponsableQueries(queryClient)]);
     },
   });
 }
@@ -87,6 +89,28 @@ const currentUserId = (queryClient: QueryClient): string | null => queryClient.g
  * cancelled when the session changes while it is in flight: if its answer arrives for ANOTHER identity than the one that issued it,
  * it is dropped (it must never put the previous identity's full detail, DNI included, back in a cache that was just cleared).
  */
+/**
+ * Activate / deactivate a tutor. The answer replaces the cached detail; the family is refreshed; and because deactivating closes the
+ * tutor's responsibilities (and a reactivated tutor becomes eligible again), every responsibility and candidate read is invalidated.
+ * An answer for another identity than the one that sent it is dropped, like in every private write.
+ */
+export function useChangeTutorStatus() {
+  const queryClient = useQueryClient();
+  return useMutation<TutorDetail, ApiError, { id: string; familyId: string; action: TutorStatusAction; version: string }, { identity: string | null }>({
+    mutationFn: ({ id, action, version }) => changeTutorStatus({ id, action, version }),
+    onMutate: () => ({ identity: currentUserId(queryClient) }),
+    onSuccess: async (saved, variables, context) => {
+      if (context?.identity !== currentUserId(queryClient)) return;
+      queryClient.setQueryData(tutorDetailKey(saved.id), saved);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: familyDetailKey(variables.familyId) }),
+        queryClient.invalidateQueries({ queryKey: familiesKey }),
+        invalidateResponsableQueries(queryClient),
+      ]);
+    },
+  });
+}
+
 export function useUpdateTutor() {
   const queryClient = useQueryClient();
   return useMutation<TutorDetail, ApiError, { tutorId: string; familyId: string; datos: TutorUpdateInput; version: string; familyVersion: string }, { identity: string | null }>({
