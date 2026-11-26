@@ -139,7 +139,8 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 		assertThat(OpenApiRutasTest.CREAN).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo", "POST /api/admin/familias",
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas", "POST /api/admin/invitaciones",
 				"POST /api/auth/registro/invitacion", "POST /api/admin/temporadas",
-				"POST /api/admin/deportistas/{deportistaId}/temporadas");
+				"POST /api/admin/deportistas/{deportistaId}/temporadas",
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores");
 		assertThat(OpenApiRutasTest.SIN_CONTENIDO).containsExactlyInAnyOrder("POST /api/auth/logout",
 				"POST /api/admin/usuarios/{id}/mfa/reiniciar");
 		assertThat(OpenApiConfig.RUTAS.entrySet().stream().filter(e -> e.getValue().exito() == 201).map(java.util.Map.Entry::getKey))

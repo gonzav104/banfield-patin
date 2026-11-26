@@ -44,6 +44,9 @@ class InventarioRutasTest {
 			"POST /api/admin/familias/{familiaId}/tutores",
 			"PUT /api/admin/tutores/{id}",
 			"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
+			"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
+			"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
+			"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar",
 			// Deportistas (slice 4): alta, reemplazo completo y cambio de estado; sin DELETE ni PATCH.
 			"POST /api/admin/deportistas",
 			"PUT /api/admin/deportistas/{id}",
@@ -140,6 +143,9 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
+				"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar",
 				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
@@ -187,7 +193,11 @@ class InventarioRutasTest {
 		assertThat(mutantes.stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
 				.containsExactlyInAnyOrder("POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 						"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
-						"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision");
+						"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+						// Responsables (C2-B): alta idempotente, tipo declarado y revocación individual; sin borrado.
+						"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
+						"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
+						"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/deportistas") && !r.contains("/temporadas")))
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas", "POST /api/admin/deportistas",
 				"GET /api/admin/deportistas/{id}",
@@ -195,6 +205,9 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas/{id}/desactivar", "GET /api/admin/deportistas/{deportistaId}/familias",
 				"GET /api/admin/deportistas/{deportistaId}/vinculos", "GET /api/admin/deportistas/{id}/documentos",
 				"GET /api/admin/deportistas/{deportistaId}/vinculos-tutores",
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
+				"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar",
 				// Checklist documental parcial (U20): lectura calculada, sin escritura.
 				"GET /api/admin/deportistas/{id}/checklist-documental",
 				// Descarga auditada de un documento (U16): lectura, sin escritura del documento.

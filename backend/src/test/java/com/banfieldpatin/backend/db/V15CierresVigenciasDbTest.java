@@ -80,8 +80,8 @@ class V15CierresVigenciasDbTest {
 			s.execute(Files.readString(Path.of("ops/postgresql/preparar-migracion.sql")));
 		}
 		flyway().target("14").load().migrate();
-		assertThat(flyway().load().migrate().migrationsExecuted).isEqualTo(1);
-		flyway().load().validate();
+		assertThat(flyway().target("15").load().migrate().migrationsExecuted).isEqualTo(1);
+		flyway().target("15").load().validate();
 		try (var c = base(MIGRATOR, CLAVE).getConnection(); var s = c.createStatement()) {
 			s.execute("SET ROLE " + OWNER);
 			s.execute(Files.readString(Path.of("ops/postgresql/autorizar-runtime-c1.sql")));
