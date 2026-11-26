@@ -37,11 +37,10 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - [x] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4 · `c030920`, aprobado y reconocido.
 - [x] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
 
-- [ ] C2-B1 · S4–S5, S15 · V16: funciones SECURITY DEFINER de alta (idempotente), tipo y revocación individual; autorización de runtime; pruebas PostgreSQL · inline, riesgos 1/2/4 · commit pendiente.
-- [ ] C2-B2 · S4–S5, S15 · puerto Java y servicio de alta (revisiones bajo bloqueo, Idempotency-Key, bandera) · inline, riesgo 4 · commit pendiente.
-- [ ] C2-B3 · S4–S5, S15 · edición de tipo y revocación individual · inline, riesgo 4 · commit pendiente.
-- [ ] C2-B4 · S4–S5, S15 · controlador, DTOs, OpenAPI e inventarios estrictos · inline, riesgo 3 · commit pendiente.
-- [ ] C2-B5 · S15 · documentación, ODD y confirmación posterior de C2-A · inline · commit pendiente.
+- [x] C2-B1 · S4–S5, S15 · V16: funciones SECURITY DEFINER de alta (idempotente), tipo y revocación individual; autorización de runtime; pruebas PostgreSQL · inline, riesgos 1/2/4 · `5f5a1d6` (+ `4bbefaa` por R3-001); Gentle AI `review-4e6f9c3df5041dfc` aprobada y reconocida.
+- [x] C2-B2/B3 · S4–S5, S15 · puerto Java y servicios de alta (revisiones bajo bloqueo, Idempotency-Key, bandera), edición de tipo y revocación (se unieron por dependencia técnica) · inline, riesgo 4 · `d8d9cd8`, `a838325`.
+- [x] C2-B4 · S4–S5, S15 · controlador, DTOs, OpenAPI e inventarios estrictos · inline, riesgo 3 · `a29a93e`; Gentle AI aprobada y reconocida sobre `4bbefaa..a29a93e` (4 lentes, 3 avisos no bloqueantes).
+- [x] C2-B5 · S15 · documentación, ODD y confirmación posterior de C2-A · inline · commit de este cierre.
 
 ## Log
 
@@ -446,3 +445,10 @@ C2-A quedó guardado en `6418186`, `c030920` y `292edcf` sobre `main @ 159c738`.
 ### L20 — C2-B autorizado (plan aprobado)
 
 «Apruebo el plan técnico de C2-B y autorizo su implementación local.» Base `main @ f1646b3`; worktree `~/worktrees/banfield-c2b`, rama `feat/vinculos-tutor-deportista-c2b`. Decisiones: V16 sin tocar V14/V15; `REVOCACION_ADMIN` como causa de cierre individual; tipo opcional distinguiendo NULL de SIN_DETERMINAR; bandera de altas desactivada por defecto; «Una repetición tardía devuelve la vigencia original, aunque esté cerrada.» «Reutilizar una clave con contenido diferente devuelve 409.» Restricciones: sin push, PR, merge ni despliegue; sin Supabase; sin C3, U21 ni U22; sin corregir la deuda de `TemporadasConcurrenciaDbTest`.
+
+### L21 — Implementación de C2-B
+
+Confirmación posterior de C2-A: PR #53 integrado en `main` con el merge commit `f1646b3` sobre `159c738`; CI posterior 7/7 y árbol idéntico al candidato aprobado `3f5d37d`. Deuda técnica aceptada: causa raíz no confirmada de los `Connection refused` entre Docker Desktop y WSL2, y la carrera del helper `sentenciaEsperandoUnBloqueo` de `TemporadasConcurrenciaDbTest` (PR independiente, conservando las garantías de concurrencia).
+
+C2-B: V16 con tres funciones `SECURITY DEFINER` y `autorizar-runtime-c2b.sql`; el runtime conserva solo `SELECT` sobre `tutor_deportista`. SQLSTATE propios BP404/405/412/413/414. El alta lee las cuatro marcas con `FOR KEY SHARE` (igual que las FKs de V14) y serializa contra los cierres de C2-A. Idempotencia por `(escuela, solicitud_id)` con huella SHA-256 del servidor (escuela, deportista, tutor, tipo; sin revisiones). Hallazgos propios: (1) el aviso nativo R3-001 mostró que el índice del par vigente podía ganar al de la solicitud y devolver duplicado en una repetición concurrente; RED con el orden de índices invertido en la prueba, corregido resolviendo primero la clave (`4bbefaa`); (2) `EntityManager.lock` lanza `PessimisticLockException` o `LockTimeoutException` sin traducir, que el manejador global convertiría en 500; el servicio las traduce a `CONFLICTO_CONCURRENCIA`. El patrón existente de `TutorAdminService` conserva ese riesgo latente fuera del alcance de C2-B. Los avisos R1-001 (V16 editada antes de publicarse), R2-1 (comparación de `Long`, ya por valor y ahora explícita) y R2-2 (duplicación de `@JsonAnySetter`, patrón vigente) no abrieron correcciones.
+
