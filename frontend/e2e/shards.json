@@ -1,5 +1,5 @@
 {
-  "comentario": "Reparto de los specs E2E reales entre runners de CI. Cada shard usa su propia base PostgreSQL descartable, backend, frontend y credenciales. El shard que contiene auth.real.spec.ts enrola al administrador con ese spec; los demas lo enrolan con e2e/support/enrol-admin.ts antes de empezar. Reparto balanceado por el tiempo medido de cada archivo (dominado por los inicios de sesion de administrador, uno por ventana TOTP). Un spec nuevo debe agregarse aqui: `npm test` y el arranque de cada shard fallan si falta, sobra o se repite alguno.",
+  "comentario": "Reparto de los specs E2E reales entre runners de CI. Cada shard usa su propia base PostgreSQL descartable, backend, frontend y credenciales. El shard que contiene auth.real.spec.ts enrola al administrador con ese spec; los demas lo enrolan con e2e/support/enrol-admin.ts antes de empezar. Reparto balanceado por el tiempo medido de cada archivo (dominado por los inicios de sesion de administrador, uno por ventana TOTP). Un spec nuevo debe agregarse aqui: `npm test` y el arranque de cada shard fallan si falta, sobra o se repite alguno. El shard 3 corre con la bandera de altas de responsables APAGADA (E2E_ALTA_RESPONSABLES=false, como en produccion); los demas la encienden solo en su base descartable para sembrar.",
   "shards": {
     "1": [
       "auth.real.spec.ts",
@@ -12,7 +12,8 @@
       "portal.real.spec.ts",
       "temporadas-gestion.real.spec.ts",
       "tutores-edicion.real.spec.ts",
-      "responsables-portal.real.spec.ts"
+      "responsables-portal.real.spec.ts",
+      "responsables-escrituras.real.spec.ts"
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",
@@ -29,6 +30,9 @@
       "vinculos-gestion.real.spec.ts",
       "vinculos-vinculacion.real.spec.ts",
       "responsables-admin.real.spec.ts"
+    ],
+    "3": [
+      "responsables-alta-deshabilitada.real.spec.ts"
     ]
   }
 }

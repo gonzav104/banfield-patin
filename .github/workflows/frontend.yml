@@ -85,7 +85,7 @@ jobs:
       # Sin fail-fast: un shard fallido no cancela al otro, asi se ve el resultado completo de la suite.
       fail-fast: false
       matrix:
-        shard: ["1", "2"]
+        shard: ["1", "2", "3"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -117,6 +117,8 @@ jobs:
       - name: Ejecutar E2E reales
         env:
           E2E_SHARD: ${{ matrix.shard }}
+          # El shard 3 prueba la bandera de altas de responsables APAGADA (como en produccion); los demas la encienden solo en su base descartable.
+          E2E_ALTA_RESPONSABLES: ${{ matrix.shard == '3' && 'false' || 'true' }}
         run: bash .github/scripts/frontend-e2e.sh
 
       # Red de seguridad, en CADA shard: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.
