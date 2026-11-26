@@ -22,6 +22,8 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 
 - S14 — «Incorporar una protección transaccional que rechace la secuencia baja → cierre de vigencias → reactivación del mismo padre dentro de una única transacción.» «Aplicar la protección a tutor, familia, deportista y familia_deportista, según las operaciones de cierre previstas en C2-A.» «La protección no debe poder eludirse mediante SET CONSTRAINTS ALL IMMEDIATE, SET CONSTRAINTS ALL DEFERRED ni invocaciones SQL directas autorizadas.» «Mantener permitida la reactivación en una transacción posterior, sin reabrir vigencias históricas.» «Conservar el comportamiento idempotente de operaciones repetidas que no producen cambios efectivos.» «Mantener el cierre, el cambio de estado del padre y la auditoría como una operación atómica.» «No conceder al runtime UPDATE general sobre tutor_deportista ni acceso directo a las marcas privadas.» «No modificar V14 ni ampliar el alcance de las funciones SECURITY DEFINER.» Casos y revisión nueva: L14.
 
+- S15 — «Implementar funciones SECURITY DEFINER específicas para el alta, edición del tipo declarado y revocación individual.» «Mantener banfield_runtime sin permisos directos de INSERT, UPDATE o DELETE sobre tutor_deportista.» «Utilizar Idempotency-Key como contrato HTTP del alta, con persistencia y huella calculada por el servidor.» «Las altas deben quedar deshabilitadas por defecto.» «No presentar las comprobaciones SQL como una garantía de identidad independiente cuando el backend utiliza un login PostgreSQL compartido.»
+
 ## Tasks
 
 - [ ] C1 · S1–S2, S7–S8 · implementación inline; verificación independiente sin bloqueantes · riesgo 1/2 (invariantes e aislamiento) · C1-A `5ac5824` revisado; C1-B contiene consultas y contrato, su comprobación nativa se registra en el siguiente corte.
@@ -33,7 +35,13 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 
 - [x] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · `6418186`, revisión nativa aprobada y reconocida.
 - [x] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4 · `c030920`, aprobado y reconocido.
-- [ ] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
+- [x] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
+
+- [ ] C2-B1 · S4–S5, S15 · V16: funciones SECURITY DEFINER de alta (idempotente), tipo y revocación individual; autorización de runtime; pruebas PostgreSQL · inline, riesgos 1/2/4 · commit pendiente.
+- [ ] C2-B2 · S4–S5, S15 · puerto Java y servicio de alta (revisiones bajo bloqueo, Idempotency-Key, bandera) · inline, riesgo 4 · commit pendiente.
+- [ ] C2-B3 · S4–S5, S15 · edición de tipo y revocación individual · inline, riesgo 4 · commit pendiente.
+- [ ] C2-B4 · S4–S5, S15 · controlador, DTOs, OpenAPI e inventarios estrictos · inline, riesgo 3 · commit pendiente.
+- [ ] C2-B5 · S15 · documentación, ODD y confirmación posterior de C2-A · inline · commit pendiente.
 
 ## Log
 
@@ -434,3 +442,7 @@ La suite normal completa del segundo candidato quedó verde (1460/1460). Su Post
 ### L19 — Cierre y publicación de C2-A (PR #53)
 
 C2-A quedó guardado en `6418186`, `c030920` y `292edcf` sobre `main @ 159c738`. Gentle AI (lentes risk, resilience y reliability; ítem 4 escalado) aprobó C2-A3 sin hallazgos y se ejecutó el reconocimiento (`review-fde6ab6ad522557b`). PostgreSQL 17 completo en la última corrida local: 929/929, sin `Connection refused`; el backend normal 1460/1460 procede de la ejecución anterior de Codex. Decisión funcional aceptada: se puede reactivar un tutor de una familia inactiva sin restaurar vigencias ni ampliar permisos. Publicado como PR #53 con `size:exception`. En la CI, `TemporadasConcurrenciaDbTest.dosActivacionesEncadenadas...` falló una vez en el evento `push` (el helper `sentenciaEsperandoUnBloqueo` toma la primera sesión en espera sin orden ni filtro) y pasó en el mismo SHA bajo `pull_request` y tras un único reintento; no se tocó la prueba. Riesgos conocidos: causa raíz de los `Connection refused` previos sin identificar; helper de temporadas con carrera preexistente, fuera del alcance de C2-A.
+
+### L20 — C2-B autorizado (plan aprobado)
+
+«Apruebo el plan técnico de C2-B y autorizo su implementación local.» Base `main @ f1646b3`; worktree `~/worktrees/banfield-c2b`, rama `feat/vinculos-tutor-deportista-c2b`. Decisiones: V16 sin tocar V14/V15; `REVOCACION_ADMIN` como causa de cierre individual; tipo opcional distinguiendo NULL de SIN_DETERMINAR; bandera de altas desactivada por defecto; «Una repetición tardía devuelve la vigencia original, aunque esté cerrada.» «Reutilizar una clave con contenido diferente devuelve 409.» Restricciones: sin push, PR, merge ni despliegue; sin Supabase; sin C3, U21 ni U22; sin corregir la deuda de `TemporadasConcurrenciaDbTest`.
