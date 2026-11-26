@@ -82,3 +82,27 @@ Orden: bandera → ADMIN → plazo de bloqueo → deportista `FOR UPDATE` (404) 
 
 El historial es irreversible: un trigger rechaza `DELETE`, la reapertura y cualquier cambio de identidad de una vigencia; la reactivación de un padre nunca la reabre. Las vigencias no conceden acceso a deportistas ni documentos, y la carga documental no las consulta.
 
+## Lectura de responsables en el panel y en el portal familiar (C3, primer corte)
+
+C3 empieza por la **lectura**; el alta, la edición y la revocación desde la interfaz son el segundo corte y no existen todavía en el frontend. Nada de esto cambia permisos documentales, el checklist U20 ni la bandera de altas.
+
+### Portal familiar
+
+`GET /api/familia/deportistas/{deportistaId}/responsables` (solo FAMILIA, solo lectura) devuelve `{ "responsables": [{ tutorId, nombre, apellido, tipo }] }`: una **lista cerrada de cuatro campos**, ordenada por apellido y nombre. Reglas de privacidad:
+
+- Escuela y familia salen siempre de la sesión; ningún parámetro del cliente (`familiaId`, `escuelaId`, `historial`) cambia el alcance.
+- El alcance es el `WHERE` de la consulta, nunca un filtro posterior: deportista **propio** (vínculo `ACTIVO`, familia activa) y solo vigencias **abiertas de tutores de la propia familia**. Si dos familias comparten un deportista, cada una ve únicamente a sus tutores; ninguna puede inferir la existencia, la cantidad ni la identidad de los responsables de la otra.
+- Sin historial, sin vigencias cerradas (una reactivación del tutor no las reabre), sin DNI, contactos, estado, versiones ni identificadores de vigencia, familia o escuela.
+- `404 DEPORTISTA_NO_ENCONTRADO` uniforme para un deportista inexistente, de otra familia o escuela, o con el vínculo revocado o no activo. Una cuenta sin familia da el mismo `404` sin consultar la base. Un deportista propio sin responsables es `200` con la lista vacía.
+- `tipo` es `null` si nadie lo declaró, distinto de `SIN_DETERMINAR`; es un dato declarado que no acredita representación legal ni concede acceso. Las lecturas no se auditan.
+
+En el frontend, el bloque «Responsables» de la ficha del deportista (`/familia/deportistas/:deportistaId`) es de solo lectura, sin botones ni enlaces. «Sin declarar» (tipo `null`) no se confunde con «Sin determinar». Las claves de caché incluyen usuario, familia y deportista (`gcTime: 0`, sin `placeholderData`); ante cualquier error, incluido el `404` posterior a una revocación, la sección muestra solo el error y no conserva la lista anterior.
+
+### Panel ADMIN
+
+`/admin/deportistas/:id/responsables` (solo lectura; se llega con «Ver responsables» desde el detalle) lista las vigencias abiertas con nombre, tipo y fecha de alta, con paginación. El historial se pide **solo bajo demanda** («Ver historial», `aria-expanded`) y muestra también las cerradas con su causa en lenguaje claro («Revocada por el club», «El tutor se desactivó», «La familia se desactivó», «El deportista se desactivó», «Se revocó el vínculo de la familia con el deportista»). Una respuesta con una cerrada en la lista de vigentes, o con causa sin fecha de cierre, se rechaza como mal formada. La revisión de cada vigencia se valida pero no se muestra.
+
+### E2E
+
+El backend descartable de los E2E habilita `banfield.responsables.alta-habilitada` solo para sembrar vigencias por la API real (`BANFIELD_RESPONSABLES_ALTA_HABILITADA`, que el script `frontend-e2e.sh` pone en `true` salvo que `E2E_ALTA_RESPONSABLES=false`). El valor por defecto del backend sigue siendo `false` y no se habilita ningún entorno real.
+
