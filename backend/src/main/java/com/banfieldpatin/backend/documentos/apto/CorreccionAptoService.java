@@ -21,6 +21,7 @@ import com.banfieldpatin.backend.compartido.auditoria.EventoAuditoria;
 import com.banfieldpatin.backend.compartido.bd.LockTimeoutTransaccion;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
+import com.banfieldpatin.backend.documentos.EstadoDocumento;
 import com.banfieldpatin.backend.usuarios.Rol;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 
@@ -78,7 +79,7 @@ public class CorreccionAptoService {
                 WHERE id = :d AND escuela_id = :e AND deportista_id = :p AND tipo = 'APTO_FISICO'
                 FOR UPDATE
                 """).param("d", documento).param("e", usuario.escuelaId()).param("p", deportista)
-                .query((rs, n) -> new Actual(rs.getString(1), rs.getBoolean(2), rs.getLong(3),
+                .query((rs, n) -> new Actual(EstadoDocumento.valueOf(rs.getString(1)), rs.getBoolean(2), rs.getLong(3),
                         new MetadatosApto(rs.getObject(4, LocalDate.class), rs.getString(5), rs.getString(6))))
                 .optional().orElseThrow(() -> new ExcepcionNegocio(HttpStatus.NOT_FOUND, "DOCUMENTO_NO_ENCONTRADO",
                         "Documento no encontrado."));
@@ -88,7 +89,7 @@ public class CorreccionAptoService {
         if (actual.version() != esperada) {
             throw conflicto("EDICION_DESACTUALIZADA", "El documento cambió. Volvé a cargarlo antes de corregir.");
         }
-        if (!actual.estado().equals("CARGADO") && !actual.estado().equals("APROBADO")) {
+        if (actual.estado() != EstadoDocumento.CARGADO && actual.estado() != EstadoDocumento.APROBADO) {
             throw conflicto("APTO_NO_CORREGIBLE", "Solo se corrige un apto en revisión o aprobado; uno observado se reemplaza.");
         }
         var campos = camposModificados(actual.datos(), nuevos);
@@ -107,15 +108,15 @@ public class CorreccionAptoService {
                   AND version = :v AND estado = :origen
                 """).param("f", nuevos.fechaEmision()).param("n", nuevos.medicoNombre()).param("m", nuevos.medicoMatricula())
                 .param("d", documento).param("e", usuario.escuelaId()).param("p", deportista).param("v", esperada)
-                .param("origen", actual.estado()).update();
+                .param("origen", actual.estado().name()).update();
         if (filas != 1) {
             throw conflicto("EDICION_DESACTUALIZADA", "El documento cambió. Volvé a cargarlo antes de corregir.");
         }
         var detalle = new LinkedHashMap<String, Object>();
         detalle.put("campos", String.join(",", campos));
-        detalle.put("estadoAnterior", actual.estado());
-        detalle.put("estadoNuevo", "CARGADO");
-        detalle.put("aprobacionRetirada", actual.estado().equals("APROBADO"));
+        detalle.put("estadoAnterior", actual.estado().name());
+        detalle.put("estadoNuevo", EstadoDocumento.CARGADO.name());
+        detalle.put("aprobacionRetirada", actual.estado() == EstadoDocumento.APROBADO);
         auditoria.registrar(new EventoAuditoria(usuario.escuelaId(), usuario.id(), AccionAuditoria.DOCUMENTO_APTO_CORREGIDO,
                 "DOCUMENTO", documento, detalle, DatosSolicitud.NINGUNA));
         return leer(documento, usuario);
@@ -145,6 +146,6 @@ public class CorreccionAptoService {
         return new ExcepcionNegocio(HttpStatus.CONFLICT, codigo, mensaje);
     }
 
-    private record Actual(String estado, boolean vigente, long version, MetadatosApto datos) {
+    private record Actual(EstadoDocumento estado, boolean vigente, long version, MetadatosApto datos) {
     }
 }

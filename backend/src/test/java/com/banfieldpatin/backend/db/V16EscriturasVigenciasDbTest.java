@@ -87,8 +87,9 @@ class V16EscriturasVigenciasDbTest {
 			s.execute(Files.readString(Path.of("ops/postgresql/preparar-migracion.sql")));
 		}
 		flyway().target("15").load().migrate();
-		assertThat(flyway().load().migrate().migrationsExecuted).isEqualTo(1);
-		flyway().load().validate();
+		// Esta clase prueba V16 con roles separados: las migraciones posteriores (V17) tienen su propia prueba más abajo.
+		assertThat(flyway().target("16").load().migrate().migrationsExecuted).isEqualTo(1);
+		flyway().target("16").load().validate();
 		try (var c = base(MIGRATOR, CLAVE).getConnection(); var s = c.createStatement()) {
 			s.execute("SET ROLE " + OWNER);
 			for (String script : List.of("c1", "c2a", "c2b")) {
@@ -114,6 +115,40 @@ class V16EscriturasVigenciasDbTest {
 				s.execute("DROP ROLE IF EXISTS " + String.join(", ", AJENO, RUNTIME, MIGRATOR, OWNER));
 			}
 		}
+	}
+
+	// ---------- V17 (apto físico) con los mismos roles separados ----------
+
+	@Test
+	void v17LaAplicaElMigradorYElRuntimeOperaElAptoSinBorradoNiPermisosNuevos() {
+		assertThat(flyway().load().migrate().migrationsExecuted).isLessThanOrEqualTo(1);
+		flyway().load().validate();
+		var c = casoBase();
+		var cliente = JdbcClient.create(runtime);
+		UUID temporada = new DatosDb(JdbcClient.create(admin)).temporada(c.escuela(), 2026, false);
+		String insertar = """
+				INSERT INTO gestion_patin.documento(escuela_id,deportista_id,temporada_id,tipo,nombre_original,storage_key,
+				  mime_type,tamanio_bytes,cargado_por,fecha_emision,medico_nombre,medico_matricula)
+				VALUES(:e,:d,:t,'APTO_FISICO','sintetico.pdf',:k,'application/pdf',10,:a,DATE '2026-03-01','Medico Sintetico','MP 0001')
+				RETURNING id
+				""";
+		UUID id = cliente.sql(insertar).param("e", c.escuela()).param("d", c.deportista()).param("t", temporada)
+				.param("k", UUID.randomUUID().toString()).param("a", c.admin()).query(UUID.class).single();
+		// el trigger de V17 corre con el runtime: cambiar datos de un aprobado exige retirar la aprobación en la misma sentencia
+		cliente.sql("UPDATE gestion_patin.documento SET estado='APROBADO', version=version+1 WHERE id=:i").param("i", id).update();
+		assertThatThrownBy(() -> cliente.sql("UPDATE gestion_patin.documento SET medico_matricula='MP 0002', version=version+1 WHERE id=:i")
+				.param("i", id).update()).hasMessageContaining("APTO_METADATOS_NO_EDITABLES");
+		assertThat(cliente.sql("UPDATE gestion_patin.documento SET medico_matricula='MP 0002', estado='CARGADO', version=version+1 WHERE id=:i")
+				.param("i", id).update()).isEqualTo(1);
+		// la unicidad de la serie vigente también rige para el login runtime
+		assertThatThrownBy(() -> cliente.sql(insertar).param("e", c.escuela()).param("d", c.deportista()).param("t", temporada)
+				.param("k", UUID.randomUUID().toString()).param("a", c.admin()).query(UUID.class).single())
+				.hasMessageContaining("uq_documento_apto_vigente");
+		// y sin permisos nuevos: no hay borrado de documentos ni de operaciones
+		assertThatThrownBy(() -> cliente.sql("DELETE FROM gestion_patin.documento WHERE id=:i").param("i", id).update())
+				.rootCause().hasMessageContaining("permission denied");
+		assertThatThrownBy(() -> cliente.sql("DELETE FROM gestion_patin.operacion_carga_documental").update())
+				.rootCause().hasMessageContaining("permission denied");
 	}
 
 	// ---------- app real con el login runtime ----------
