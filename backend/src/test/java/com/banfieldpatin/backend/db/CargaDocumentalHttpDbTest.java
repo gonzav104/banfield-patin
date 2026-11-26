@@ -3177,4 +3177,75 @@ class CargaDocumentalHttpDbTest {
     assertThat(documentos()).isZero();
     assertThat(id).isNotNull();
   }
+
+  // ---- U21: privacidad entre familias vinculadas al mismo deportista -------------------------------
+
+  HttpResponse<String> obtener(String ruta, String sesion) throws Exception {
+    return HttpClient.newHttpClient()
+        .send(
+            HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + ruta))
+                .header("Cookie", "BP_SESION=" + sesion)
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+  }
+
+  @Test
+  void losDatosDelAptoSoloLosVeLaFamiliaQueLoCargoYNingunOtroEndpointLosExpone() throws Exception {
+    var d = new DatosDb(jdbc);
+    UUID temporada = temporadaApto(2026);
+    var subida = cargarApto(UUID.randomUUID(), temporada, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(subida.statusCode()).as(subida.body()).isEqualTo(201);
+    assertThat(subida.body()).doesNotContain(MEDICO, MATRICULA);
+
+    UUID otraFamilia = d.familia(escuela, "Segunda familia sintética", true);
+    UUID otroUsuario = d.usuarioFamilia(escuela, otraFamilia, "segunda@example.invalid");
+    d.vinculo(escuela, otraFamilia, atleta, "ACTIVO", false, d.admin(escuela, "admin2@example.invalid", true));
+    String segunda = tokens.emitir(otroUsuario, Rol.FAMILIA, escuela, otraFamilia);
+    String ruta = "/api/familia/deportistas/" + atleta + "/temporadas/" + temporada + "/apto-fisico";
+
+    var propia = obtener(ruta, token);
+    assertThat(propia.statusCode()).as(propia.body()).isEqualTo(200);
+    assertThat((String) JsonPath.read(propia.body(), "$.estado")).isEqualTo("EN_REVISION");
+    assertThat((String) JsonPath.read(propia.body(), "$.documento.medicoMatricula")).isEqualTo(MATRICULA);
+    assertThat((Boolean) JsonPath.read(propia.body(), "$.documento.datosVisibles")).isTrue();
+
+    var ajena = obtener(ruta, segunda);
+    assertThat(ajena.statusCode()).as(ajena.body()).isEqualTo(200);
+    assertThat((String) JsonPath.read(ajena.body(), "$.estado")).isEqualTo("EN_REVISION");
+    assertThat((String) JsonPath.read(ajena.body(), "$.vigencia.hasta")).isEqualTo("2026-12-31");
+    assertThat((Boolean) JsonPath.read(ajena.body(), "$.documento.datosVisibles")).isFalse();
+    assertThat(ajena.body()).doesNotContain(MEDICO, MATRICULA, hace10Dias());
+
+    // Ningún otro endpoint documental de la familia (listado, checklist) lleva los datos, ni para la que cargó ni para la otra.
+    for (String sesion : List.of(token, segunda)) {
+      for (String otra :
+          List.of(
+              "/api/familia/deportistas/" + atleta + "/documentos",
+              "/api/familia/deportistas/" + atleta + "/checklist-documental")) {
+        var r = obtener(otra, sesion);
+        assertThat(r.statusCode()).as(otra + r.body()).isEqualTo(200);
+        assertThat(r.body()).doesNotContain(MEDICO, MATRICULA, hace10Dias());
+      }
+    }
+
+    // La familia no tiene ruta de archivo: la descarga es solo de ADMIN.
+    UUID documento = idDe(subida);
+    for (String sesion : List.of(token, segunda)) {
+      var archivo = obtener("/api/familia/deportistas/" + atleta + "/documentos/" + documento + "/archivo", sesion);
+      assertThat(archivo.statusCode()).isIn(404, 405);
+    }
+    var comoAdmin = obtener("/api/admin/deportistas/" + atleta + "/documentos/" + documento + "/archivo", token);
+    assertThat(comoAdmin.statusCode()).isEqualTo(403);
+
+    // Revocado el vínculo de la que cargó, deja de ver todo; la otra sigue sin ver los datos ajenos.
+    jdbc.sql("UPDATE gestion_patin.familia_deportista SET estado='REVOCADO' WHERE familia_id=:f AND deportista_id=:d")
+        .param("f", familia)
+        .param("d", atleta)
+        .update();
+    assertThat(obtener(ruta, token).statusCode()).isEqualTo(404);
+    var despues = obtener(ruta, segunda);
+    assertThat(despues.statusCode()).isEqualTo(200);
+    assertThat(despues.body()).doesNotContain(MEDICO, MATRICULA);
+  }
 }

@@ -48,7 +48,7 @@ class CorreccionAptoWebMvcTest extends BaseOpenApiWebMvc {
 		assertThat(xsrf).isNotNull();
 		when(correccionAptoService.corregir(any(), eq(deportista), eq(documento), anyLong(), any())).thenReturn(
 				new AptoFisicoTemporada.DocumentoApto(documento, "CARGADO", LocalDate.of(2026, 3, 1), "Medico Sintetico",
-						"MP 0001", null, Instant.parse("2026-03-02T10:00:00Z"), 4L));
+						"MP 0001", null, Instant.parse("2026-03-02T10:00:00Z"), 4L, true));
 	}
 
 	private MockHttpServletRequestBuilder pedido(String cuerpo) {

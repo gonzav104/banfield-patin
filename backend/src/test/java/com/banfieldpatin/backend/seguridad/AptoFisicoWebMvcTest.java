@@ -42,7 +42,7 @@ class AptoFisicoWebMvcTest extends BaseOpenApiWebMvc {
 		return new AptoFisicoTemporada(id, temporada, 2026, EstadoApto.EN_REVISION, false,
 				new AptoFisicoTemporada.Vigencia(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), true, "Reglamento Nacional 2026"),
 				List.of(), new AptoFisicoTemporada.DocumentoApto(UUID.randomUUID(), "CARGADO", LocalDate.of(2026, 3, 1),
-						"Medico Sintetico", "MP 0001", null, Instant.parse("2026-03-02T10:00:00Z"), conRevision ? 0L : null));
+						"Medico Sintetico", "MP 0001", null, Instant.parse("2026-03-02T10:00:00Z"), conRevision ? 0L : null, true));
 	}
 
 	@BeforeEach
@@ -66,7 +66,7 @@ class AptoFisicoWebMvcTest extends BaseOpenApiWebMvc {
 					"vigencia", "avisos", "documento");
 			// Cerrado: ni archivo, ni ubicación, ni hash, ni nombre original, ni identidad de quien lo cargó.
 			assertThat(raiz.path("documento").propertyNames()).containsExactlyInAnyOrder("id", "estado", "fechaEmision",
-					"medicoNombre", "medicoMatricula", "motivoObservacion", "cargadoEn", "revision");
+					"medicoNombre", "medicoMatricula", "motivoObservacion", "cargadoEn", "revision", "datosVisibles");
 			assertThat(cuerpo).doesNotContain("storage", "sha256", "nombreOriginal", "cargadoPor", "LISTO_PARA_PRESENTAR", "EMPADRONADO");
 		}
 	}

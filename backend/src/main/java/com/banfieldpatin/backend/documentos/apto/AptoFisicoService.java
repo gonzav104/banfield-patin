@@ -59,19 +59,28 @@ public class AptoFisicoService {
                 .param("t", temporadaId).param("e", usuario.escuelaId()).query(Integer.class).optional()
                 .orElseThrow(TemporadaAdminService::temporadaNoEncontrada);
         ReglaVigenciaApto.Vigencia regla = ReglaVigenciaApto.paraTemporada(anio);
+        // Procedencia: los datos son de la FAMILIA cuyo usuario cargó esta versión (documento.cargado_por → usuario.familia_id). Otra
+        // familia con vínculo activo ve el estado y la vigencia, no los datos; ADMIN ve todo. El archivo nunca sale por acá.
         var documento = jdbc.sql("""
-                SELECT id, estado, fecha_emision, medico_nombre, medico_matricula, motivo_observacion, creado_en, version
-                FROM gestion_patin.documento
-                WHERE escuela_id=:e AND deportista_id=:d AND temporada_id=:t AND tipo='APTO_FISICO' AND vigente
+                SELECT d.id, d.estado, d.fecha_emision, d.medico_nombre, d.medico_matricula, d.motivo_observacion, d.creado_en,
+                       d.version,
+                       EXISTS (SELECT 1 FROM gestion_patin.usuario u WHERE u.id = d.cargado_por
+                               AND u.escuela_id = d.escuela_id AND u.familia_id = :familia) AS propia
+                FROM gestion_patin.documento d
+                WHERE d.escuela_id=:e AND d.deportista_id=:d AND d.temporada_id=:t AND d.tipo='APTO_FISICO' AND d.vigente
                 """).param("e", usuario.escuelaId()).param("d", deportistaId).param("t", temporadaId)
-                .query((rs, n) -> new AptoFisicoTemporada.DocumentoApto(rs.getObject("id", UUID.class),
-                        rs.getString("estado"), rs.getObject("fecha_emision", LocalDate.class),
-                        rs.getString("medico_nombre"), rs.getString("medico_matricula"),
-                        // El motivo solo viaja con un documento observado, como en el resto de las proyecciones.
-                        EstadoDocumento.OBSERVADO.name().equals(rs.getString("estado"))
-                                ? rs.getString("motivo_observacion") : null,
-                        rs.getObject("creado_en", OffsetDateTime.class).toInstant(), admin ? rs.getLong("version") : null))
-                .optional().orElse(null);
+                .param("familia", admin ? null : usuario.familiaId())
+                .query((rs, n) -> {
+                    boolean datos = admin || rs.getBoolean("propia");
+                    return new AptoFisicoTemporada.DocumentoApto(rs.getObject("id", UUID.class), rs.getString("estado"),
+                            datos ? rs.getObject("fecha_emision", LocalDate.class) : null,
+                            datos ? rs.getString("medico_nombre") : null, datos ? rs.getString("medico_matricula") : null,
+                            // El motivo lo escribe ADMIN y es lo que la familia necesita para actuar: viaja con el estado.
+                            EstadoDocumento.OBSERVADO.name().equals(rs.getString("estado"))
+                                    ? rs.getString("motivo_observacion") : null,
+                            rs.getObject("creado_en", OffsetDateTime.class).toInstant(), admin ? rs.getLong("version") : null,
+                            datos);
+                }).optional().orElse(null);
         LocalDate hoy = LocalDate.now(reloj.withZone(ReglaVigenciaApto.ZONA));
         EstadoApto estado = CalculadoraEstadoApto.calcular(
                 documento == null ? null : EstadoDocumento.valueOf(documento.estado()), regla, hoy);

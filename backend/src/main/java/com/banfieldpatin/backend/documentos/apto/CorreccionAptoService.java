@@ -129,7 +129,7 @@ public class CorreccionAptoService {
                 """).param("d", documento).param("e", usuario.escuelaId())
                 .query((rs, n) -> new AptoFisicoTemporada.DocumentoApto(rs.getObject(1, UUID.class), rs.getString(2),
                         rs.getObject(3, LocalDate.class), rs.getString(4), rs.getString(5), null,
-                        rs.getObject(6, OffsetDateTime.class).toInstant(), rs.getLong(7)))
+                        rs.getObject(6, OffsetDateTime.class).toInstant(), rs.getLong(7), true))
                 .single();
     }
 

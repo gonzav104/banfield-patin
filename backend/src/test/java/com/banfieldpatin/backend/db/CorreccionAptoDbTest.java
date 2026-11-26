@@ -107,8 +107,9 @@ class CorreccionAptoDbTest extends BaseVinculosDb {
 		var r = correccion.corregir(admin, atleta, id, 0, datos(FECHA, NOMBRE, "MP 0002"));
 		assertThat(r.revision()).isEqualTo(1L);
 		assertThat(r.medicoMatricula()).isEqualTo("MP 0002");
+		// la corrección no cambia la procedencia: los datos siguen siendo de la familia que cargó la versión
 		assertThat(fila(id)).containsEntry("estado", "CARGADO").containsEntry("medico_matricula", "MP 0002")
-				.containsEntry("medico_nombre", NOMBRE).containsEntry("version", 1L);
+				.containsEntry("medico_nombre", NOMBRE).containsEntry("version", 1L).containsEntry("cargado_por", adminId);
 		var eventos = jdbc.sql("""
 				SELECT detalle::text FROM gestion_patin.auditoria
 				WHERE escuela_id=:e AND usuario_id=:u AND recurso_id=:id AND accion='DOCUMENTO_APTO_CORREGIDO'

@@ -59,12 +59,14 @@ class AptoFisicoDbTest extends BaseVinculosDb {
 	AptoFisicoService servicio;
 	UUID familia, deportista, temporada2026, temporada2027;
 	UsuarioAutenticado familiar;
+	UUID usuarioDeLaFamilia;
 
 	@BeforeEach
 	void preparar() {
 		AHORA.set(Instant.parse("2026-06-15T15:00:00Z"));
 		familia = datos.familia(escuelaA, "Familia apto", true);
-		familiar = new UsuarioAutenticado(datos.usuarioFamilia(escuelaA, familia, "apto@example.invalid"), escuelaA, familia, Rol.FAMILIA);
+		usuarioDeLaFamilia = datos.usuarioFamilia(escuelaA, familia, "apto@example.invalid");
+		familiar = new UsuarioAutenticado(usuarioDeLaFamilia, escuelaA, familia, Rol.FAMILIA);
 		deportista = datos.deportista(escuelaA, "APTO" + UUID.randomUUID().toString().substring(0, 8), "Lucia", "Sintetica");
 		datos.vinculo(escuelaA, familia, deportista, "ACTIVO", false, adminId);
 		temporada2026 = datos.temporada(escuelaA, 2026, false);
@@ -79,6 +81,12 @@ class AptoFisicoDbTest extends BaseVinculosDb {
 	}
 
 	UUID apto(UUID escuela, UUID titular, UUID temporada, String estado, boolean vigente, String matricula) {
+		return apto(escuela, titular, temporada, estado, vigente, matricula,
+				escuela.equals(escuelaA) ? usuarioDeLaFamilia : adminDeB.id());
+	}
+
+	/** {@code cargadoPor} es la procedencia real de la carga: el usuario que subió el apto. */
+	UUID apto(UUID escuela, UUID titular, UUID temporada, String estado, boolean vigente, String matricula, UUID cargadoPor) {
 		return jdbc.sql("""
 				INSERT INTO gestion_patin.documento(escuela_id, deportista_id, temporada_id, tipo, nombre_original, storage_key,
 				  mime_type, tamanio_bytes, estado, vigente, cargado_por, motivo_observacion, fecha_emision, medico_nombre,
@@ -88,7 +96,7 @@ class AptoFisicoDbTest extends BaseVinculosDb {
 				RETURNING id
 				""").param("e", escuela).param("d", titular).param("t", temporada).param("key", "RUTA_PRIVADA/" + UUID.randomUUID())
 				.param("estado", estado).param("vigente", vigente)
-				.param("autor", escuela.equals(escuelaA) ? adminId : adminDeB.id()).param("m", matricula)
+				.param("autor", cargadoPor).param("m", matricula)
 				.query(UUID.class).single();
 	}
 
@@ -217,5 +225,75 @@ class AptoFisicoDbTest extends BaseVinculosDb {
 		assertThat(contar("auditoria", escuelaA)).isEqualTo(auditoria);
 		assertThat(jdbc.sql("SELECT coalesce(json_agg(d ORDER BY id)::text,'[]') FROM gestion_patin.documento d WHERE escuela_id = :e")
 				.param("e", escuelaA).query(String.class).single()).isEqualTo(antes);
+	}
+
+	// ---------- procedencia: los datos de una familia no pasan a otra ----------
+
+	UsuarioAutenticado segundaFamilia() {
+		var otra = datos.familia(escuelaA, "Segunda familia", true);
+		datos.vinculo(escuelaA, otra, deportista, "ACTIVO", false, adminId);
+		return new UsuarioAutenticado(datos.usuarioFamilia(escuelaA, otra, "segunda-" + UUID.randomUUID() + "@example.invalid"),
+				escuelaA, otra, Rol.FAMILIA);
+	}
+
+	@Test
+	void laFamiliaQueCargoVeSusDatosYLaSegundaFamiliaSoloVeElEstado() {
+		apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP PRIVADA");
+		var segunda = segundaFamilia();
+		var propia = servicio.consultar(familiar, deportista, temporada2026);
+		assertThat(propia.documento().datosVisibles()).isTrue();
+		assertThat(propia.documento().medicoMatricula()).isEqualTo("MP PRIVADA");
+		var ajena = servicio.consultar(segunda, deportista, temporada2026);
+		assertThat(ajena.estado()).isEqualTo(EstadoApto.EN_REVISION);
+		assertThat(ajena.vigencia().hasta()).hasToString("2026-12-31");
+		assertThat(ajena.documento().datosVisibles()).isFalse();
+		assertThat(ajena.documento().fechaEmision()).isNull();
+		assertThat(ajena.documento().medicoNombre()).isNull();
+		assertThat(ajena.documento().medicoMatricula()).isNull();
+		assertThat(ajena.documento().id()).isEqualTo(propia.documento().id());
+		// ADMIN lo ve todo
+		assertThat(servicio.consultar(admin, deportista, temporada2026).documento().medicoMatricula()).isEqualTo("MP PRIVADA");
+	}
+
+	@Test
+	void unaCorreccionAdminNoHaceVisiblesLosDatosParaLaOtraFamilia() {
+		var id = apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP PRIVADA");
+		var segunda = segundaFamilia();
+		jdbc.sql("UPDATE gestion_patin.documento SET medico_matricula='MP CORREGIDA', version=version+1 WHERE id=:i").param("i", id).update();
+		assertThat(servicio.consultar(familiar, deportista, temporada2026).documento().medicoMatricula()).isEqualTo("MP CORREGIDA");
+		assertThat(servicio.consultar(segunda, deportista, temporada2026).documento().medicoMatricula()).isNull();
+	}
+
+	@Test
+	void unReemplazoPasaLaProcedenciaALaFamiliaQueLoHizo() {
+		var segunda = segundaFamilia();
+		apto(escuelaA, deportista, temporada2026, "OBSERVADO", false, "MP DE LA PRIMERA");
+		apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP DE LA SEGUNDA", segunda.id());
+		assertThat(servicio.consultar(segunda, deportista, temporada2026).documento().medicoMatricula()).isEqualTo("MP DE LA SEGUNDA");
+		var primera = servicio.consultar(familiar, deportista, temporada2026);
+		assertThat(primera.estado()).isEqualTo(EstadoApto.EN_REVISION);
+		assertThat(primera.documento().datosVisibles()).isFalse();
+		assertThat(primera.documento().medicoMatricula()).isNull();
+	}
+
+	@Test
+	void sinVinculoDejaDeVerTodoYLaOtraFamiliaSigueSinVerLosDatosDeLaRevocada() {
+		apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP PRIVADA");
+		var segunda = segundaFamilia();
+		jdbc.sql("UPDATE gestion_patin.familia_deportista SET estado='REVOCADO' WHERE familia_id=:f AND deportista_id=:d")
+				.param("f", familia).param("d", deportista).update();
+		noEncontrado(() -> servicio.consultar(familiar, deportista, temporada2026), "DEPORTISTA_NO_ENCONTRADO");
+		var ajena = servicio.consultar(segunda, deportista, temporada2026);
+		assertThat(ajena.estado()).isEqualTo(EstadoApto.EN_REVISION);
+		assertThat(ajena.documento().medicoMatricula()).isNull();
+	}
+
+	@Test
+	void unAptoCargadoPorUnAdminOUnUsuarioAjenoNoMuestraDatosALasFamilias() {
+		apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP DE ADMIN", adminId);
+		var r = servicio.consultar(familiar, deportista, temporada2026);
+		assertThat(r.documento().datosVisibles()).isFalse();
+		assertThat(r.documento().medicoMatricula()).isNull();
+		assertThat(servicio.consultar(admin, deportista, temporada2026).documento().medicoMatricula()).isEqualTo("MP DE ADMIN");
 	}
 }
