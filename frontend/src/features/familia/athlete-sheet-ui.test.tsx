@@ -213,9 +213,9 @@ describe('athlete sheet: navigation and access', () => {
     await screen.findByRole('region', { name: 'Documentos del deportista' });
     const urls = backend.requests.filter((r) => r.url.startsWith('/familia/')).map((r) => r.url);
     // One sheet request per load. The only other family requests are the document metadata and the upload
-    // availability of the documents section (U15) and the partial checklist (U20): never the 15-field detail nor the seasons.
+    // availability of the documents section (U15), the partial checklist (U20) and the read-only responsables (C3): never the 15-field detail nor the seasons.
     expect(urls.filter((u) => u === sheetUrl(ana.id))).toHaveLength(2);
-    expect(new Set(urls)).toEqual(new Set([sheetUrl(ana.id), `${sheetPath(ana.id)}/documentos?page=0&size=100`, `${sheetPath(ana.id)}/checklist-documental`, '/familia/documentos/disponibilidad']));
+    expect(new Set(urls)).toEqual(new Set([sheetUrl(ana.id), `${sheetPath(ana.id)}/documentos?page=0&size=100`, `${sheetPath(ana.id)}/checklist-documental`, `${sheetPath(ana.id)}/responsables`, '/familia/documentos/disponibilidad']));
   });
 
   it('keeps the protected routes: without a session it goes to login, and an administrator never reaches the data', async () => {
@@ -455,8 +455,8 @@ describe('athlete sheet: accessibility', () => {
 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     await screen.findByRole('heading', { level: 3, name: 'DNI – frente' });
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Datos del deportista', 'Temporada 2026', 'Checklist de documentación', 'Documentos del deportista']);
-    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby'))).toEqual(['athlete-data-title', 'season-title', 'document-checklist-title', 'documents-title']);
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Datos del deportista', 'Temporada 2026', 'Responsables', 'Checklist de documentación', 'Documentos del deportista']);
+    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby'))).toEqual(['athlete-data-title', 'season-title', 'responsables-title', 'document-checklist-title', 'documents-title']);
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['DNI – frente', 'DNI – dorso']);
     expect(within(screen.getByRole('region', { name: 'Temporada 2026' })).getAllByRole('term').map((t) => t.textContent)).toEqual([
       'Categoría', 'Rama', 'Divisional', 'Número de corredor', 'Estado deportivo',
