@@ -275,7 +275,7 @@ class InventarioRutasTest {
 				// Disponibilidad de la carga documental (U15): lectura de configuración, no escribe.
 				"GET /api/familia/documentos/disponibilidad",
 				// Ficha minima de un deportista propio (FE-04): datos generales y temporada vigente, sin datos sensibles.
-				"GET /api/familia/deportistas/{deportistaId}/ficha", "POST /api/familia/deportistas/{id}/documentos",
+				"GET /api/familia/deportistas/{deportistaId}/ficha", "GET /api/familia/deportistas/{deportistaId}/responsables", "POST /api/familia/deportistas/{id}/documentos",
 				// Reemplazo de un DNI observado (U18): misma carga autorizada, ruta dedicada.
 				"POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo",
 				// Carga y reemplazo familiar de los DNI de un tutor (U19).

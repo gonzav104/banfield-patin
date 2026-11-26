@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.banfieldpatin.backend.familias.portal.dto.ResponsableDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DatosBaseDeFicha;
 import com.banfieldpatin.backend.familias.portal.dto.DatosListadoDeFamilia;
 import com.banfieldpatin.backend.familias.portal.dto.DeportistaDeFamiliaDetalle;
@@ -157,6 +158,10 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 	 * Primer tramo del alcance de la FAMILIA: FROM y JOIN de vinculo, familia y deportista por id Y escuela. Una consulta del
 	 * portal puede agregar mas JOIN entre este tramo y {@link #ALCANCE_FAMILIA_FILTRO}.
 	 */
+	String ALCANCE_FAMILIA_SELECT_RESPONSABLES = """
+			select new com.banfieldpatin.backend.familias.portal.dto.ResponsableDeFamilia(t.id, t.nombre, t.apellido, v.tipo)
+			""";
+
 	String ALCANCE_FAMILIA_JOINS = """
 			 from FamiliaDeportista fd
 			join Familia f on f.id = fd.familiaId and f.escuelaId = fd.escuelaId
@@ -201,6 +206,31 @@ public interface FamiliaDeportistaRepository extends JpaRepository<FamiliaDeport
 			  and d.id = :deportistaId
 			""")
 	Optional<DeportistaDeFamiliaDetalle> deportistaDelPortal(@Param("familiaId") UUID familiaId,
+			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
+
+	// ---------- responsables vigentes para la FAMILIA (solo lectura) ----------
+
+	/** El deportista es propio (alcance completo de la familia). Decide el 404 uniforme sin cargar ningún dato personal. */
+	@Query("select count(fd) > 0" + ALCANCE_FAMILIA + """
+			  and d.id = :deportistaId
+			""")
+	boolean deportistaEsDelPortal(@Param("familiaId") UUID familiaId, @Param("escuelaId") UUID escuelaId,
+			@Param("deportistaId") UUID deportistaId);
+
+	/**
+	 * Responsables VIGENTES del deportista que son tutores de ESTA familia: compone los mismos fragmentos de alcance y agrega
+	 * la vigencia abierta y el tutor, siempre de la misma familia y escuela. Nada de otras familias llega a la memoria del
+	 * servidor, ni se filtra después: el filtro es el WHERE. Sin historial, sin vigencias cerradas, sin DNI ni contactos.
+	 */
+	@Query(ALCANCE_FAMILIA_SELECT_RESPONSABLES + ALCANCE_FAMILIA_JOINS + """
+			join TutorDeportista v on v.escuelaId = fd.escuelaId and v.familiaId = fd.familiaId
+			  and v.deportistaId = fd.deportistaId and v.cerradoEn is null
+			join Tutor t on t.id = v.tutorId and t.escuelaId = v.escuelaId and t.familiaId = v.familiaId
+			""" + ALCANCE_FAMILIA_FILTRO + """
+			  and d.id = :deportistaId
+			order by lower(t.apellido), lower(t.nombre), t.id
+			""")
+	List<ResponsableDeFamilia> responsablesDelPortal(@Param("familiaId") UUID familiaId,
 			@Param("escuelaId") UUID escuelaId, @Param("deportistaId") UUID deportistaId);
 
 	// ---------- datos deportivos anuales para la FAMILIA (solo lectura) ----------
