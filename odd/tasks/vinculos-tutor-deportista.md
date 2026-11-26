@@ -26,9 +26,9 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 
 ## Tasks
 
-- [ ] C1 · S1–S2, S7–S8 · implementación inline; verificación independiente sin bloqueantes · riesgo 1/2 (invariantes e aislamiento) · C1-A `5ac5824` revisado; C1-B contiene consultas y contrato, su comprobación nativa se registra en el siguiente corte.
-- [ ] C2 · S3–S5, S7–S8 · bloqueado por C1; riesgo 2/4 (ADMIN y carreras entre escritores) · commit(s) pendiente(s).
-- [ ] C3 · S6–S8 · primer corte (lectura) integrado en main (PR #55); segundo corte (escrituras ADMIN) implementado localmente, sin publicar · riesgo 2 (privacidad y roles).
+- [x] C1 · S1–S2, S7–S8 · V14, consultas ADMIN y contrato · integrado en `main` (PR #52, merge `159c738`), CI posterior 7/7.
+- [x] C2 · S3–S5, S7–S8 · escrituras y cierres transaccionales · C2-A integrado en `main` (PR #53, merge `f1646b3`) y C2-B (PR #54, merge `36b3d24`), CI posterior 7/7 en ambos.
+- [x] C3 · S6–S8 · lectura y privacidad (PR #55, merge `92ee816`) y gestión administrativa (PR #56, merge `fc926e6`), CI posterior 7/7 y 8/8 respectivamente.
 - [x] C3-1a · S6 · endpoint FAMILIA `GET /api/familia/deportistas/{id}/responsables`, DTO cerrado, inventarios y docs · inline, riesgo 2 · `d2bffa5`.
 - [x] C3-1b · S6 · frontend: tipos, API, hooks, pantalla ADMIN de vigentes e historial, bloque familiar de solo lectura · inline · `4e53dad`.
 - [x] C3-1c · S6 · E2E reales ADMIN y FAMILIA (dos familias sobre un deportista), bandera solo en la base descartable · inline · `e0a1626`.
@@ -37,7 +37,7 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - [x] C3-2c · S4, S6 · E2E reales con la bandera encendida (shards 1) y apagada (shard 3 nuevo) · inline, riesgo 5 (workflow) · commit del cierre.
 
 - [x] C1-D · S10 · inventario estricto · inline · RED (GET no inventariado), GREEN 28/28 · `f94fd82` (Gentle AI: `under_budget`).
-- [ ] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · inline, con verificación independiente · riesgos 1/2/4 · implementación y focos verificados; suite PG integral y RDD pendientes.
+- [x] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · integrado con C1 (PR #52).
 
 - [x] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · `6418186`, revisión nativa aprobada y reconocida.
 - [x] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4 · `c030920`, aprobado y reconocido.
@@ -483,4 +483,22 @@ Decisiones de diseño: (1) la clave nace al abrir la confirmación y solo muere 
 Sobre `57ebbb8`: Playwright real shard 3 (bandera apagada) 2/2, shard 1 135/135 y shard 2 116/116 (la primera corrida falló en tres lugares que no eran defectos del producto: el bucle local no apagó la bandera del shard 3 —el workflow sí—, una aserción mía leía el selector del diálogo como si fuera la fila, y un spec existente afirmaba que el detalle del tutor no tenía control de estado); backend normal 1483/1483 y una única suite PostgreSQL 17 completa 990/990, sin errores (reportes limpios); Vitest completo 72/72 archivos, 1634/1634 tras los ajustes de la revisión.
 
 Gentle AI (cuatro lentes; riesgo alto por el workflow de CI) aprobó y se reconoció. Avisos atendidos en un commit posterior: R3-001 (una repetición legítima tras un resultado incierto devuelve la fila **tal como está hoy**, con el tipo editado o ya cerrada; la validación estricta del tipo la trataba como mal formada y dejaba la solicitud pendiente: ahora solo se comparan tutor y familia, con prueba), R3-002 (la consulta posterior a un resultado incierto no verificaba el resultado de la recarga), R2-1 (paréntesis del README), R2-2 (comentario de `useUpdateTutor` sobre el hook equivocado), R2-3 (constante muerta `ADD_PENDING_BLOCK`, ahora usada) y R2-4 (variable `open` que ocultaba al estado). Las pruebas E2E reales del último ajuste no se repitieron localmente: los cambios son pequeños y los cubre Vitest; los valida la CI sobre el HEAD publicado.
+
+### L26 — Cierre de la unidad «vinculación explícita tutor–deportista»
+
+Unidad **cerrada**. Integrada en `main` en cinco pull requests, todos por merge commit, sin squash ni reescritura, con árbol idéntico al candidato aprobado y CI posterior en verde: C1 PR #52 (`159c738`), C2-A PR #53 (`f1646b3`), C2-B PR #54 (`36b3d24`), C3 lectura PR #55 (`92ee816`) y C3 gestión PR #56 (`fc926e6`, ocho controles: Suite normal, Suite db, verificación del frontend, auditoría, tres shards E2E y su agregador). Cada corte de riesgo alto tuvo revisión nativa de Gentle AI aprobada y reconocida.
+
+**Decisiones funcionales.** Una responsabilidad es una **vigencia explícita** tutor–deportista (nunca se deriva de `tutor.parentesco` ni de datos existentes); varios responsables por deportista, sin exigir madre y padre; el tipo es un **dato declarado** (opcional, `null` distinto de `SIN_DETERMINAR`) que no acredita representación legal ni concede acceso a datos o documentos; el cierre es **irreversible** y una reactivación posterior nunca lo reabre (se requiere una nueva confirmación ADMIN con clave nueva); reactivar un tutor de una familia inactiva está permitido sin restaurar vigencias ni ampliar permisos; la familia solo ve nombre, apellido y tipo de **los tutores vigentes de su propia familia**.
+
+**Integridad.** V14 (vigencias, marcas privadas y FKs de estado con `KEY SHARE`), V15 (cierres `SECURITY DEFINER` con orden de bloqueos padre → marca → vigencias y auditoría diferida) y V16 (alta idempotente, tipo y revocación individual); el runtime solo ejecuta funciones, sin DML directo ni acceso a las marcas. Índice único parcial de una vigencia abierta por par y `UNIQUE (escuela_id, solicitud_id)` con huella SHA-256 del servidor: **protección obligatoria que la interfaz no reemplaza**.
+
+**Privacidad.** El alcance familiar es el `WHERE` de la consulta (nunca un filtro posterior), 404 uniforme, DTO cerrado de cuatro campos, sin historial ni datos de otras familias aunque compartan deportista; claves de caché por identidad con `gcTime: 0`; ante un error la sección no conserva la lista previa.
+
+**Concurrencia.** El alta lee las cuatro marcas con `FOR KEY SHARE` (mismo bloqueo que las FKs), orden global deportista → familia → tutor → marcas → vigencias; revisiones optimistas observadas bajo bloqueo; bajo `REPEATABLE READ` una instantánea que no ve la fila concurrente da `409 CONFLICTO_CONCURRENCIA` y se repite el comando. Matriz de carreras contra las cuatro bajas en READ COMMITTED y REPEATABLE READ.
+
+**Altas.** `banfield.responsables.alta-habilitada` es **`false` por defecto** y permanece así tras el cierre: no se habilitó ningún entorno real. Solo los shards 1 y 2 de E2E la encienden en su base descartable; el shard 3 corre con la bandera apagada. Habilitarla en un despliegue exige V14–V16 aplicadas, roles Flyway/runtime separados con `autorizar-runtime-c1/c2a/c2b.sql`, ninguna instancia antigua escritora incompatible y no volver a un escritor incompatible con vigencias abiertas (`docs/VINCULOS-TUTORES.md`).
+
+**Limitaciones conocidas.** (1) La solicitud de alta con resultado incierto se conserva **solo en memoria** del navegador, por identidad y deportista: sobrevive a cerrar el diálogo y a navegar dentro de la aplicación, pero se pierde con una recarga completa o al cerrar la pestaña; tras ella la protección es la del backend (`409 RESPONSABLE_YA_VIGENTE` o la repetición con la misma clave). (2) La interfaz no puede conocer la bandera de antemano: el 503 se muestra como aviso. (3) Los E2E locales del segundo corte de C3 corrieron sobre `57ebbb8`; el último ajuste lo validó la CI.
+
+**Deuda técnica pendiente (fuera de la unidad, a resolver en PR propios).** (a) Causa raíz sin confirmar de los `Connection refused` y del fallo de Ryuk entre Docker Desktop y WSL2 (reapareció en `V5OperacionDbTest` y en una reejecución aislada; en CI no ocurre). (b) Carrera preexistente del helper `sentenciaEsperandoUnBloqueo` de `TemporadasConcurrenciaDbTest` (toma la primera sesión en espera sin orden ni filtro; la corrección debe conservar las garantías de concurrencia de la prueba). (c) `TutorAdminService` usa `em.lock` sin traducir `PessimisticLockException` ni `LockTimeoutException`, que el manejador global convertiría en 500; `ResponsablesAdminService` ya las traduce.
 
