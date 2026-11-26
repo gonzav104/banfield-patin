@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchAthleteDocuments, fetchDocumentChecklist, fetchAthleteFicha, fetchAthletes, fetchMyFamily, fetchUploadAvailability, isAthleteId, type DocumentOwnerKind } from './api';
+import { fetchAthleteDocuments, fetchAthleteResponsables, fetchDocumentChecklist, fetchAthleteFicha, fetchAthletes, fetchMyFamily, fetchUploadAvailability, isAthleteId, type DocumentOwnerKind } from './api';
 import { identityKey, type FamilyIdentity } from './identity';
 
 /**
@@ -18,6 +18,9 @@ export const familyKeys = {
   /** User + family + athlete, like the sheet: another identity or athlete never shares an entry. */
   checklist: (identity: FamilyIdentity | null, athleteId: string | undefined) =>
     ['familia', identity ? identityKey(identity) : 'sin-sesion', 'checklist-documental', athleteId ?? 'sin-id'] as const,
+  /** User + family + athlete: another identity, family or athlete never shares an entry. */
+  responsables: (identity: FamilyIdentity | null, athleteId: string | undefined) =>
+    ['familia', identity ? identityKey(identity) : 'sin-sesion', 'responsables', athleteId ?? 'sin-id'] as const,
   uploadAvailability: (identity: FamilyIdentity | null) =>
     ['familia', identity ? identityKey(identity) : 'sin-sesion', 'documentos-disponibilidad'] as const,
 };
@@ -95,6 +98,20 @@ export function useUploadAvailability(identity: FamilyIdentity | null) {
     queryFn: fetchUploadAvailability,
     enabled: !!identity?.familyId,
     staleTime: 60_000,
+    gcTime: 0,
+  });
+}
+
+/**
+ * The responsables vigentes of ONE own athlete (read-only). Same guards as the sheet (session with a family and a UUID id), no
+ * `placeholderData` and `gcTime: 0`: nothing of a previous athlete or identity is shown, and the entry is gone once no screen shows it.
+ */
+export function useAthleteResponsables(identity: FamilyIdentity | null, athleteId: string | undefined) {
+  return useQuery({
+    queryKey: familyKeys.responsables(identity, athleteId),
+    queryFn: () => fetchAthleteResponsables(athleteId as string),
+    enabled: !!identity?.familyId && isAthleteId(athleteId),
+    staleTime: 30_000,
     gcTime: 0,
   });
 }

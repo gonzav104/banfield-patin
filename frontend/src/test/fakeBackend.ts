@@ -104,6 +104,22 @@ export interface FakeAdminTutor {
 }
 
 export type FakeLinkState = 'PENDIENTE' | 'ACTIVO' | 'RECHAZADO' | 'REVOCADO';
+export type FakeResponsableTipo = 'MADRE' | 'PADRE' | 'TUTOR_LEGAL' | 'OTRO_RESPONSABLE' | 'SIN_DETERMINAR' | null;
+export type FakeClosureCause = 'REVOCACION_ADMIN' | 'TUTOR_INACTIVO' | 'FAMILIA_INACTIVA' | 'DEPORTISTA_INACTIVO' | 'FAMILIA_DEPORTISTA_REVOCADA';
+/** An explicit tutor-athlete responsibility (vigencia): open while `cerradoEn` is null. The fake keeps it for the ADMIN view and, by family, for the portal. */
+export interface FakeResponsable {
+  id: string;
+  athleteId: string;
+  familyId: string;
+  tutorId: string;
+  nombre: string;
+  apellido: string;
+  tipo: FakeResponsableTipo;
+  creadoEn: string;
+  cerradoEn: string | null;
+  causaCierre: FakeClosureCause | null;
+  version: number;
+}
 
 /** A family-athlete link as the ADMIN endpoints of FE-05/U11-B see it (VinculoRespuesta): it never carries a DNI, a CUIL or who authorized it. */
 export interface FakeAdminLink {
@@ -243,6 +259,7 @@ export class FakeBackend {
   private adminAthletes: FakeAdminAthlete[] = [];
   private adminLinks: FakeAdminLink[] = [];
   private adminLinkVersions = new Map<string, number>();
+  private responsables: FakeResponsable[] = [];
   private seasons: FakeSeason[] = [];
   private sportsRows: FakeSportsRow[] = [];
   private invitations: FakeInvitation[] = [];
@@ -847,6 +864,26 @@ export class FakeBackend {
     if (athlete) this.adminLinkVersions.set(athlete.id, (this.adminLinkVersions.get(athlete.id) ?? athlete.version) + 1);
   }
 
+  /** An open responsibility of a tutor over an athlete. The ADMIN view lists it by athlete; the portal shows it only to the tutor's own family. */
+  addResponsable(athleteId: string, familyId: string, data: { nombre: string; apellido: string; tipo?: FakeResponsableTipo; tutorId?: string; creadoEn?: string }): FakeResponsable {
+    const item: FakeResponsable = {
+      id: `resp-${++this.counter}`, athleteId, familyId, tutorId: data.tutorId ?? `tutor-${++this.counter}`,
+      nombre: data.nombre, apellido: data.apellido, tipo: data.tipo ?? null, creadoEn: data.creadoEn ?? '2026-03-01T12:00:00Z',
+      cerradoEn: null, causaCierre: null, version: 0,
+    };
+    this.responsables.push(item);
+    return item;
+  }
+
+  /** Another administrator closes a responsibility (revocation, tutor/family/athlete deactivation): it is irreversible and leaves the open list. */
+  closeResponsableBehindTheScenes(id: string, causa: FakeClosureCause = 'REVOCACION_ADMIN'): void {
+    const item = this.responsables.find((r) => r.id === id);
+    if (!item) throw new Error('Unknown fake responsable');
+    item.cerradoEn = '2026-04-01T12:00:00Z';
+    item.causaCierre = causa;
+    item.version += 1;
+  }
+
   /** The count of links the ADMIN model holds (every state). */
   adminLinkCount(): number {
     return this.adminLinks.length;
@@ -1083,6 +1120,22 @@ export class FakeBackend {
     const size = Number(params.get('size') ?? 20);
     const page = Number(params.get('page') ?? 0);
     return { contenido: items.slice(page * size, page * size + size), pagina: page, tamanio: size, totalElementos: items.length };
+  }
+
+  /** Mirrors GET /api/admin/deportistas/{id}/vinculos-tutores: open ones by default, `historial=true` adds the closed ones; newest first. */
+  private responsablesAdminRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined): { status: number; body?: unknown } | null {
+    const match = /^\/admin\/deportistas\/([^/]+)\/vinculos-tutores$/.exec(path);
+    if (!match || method !== 'get') return null;
+    if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+    if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+    if (!this.adminAthletes.some((a) => a.id === match[1])) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+    const historial = params.get('historial') === 'true';
+    const rows = this.responsables
+      .filter((r) => r.athleteId === match[1] && (historial || r.cerradoEn === null))
+      .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn) || b.id.localeCompare(a.id))
+      .map((r) => ({ id: r.id, familiaId: r.familyId, tutorId: r.tutorId, nombreTutor: r.nombre, apellidoTutor: r.apellido, tipo: r.tipo,
+        creadoEn: r.creadoEn, cerradoEn: r.cerradoEn, causaCierre: r.causaCierre, version: String(r.version) }));
+    return { status: 200, body: this.page(rows, params) };
   }
 
   private invitationsRoute(
@@ -1575,6 +1628,18 @@ export class FakeBackend {
         body: { nombre: athlete.nombre, apellido: athlete.apellido, edad: athlete.edad ?? null, activo: athlete.activo, temporadaVigente: athlete.vigente ?? null, ...athlete.extra },
       };
     }
+    const responsablesOfSheet = /^\/familia\/deportistas\/([^/]+)\/responsables$/.exec(path);
+    if (responsablesOfSheet) {
+      // Mirrors GET /api/familia/deportistas/{id}/responsables: ONE 404 for every cause, only OPEN responsibilities of the caller's OWN family, four fields.
+      const id = responsablesOfSheet[1]!;
+      if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!family || !family.activa || family.links.get(id) !== true || !this.athletes.has(id)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      const own = this.responsables
+        .filter((r) => r.athleteId === id && r.familyId === family.id && r.cerradoEn === null)
+        .sort((a, b) => a.apellido.localeCompare(b.apellido, 'es', { sensitivity: 'base' }) || a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }) || a.tutorId.localeCompare(b.tutorId))
+        .map((r) => ({ tutorId: r.tutorId, nombre: r.nombre, apellido: r.apellido, tipo: r.tipo }));
+      return { status: 200, body: { responsables: own } };
+    }
     if (path === '/familia/deportistas') {
       const visible = family ? [...family.links].filter(([, active]) => active).map(([id]) => this.athletes.get(id)!) : [];
       visible.sort(
@@ -1764,6 +1829,8 @@ export class FakeBackend {
     }
 
     const parsed = new URL(url, 'http://fake.local');
+    const responsables = this.responsablesAdminRoute(method, parsed.pathname, parsed.searchParams, current);
+    if (responsables) return responsables;
     const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader, body);
     if (adminDocuments) return adminDocuments;
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);
