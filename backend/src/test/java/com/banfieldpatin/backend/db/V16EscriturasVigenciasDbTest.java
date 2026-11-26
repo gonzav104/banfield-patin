@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -23,8 +24,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.TypeExcludeFilter;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+import com.banfieldpatin.backend.BackendApplication;
+import com.banfieldpatin.backend.familias.responsables.ResponsableAlta;
+import com.banfieldpatin.backend.familias.responsables.ResponsableRevision;
+import com.banfieldpatin.backend.familias.responsables.ResponsableTipo;
+import com.banfieldpatin.backend.familias.responsables.ResponsablesAdminService;
+import com.banfieldpatin.backend.familias.responsables.TipoVinculoTutor;
+import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
+import com.banfieldpatin.backend.usuarios.Rol;
 
 /** V16 con el login runtime real: permisos, idempotencia, aislamiento, historial, FKs de actor y concurrencia. */
 @Tag("db")
@@ -42,6 +56,17 @@ class V16EscriturasVigenciasDbTest {
 			"gestion_patin.crear_vigencia_tutor(uuid,uuid,uuid,uuid,text,uuid,text)",
 			"gestion_patin.actualizar_tipo_vigencia_tutor(uuid,uuid,uuid,bigint,text)",
 			"gestion_patin.revocar_vigencia_tutor(uuid,uuid,uuid,bigint)");
+
+	/** El smoke test arranca la app real, sin controladores sonda del classpath de tests. */
+	private static final class ExcluirComponentesDePrueba extends TypeExcludeFilter {
+		private final String raiz = V16EscriturasVigenciasDbTest.class.getProtectionDomain()
+				.getCodeSource().getLocation().toExternalForm();
+
+		@Override
+		public boolean match(MetadataReader metadata, MetadataReaderFactory factory) throws IOException {
+			return metadata.getResource().getURL().toExternalForm().startsWith(raiz);
+		}
+	}
 
 	private String base;
 	private DriverManagerDataSource admin;
@@ -88,6 +113,50 @@ class V16EscriturasVigenciasDbTest {
 			try (var c = global.getConnection(); var s = c.createStatement()) {
 				s.execute("DROP ROLE IF EXISTS " + String.join(", ", AJENO, RUNTIME, MIGRATOR, OWNER));
 			}
+		}
+	}
+
+	// ---------- app real con el login runtime ----------
+
+	@Test
+	void backendProdOperaAltaTipoYRevocacionConElLoginRuntimeSinDmlDirecto() {
+		var a = casoBase();
+		var t = tutor(a);
+		try (var contexto = new SpringApplicationBuilder(BackendApplication.class)
+				.profiles("test", "prod")
+				.initializers(ctx -> ctx.getBeanFactory().registerSingleton("filtroComponentesDePrueba",
+						new ExcluirComponentesDePrueba()))
+				.run("--server.port=0", "--banfield.frontend.url-base=https://frontend.example.invalid",
+						"--banfield.responsables.alta-habilitada=true",
+						"--spring.datasource.url=" + PostgresDescartable.urlDeBase(base),
+						"--spring.datasource.username=" + RUNTIME, "--spring.datasource.password=" + CLAVE)) {
+			assertThat(contexto.containsBean("flyway")).isFalse();
+			assertThat(contexto.getBean(JdbcClient.class).sql("SELECT current_user").query(String.class).single())
+					.isEqualTo(RUNTIME);
+			var servicio = contexto.getBean(ResponsablesAdminService.class);
+			var actor = new UsuarioAutenticado(a.admin(), a.escuela(), null, Rol.ADMIN);
+			var cliente = JdbcClient.create(admin);
+			long familia = cliente.sql("SELECT version FROM gestion_patin.familia WHERE id=:i").param("i", a.familia())
+					.query(Long.class).single();
+			long deportista = cliente.sql("SELECT version FROM gestion_patin.deportista WHERE id=:i")
+					.param("i", a.deportista()).query(Long.class).single();
+			long tutor = cliente.sql("SELECT version FROM gestion_patin.tutor WHERE id=:i").param("i", t)
+					.query(Long.class).single();
+			long vinculos = cliente.sql("SELECT version_vinculos FROM gestion_patin.deportista WHERE id=:i")
+					.param("i", a.deportista()).query(Long.class).single();
+			var clave = UUID.randomUUID();
+			var pedido = new ResponsableAlta(t, null, familia, deportista, tutor, vinculos);
+			var creada = servicio.crear(actor, a.deportista(), clave, pedido);
+			assertThat(creada.creada()).isTrue();
+			assertThat(servicio.crear(actor, a.deportista(), clave, pedido).creada()).isFalse();
+			var editada = servicio.actualizarTipo(actor, a.deportista(), creada.respuesta().id(),
+					new ResponsableTipo(TipoVinculoTutor.TUTOR_LEGAL, 0L));
+			assertThat(editada.tipo()).isEqualTo(TipoVinculoTutor.TUTOR_LEGAL);
+			var cerrada = servicio.revocar(actor, a.deportista(), creada.respuesta().id(), new ResponsableRevision(1L));
+			assertThat(cerrada.cerradoEn()).isNotNull();
+			assertThat(auditorias(creada.respuesta().id(), "VIGENCIA_TUTOR_CREADA")).isEqualTo(1);
+			assertThat(auditorias(creada.respuesta().id(), "VIGENCIA_TUTOR_TIPO_ACTUALIZADA")).isEqualTo(1);
+			assertThat(auditorias(creada.respuesta().id(), "VIGENCIA_TUTOR_CERRADA")).isEqualTo(1);
 		}
 	}
 
