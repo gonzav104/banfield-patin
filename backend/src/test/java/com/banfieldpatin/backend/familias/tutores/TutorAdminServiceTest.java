@@ -33,9 +33,11 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.responsables.CierreVigenciasTutor;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorActualizacion;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorRespuesta;
 import com.banfieldpatin.backend.familias.tutores.dto.TutorSolicitud;
+import com.banfieldpatin.backend.familias.vinculos.LockTimeoutVinculos;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
@@ -55,6 +57,8 @@ class TutorAdminServiceTest {
 	private AuditoriaService auditoria;
 	private EntityManager em;
 	private TutorAdminService servicio;
+	private CierreVigenciasTutor cierres;
+	private LockTimeoutVinculos lockTimeout;
 
 	@BeforeEach
 	void preparar() {
@@ -62,7 +66,9 @@ class TutorAdminServiceTest {
 		familias = mock(FamiliaRepository.class);
 		auditoria = mock(AuditoriaService.class);
 		em = mock(EntityManager.class);
-		servicio = new TutorAdminService(tutores, familias, auditoria, em);
+		cierres = mock(CierreVigenciasTutor.class);
+		lockTimeout = mock(LockTimeoutVinculos.class);
+		servicio = new TutorAdminService(tutores, familias, auditoria, em, cierres, lockTimeout);
 		when(tutores.saveAndFlush(any(Tutor.class))).thenAnswer(inv -> {
 			Tutor t = inv.getArgument(0);
 			if (t.getId() == null) {
@@ -492,5 +498,40 @@ class TutorAdminServiceTest {
 						.doesNotContain(tutorId.toString()).doesNotContain(familiaId.toString())
 						.doesNotContain(escuelaId.toString()).doesNotContain(DNI_DE_PRUEBA).doesNotContain("Ana")
 						.doesNotContain("4").doesNotContain("3"));
+	}
+
+	@Test
+	void desactivarVerificaRevisionYCierraAntesDeGuardarYAuditar() {
+		Tutor tutor = tutorExistente(4L);
+		assertThat(servicio.desactivar(admin, tutorId, 4L, DATOS).activo()).isFalse();
+		InOrder orden = inOrder(em, cierres, tutores, auditoria);
+		orden.verify(em).lock(tutor, LockModeType.OPTIMISTIC);
+		orden.verify(cierres).deTutor(admin, familiaId, tutorId);
+		orden.verify(tutores).saveAndFlush(tutor);
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		verifyNoInteractions(familias);
+	}
+
+	@Test
+	void activarNoTocaVigenciasYNoEscribeAlRepetir() {
+		Tutor tutor = tutorExistente(4L);
+		tutor.desactivar();
+		assertThat(servicio.activar(admin, tutorId, 4L, DATOS).activo()).isTrue();
+		assertThat(servicio.activar(admin, tutorId, 4L, DATOS).activo()).isTrue();
+		InOrder orden = inOrder(lockTimeout, tutores, auditoria);
+		orden.verify(lockTimeout).aplicar();
+		orden.verify(tutores).saveAndFlush(tutor);
+		orden.verify(auditoria).registrar(any(EventoAuditoria.class));
+		verifyNoInteractions(cierres, familias);
+	}
+
+	@Test
+	void revisionObsoletaNoInvocaElCierreAunqueElTutorYaEsteInactivo() {
+		tutorExistente(4L).desactivar();
+		assertThatThrownBy(() -> servicio.desactivar(admin, tutorId, 3L, DATOS))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class,
+						ex -> assertThat(ex.getCodigo()).isEqualTo("EDICION_DESACTUALIZADA"));
+		verify(tutores, never()).saveAndFlush(any());
+		verifyNoInteractions(cierres, auditoria);
 	}
 }

@@ -209,17 +209,17 @@ class MapeoTutorDbTest extends BaseDbTest {
 	}
 
 	@Test
-	void elEstadoActivoTampocoCambiaPorLaEntidad() {
+	void elComandoDeEstadoPersisteYLaEdicionNoLoRevierte() {
 		UUID familia = datos.familia(escuelaA, "Perez", true);
 		UUID id = servicio.crear(admin, familia, solicitud(null, null), DATOS).id();
 
-		Tutor tutor = tutores.findByIdAndEscuelaId(id, escuelaA).orElseThrow();
-		ReflectionTestUtils.setField(tutor, "activo", false);
-		ReflectionTestUtils.setField(tutor, "nombre", "Otro");
-		tutores.saveAndFlush(tutor);
+		assertThat(servicio.desactivar(admin, id, 0L, DATOS).version()).isEqualTo("1");
+		var editado = servicio.actualizar(admin, id,
+				new TutorActualizacion("Otro", "Perez", null, null, EMAIL, "Madre", 1L, 0L), DATOS);
 
-		assertThat(fila(id).get("activo")).isEqualTo(true);
+		assertThat(fila(id).get("activo")).isEqualTo(false);
 		assertThat(fila(id).get("nombre")).isEqualTo("Otro");
+		assertThat(editado.version()).isEqualTo("2");
 	}
 
 	@Test

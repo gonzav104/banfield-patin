@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -21,8 +22,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.TypeExcludeFilter;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+import com.banfieldpatin.backend.BackendApplication;
+import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
+import com.banfieldpatin.backend.familias.FamiliaAdminService;
+import com.banfieldpatin.backend.familias.dto.FamiliaSolicitud;
+import com.banfieldpatin.backend.familias.responsables.VinculosTutorConsultaAdmin;
+import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
+import com.banfieldpatin.backend.temporadas.TemporadaAdminService;
+import com.banfieldpatin.backend.temporadas.dto.TemporadaSolicitud;
+import com.banfieldpatin.backend.usuarios.Rol;
+import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
 
 @Tag("db")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -35,6 +51,17 @@ class V15CierresVigenciasDbTest {
 	private static final String TABLA = "gestion_patin.tutor_deportista";
 	private static final String FUNCION = "gestion_patin.cerrar_vigencias_tutor(uuid,uuid,text,uuid,uuid)";
 	private static final String LLAMAR = "SELECT * FROM gestion_patin.cerrar_vigencias_tutor(?,?,?,?,?)";
+
+	/** El smoke test arranca la app real, sin controladores sonda del classpath de tests. */
+	private static final class ExcluirComponentesDePrueba extends TypeExcludeFilter {
+		private final String raiz = V15CierresVigenciasDbTest.class.getProtectionDomain()
+				.getCodeSource().getLocation().toExternalForm();
+
+		@Override
+		public boolean match(MetadataReader metadata, MetadataReaderFactory factory) throws IOException {
+			return metadata.getResource().getURL().toExternalForm().startsWith(raiz);
+		}
+	}
 
 	private String base;
 	private DriverManagerDataSource admin;
@@ -72,6 +99,40 @@ class V15CierresVigenciasDbTest {
 			try (var c = global.getConnection(); var s = c.createStatement()) {
 				s.execute("DROP ROLE IF EXISTS " + String.join(", ", AJENO, RUNTIME, MIGRATOR, OWNER));
 			}
+		}
+	}
+
+	@Test
+	void backendProdValidaHibernateYOperaVigenciasConElLoginRuntime() {
+		var previo = caso();
+		try (var contexto = new SpringApplicationBuilder(BackendApplication.class)
+				.profiles("test", "prod")
+				.initializers(ctx -> ctx.getBeanFactory().registerSingleton("filtroComponentesDePrueba",
+						new ExcluirComponentesDePrueba()))
+				.run("--server.port=0", "--banfield.frontend.url-base=https://frontend.example.invalid",
+						"--spring.datasource.url=" + PostgresDescartable.urlDeBase(base),
+						"--spring.datasource.username=" + RUNTIME, "--spring.datasource.password=" + CLAVE)) {
+			assertThat(contexto.containsBean("flyway")).isFalse();
+			var actual = contexto.getBean(JdbcClient.class).sql("SELECT current_user").query(String.class).single();
+			assertThat(actual).isEqualTo(RUNTIME);
+			var admin = new UsuarioAutenticado(previo.admin(), previo.escuela(), null, Rol.ADMIN);
+			var consulta = contexto.getBean(VinculosTutorConsultaAdmin.class);
+			assertThat(consulta.listar(admin, previo.deportista(), false, 0, 20).contenido()).hasSize(1);
+			var tutores = contexto.getBean(TutorAdminService.class);
+			assertThat(tutores.desactivar(admin, previo.tutor(), 0L, DatosSolicitud.NINGUNA).activo()).isFalse();
+			assertThat(tutores.activar(admin, previo.tutor(), 1L, DatosSolicitud.NINGUNA).activo()).isTrue();
+			assertThat(consulta.listar(admin, previo.deportista(), false, 0, 20).contenido()).isEmpty();
+			assertThat(consulta.listar(admin, previo.deportista(), true, 0, 20).contenido()).hasSize(1);
+			assertThat(auditorias(previo)).isEqualTo(1);
+			var familias = contexto.getBean(FamiliaAdminService.class);
+			var datos = DatosSolicitud.NINGUNA;
+			var creada = familias.crear(admin, new FamiliaSolicitud("Familia runtime"), datos);
+			var inactiva = familias.desactivar(admin, creada.id(), Long.valueOf(creada.version()), datos);
+			assertThat(inactiva.activa()).isFalse();
+			assertThat(familias.activar(admin, inactiva.id(), Long.valueOf(inactiva.version()), datos).activa()).isTrue();
+			var temporadas = contexto.getBean(TemporadaAdminService.class);
+			var temporada = temporadas.crear(admin, new TemporadaSolicitud(2026), datos);
+			assertThat(temporadas.activar(admin, temporada.id(), null, datos).activa()).isTrue();
 		}
 	}
 

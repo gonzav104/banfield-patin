@@ -56,6 +56,8 @@ es la especificación OpenAPI generada; esta tabla es su resumen legible y `Open
 | `POST /api/admin/familias/{familiaId}/tutores` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?, versionFamiliaEsperada}` | `201` `TutorRespuesta` + `Location` | `400`, `404 FAMILIA_NO_ENCONTRADA`, `409 FAMILIA_INACTIVA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/tutores/{id}` | ADMIN | — | `200` `TutorRespuesta` con `version` (también de una familia inactiva) | `404 TUTOR_NO_ENCONTRADO` |
 | `PUT /api/admin/tutores/{id}` | ADMIN | `{nombre, apellido, dni?, telefono?, email?, parentesco?, versionEsperada, versionFamiliaEsperada}` (reemplazo completo; la familia no cambia) | `200` `TutorRespuesta` | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 FAMILIA_INACTIVA`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `POST /api/admin/tutores/{id}/activar` | ADMIN | `{versionEsperada}` | `200` `TutorRespuesta` (idempotente; no reabre vigencias) | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
+| `POST /api/admin/tutores/{id}/desactivar` | ADMIN | `{versionEsperada}` | `200` `TutorRespuesta` (idempotente; cierra vigencias) | `400`, `404 TUTOR_NO_ENCONTRADO`, `409 EDICION_DESACTUALIZADA` o `CONFLICTO_CONCURRENCIA` |
 | `GET /api/admin/deportistas` | ADMIN | `estado` (por defecto `ACTIVOS`), `busqueda` (apellido, nombre, ambos órdenes o prefijo de DNI), `page`, `size` | `200` `Pagina<{id, nombre, apellido, dniEnmascarado, fechaNacimiento, activo}>` (el DNI completo **no** viaja en el listado; ver sección 11) | `400 SOLICITUD_INVALIDA` |
 | `POST /api/admin/deportistas` | ADMIN | `{dni, nombre, apellido, cuil?, fechaNacimiento?, nacionalidad?, domicilio?, otrosDatosDomicilio?, localidad?, partido?, codigoPostal?, telefonoContacto?, emailFederativo?}` | `201` `DeportistaDetalle` + `Location` | `400 VALIDACION`, `409 DNI_DUPLICADO`, `409 DNI_RESERVADO_POR_INACTIVO`, `409 CUIL_DUPLICADO` |
 | `GET /api/admin/deportistas/{id}` | ADMIN | — | `200` `DeportistaDetalle` (datos permanentes, `activo` y `version`) | `400` (id no UUID), `404 DEPORTISTA_NO_ENCONTRADO` |
@@ -112,7 +114,7 @@ Los `409` de DNI y CUIL, `EDICION_DESACTUALIZADA`, `VINCULO_PRINCIPAL_EN_CONFLIC
 | F6 | `tutor.usuario_id` no se mapea en este cambio |
 | F7 | `tutor.familia_id` es inmutable |
 | F8 | El DNI del tutor es opcional y no es único |
-| F9 | Los tutores no se desactivan |
+| F9 | Solo ADMIN puede activar o desactivar un tutor por comando versionado (C2-A). |
 | F10 | Un deportista exige solo DNI, nombre y apellido |
 | F11 | El DNI es editable por ADMIN, con unicidad |
 | F12 | Rutas `/api/admin/{familias,tutores,deportistas}` y `/api/familia/{mi-familia,deportistas}`; el listado administrativo nuevo es `GET /api/admin/familias/listado` y el heredado no cambia |
@@ -337,10 +339,11 @@ no crea automaticamente un usuario. V1–V6 permanecen intactas.
 
 `TutorRespuesta` (GET, alta y edición individuales de un tutor) devuelve `version`, la revisión de escritura de los
 datos del tutor, como cadena decimal. No se agrega al resumen del tutor dentro del detalle de familia (que conserva el DNI
-enmascarado) ni a ningún DTO del portal FAMILIA. Los tutores no se desactivan: no hay cambio de estado.
+enmascarado) ni a ningún DTO del portal FAMILIA. El estado del tutor se cambia solo mediante los comandos ADMIN de C2-A; la baja cierra sus vigencias y la reactivación no reabre el historial.
 
 - Alta: `POST /api/admin/familias/{familiaId}/tutores` exige además `versionFamiliaEsperada`, la revisión de la familia que se observó. La revisión inicial del tutor es `"0"`.
 - Edición: `PUT /api/admin/tutores/{id}` exige `versionEsperada` (del tutor) y `versionFamiliaEsperada` (de su familia).
+- Estado: los comandos `activar` y `desactivar` exigen solo `versionEsperada` del tutor como cadena decimal. No incrementan la revisión de la familia ni cambian sus vínculos.
 - Ambas son cadenas de 1 a 19 dígitos ASCII, como en Familia. Ausencia o nulo: `400 VALIDACION`; formato, tipo o rango inválido: `400 SOLICITUD_INVALIDA`. No se aceptan propiedades adicionales.
 - Dos revisiones **independientes**: la del tutor avanza solo cuando cambian sus datos; la de la familia sigue siendo la de nombre y estado. Crear o editar un tutor **no** incrementa la de la familia.
 - Orden de comprobaciones: `404` (familia o tutor, mismo `404` para otra escuela) → `409 FAMILIA_INACTIVA` (se conserva; va antes que la revisión, así una familia inactiva rechaza todo, incluso con revisiones viejas) → revisión de la familia → revisión del tutor → escritura. Revisión vieja: `409 EDICION_DESACTUALIZADA`, incluso si los datos coinciden; mensaje fijo, sin ids ni datos personales.

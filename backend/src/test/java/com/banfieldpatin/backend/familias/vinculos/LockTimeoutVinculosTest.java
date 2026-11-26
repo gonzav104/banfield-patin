@@ -21,8 +21,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Configuracion y alcance del lock_timeout de vinculos (sin base de datos): valor por defecto y rango validado, rechazo
- * de usarlo fuera de una transaccion y, sobre todo, que NINGUN otro bean de la aplicacion lo usa (el limite es solo de
- * las transacciones que toman FOR UPDATE, nunca global).
+ * de usarlo fuera de una transacción y lista cerrada de consumidores: el límite solo se aplica a las
+ * transacciones de vínculos y de estado que requieren bloqueo, nunca globalmente.
  */
 class LockTimeoutVinculosTest {
 
@@ -76,9 +76,9 @@ class LockTimeoutVinculosTest {
 		verifyNoInteractions(jdbc);
 	}
 
-	/** Solo el servicio de vinculos (y el propio componente) dependen de LockTimeoutVinculos: no hay un limite global. */
+	/** Los servicios usan el límite explícitamente; la lista rechaza nuevos consumidores no autorizados. */
 	@Test
-	void ningunOtroBeanDeLaAplicacionUsaElLockTimeout() throws Exception {
+	void soloLosConsumidoresAutorizadosUsanElLockTimeout() throws Exception {
 		var escaner = new ClassPathScanningCandidateComponentProvider(false);
 		escaner.addIncludeFilter(new AnnotationTypeFilter(Component.class));
 		List<String> usuarios = new ArrayList<>();
@@ -92,6 +92,6 @@ class LockTimeoutVinculosTest {
 				}
 			}
 		}
-		assertThat(usuarios).containsExactly("VinculoAdminService");
+		assertThat(usuarios).containsExactlyInAnyOrder("VinculoAdminService", "CierreVigenciasTutor", "TutorAdminService");
 	}
 }

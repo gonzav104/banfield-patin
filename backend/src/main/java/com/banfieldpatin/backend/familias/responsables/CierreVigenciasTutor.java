@@ -54,6 +54,11 @@ public class CierreVigenciasTutor {
 		cerrar(actor, "DEPORTISTA_INACTIVO", deportista, null);
 	}
 
+	public void deTutor(UsuarioAutenticado actor, UUID familia, UUID tutor) {
+		lockTimeout.aplicar();
+		cerrar(actor, "TUTOR_INACTIVO", tutor, familia);
+	}
+
 	/** El servicio de vínculos ya aplicó su plazo y bloqueó al deportista. */
 	public void deVinculo(UsuarioAutenticado actor, UUID familia, UUID deportista) {
 		cerrar(actor, "FAMILIA_DEPORTISTA_REVOCADA", deportista, familia);

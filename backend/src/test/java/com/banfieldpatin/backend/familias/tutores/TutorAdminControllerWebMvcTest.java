@@ -360,6 +360,48 @@ class TutorAdminControllerWebMvcTest {
 		verifyNoInteractions(servicio);
 	}
 
+	@Test
+	void activarYDesactivarExigenLaRevisionDelTutor() throws Exception {
+		for (String comando : new String[] { "activar", "desactivar" }) {
+			mvc.perform(crudo(post("/api/admin/tutores/" + tutorId + "/" + comando), admin(), "{}"))
+					.andExpect(status().isBadRequest());
+		}
+		verifyNoInteractions(servicio);
+	}
+
+	@Test
+	void comandosDeEstadoRecibenActorDelJwtYSoloLaRevision() throws Exception {
+		var actor = new UsuarioAutenticado(adminId, escuelaId, null, Rol.ADMIN);
+		when(servicio.desactivar(eq(actor), eq(tutorId), eq(4L), any())).thenReturn(
+				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, false, "5"));
+		when(servicio.activar(eq(actor), eq(tutorId), eq(5L), any())).thenReturn(
+				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, true, "6"));
+		mvc.perform(crudo(post("/api/admin/tutores/" + tutorId + "/desactivar"), admin(),
+				"{\"versionEsperada\":\"4\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.activo").value(false)).andExpect(jsonPath("$.version").value("5"))
+				.andExpect(jsonPath("$.escuelaId").doesNotExist());
+		mvc.perform(crudo(post("/api/admin/tutores/" + tutorId + "/activar"), admin(),
+				"{\"versionEsperada\":\"5\"}")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.activo").value(true)).andExpect(jsonPath("$.version").value("6"));
+		verify(servicio).desactivar(eq(actor), eq(tutorId), eq(4L), any());
+		verify(servicio).activar(eq(actor), eq(tutorId), eq(5L), any());
+	}
+
+	@Test
+	void losComandosDeEstadoRechazanFamiliaFaltaDeCsrfOIdentidadEnElBody() throws Exception {
+		String revision = "{\"versionEsperada\":\"0\"}";
+		for (String comando : new String[] { "activar", "desactivar" }) {
+			String ruta = "/api/admin/tutores/" + tutorId + "/" + comando;
+			mvc.perform(crudo(post(ruta), familiaSesion(), revision)).andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+			mvc.perform(post(ruta).cookie(admin()).contentType(MediaType.APPLICATION_JSON).content(revision))
+					.andExpect(status().isForbidden()).andExpect(jsonPath("$.codigo").value("CSRF_INVALIDO"));
+			mvc.perform(crudo(post(ruta), admin(),
+					"{\"versionEsperada\":\"0\",\"escuelaId\":\"" + escuelaId + "\"}")).andExpect(status().isBadRequest());
+		}
+		verifyNoInteractions(servicio);
+	}
+
 	// ---------- revisiones (FE-05/U4) ----------
 
 	private static final String DATOS_ALTA = "\"nombre\":\"Ana\",\"apellido\":\"Perez\"";

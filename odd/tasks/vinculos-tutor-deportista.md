@@ -32,7 +32,7 @@ Estrategia: `stacked-to-main` sin rama de integración permanente (pronóstico 1
 - [ ] C1-E · S1–S2, S7–S10 · marcas privadas y separación Flyway/runtime · inline, con verificación independiente · riesgos 1/2/4 · implementación y focos verificados; suite PG integral y RDD pendientes.
 
 - [x] C2-A1 · S11, S13–S14 · V15, permisos operativos y pruebas PostgreSQL de la interfaz SQL · inline con verificación independiente · riesgo 1/2/4 · `6418186`, revisión nativa aprobada y reconocida.
-- [ ] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4.
+- [x] C2-A2 · S3, S5, S12–S13 · integración de los cierres familia/deportista/revocación, auditoría y concurrencia · inline con verificación independiente · riesgo 1/2/4 · `c030920`, aprobado y reconocido.
 - [ ] C2-A3 · S3, S5, S12–S13 · comandos ADMIN de estado de tutor y pruebas · inline con verificación independiente · riesgo 1/2/4.
 
 ## Log
@@ -417,3 +417,16 @@ Base congelada `64181868c79653f5f2b4a072f79033f0bcd257f4` (V15, árbol `a24bf234
 «Ejecutar las suites completas de backend y PostgreSQL 17 sobre el candidato definitivo.»
 
 C2-A2: las tres operaciones ADMIN existentes cierran antes de escribir el padre, sin cambios de contrato ni SQL de migración. V15 audita por vigencia y Java mantiene la auditoría de la transición del padre. El foco anterior verificó 65/65 (concurrencia y HTTP) y luego 10/10 (incluido el timeout real). En PostgreSQL, un alta invisible bajo REPEATABLE READ impide confirmar la baja por la FK de la marca; una transacción nueva ve el alta y permite reintentar el comando entero. La traducción solo acepta SQLSTATE 23503 y el nombre exacto de la FK esperada. RED negativo de otro SQLSTATE: 1/3; GREEN 3/3 unitarias y 10/10 PG17 con el ajuste. No se repitió la regresión documental verde: se ejecutará con las suites completas del candidato definitivo después de C2-A3.
+
+
+### L18 — C2-A3 sobre C2-A2 reconocido
+
+C2-A2 quedó guardado en `c0309205712146d6eb588650075c2a4fe6a53da8`; Gentle AI `review-a724860142c623d1` aprobó y reconoció el árbol `4349a193a44e75916cf7cafc9229ca4376a70827`. La revisión independiente quedó sin bloqueantes (sonda 4/4); los dos avisos nativos se tratan como seguimientos separados. Siguiente corte: comandos explícitos ADMIN de estado del tutor, con revisión del tutor, sin cambiar la revisión, estado ni vínculos de su familia. Verificación de Java y suites completas en el candidato definitivo.
+
+Los dos comandos de tutor usan `TutorVersionEsperada` (solo `versionEsperada` decimal como cadena), CSRF, rol ADMIN y tutor buscado en la escuela del JWT. El cierre precede al UPDATE del tutor, con revisión optimista; V15 audita vigencias y Java el estado. El inventario cerrado, la especificación OpenAPI y la tabla de rutas declaran los dos POST; no se cambia el PUT existente ni la carga documental.
+
+RED: el POST devolvió 404 antes de implementarse. GREEN: 89/89 unitarias, WebMvc y contratos; 3/3 nuevos casos PG17 de tutor (historial, rollback/escuela y lock documental). La matriz de familia, deportista y revocación pasó 6/6 bajo READ COMMITTED y REPEATABLE READ; completa la cobertura del aviso nativo de C2-A2 sin cambiar su implementación. Pendientes las dos suites completas y la revisión de este candidato.
+
+La primera suite normal completa detectó tres pruebas o fixtures que el foco no incluía: mutabilidad de `Tutor.activo`, lista cerrada de consumidores indirectos del timeout y bean del cierre en un contexto WebMvc de privacidad. Se conservaron y actualizaron sus aserciones sin cambiar producción; verificación focal 25/25. La primera corrida completa sin sandbox registró 1460 pruebas, 2 fallos y 12 errores en estos tres grupos; PostgreSQL completo no se lanzó sobre ese candidato.
+
+La suite normal completa del segundo candidato quedó verde (1460/1460). Su PostgreSQL 17.11 completo ejecutó 929 casos: 2 fallos de fixtures de tutor, un smoke con runtime sobre V14 que debía usar V15 y un `Connection refused` en V5. Las 17 pruebas de integración de cierres pasaron. Se corrigieron los tres fixtures reproducibles sin editar las migraciones: persistencia de estado y edición independiente, sondeo de espera en el cierre y traslado del smoke al esquema V15 con una vigencia real. Foco corregido 3/3; el test V5 y sus timeouts quedan intactos. Ambas suites finales se ejecutan de nuevo sobre el árbol actualizado.

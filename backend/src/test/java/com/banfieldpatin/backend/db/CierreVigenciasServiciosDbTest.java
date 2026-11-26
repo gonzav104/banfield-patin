@@ -12,10 +12,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.PessimisticLockingFailureException;
@@ -28,6 +31,7 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.DeportistaAdminService;
 import com.banfieldpatin.backend.familias.FamiliaAdminService;
+import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
 import com.banfieldpatin.backend.familias.vinculos.VinculoAdminService;
 import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
@@ -41,6 +45,7 @@ class CierreVigenciasServiciosDbTest extends BaseDbTest {
 	@Autowired FamiliaAdminService familias;
 	@Autowired DeportistaAdminService deportistas;
 	@Autowired VinculoAdminService vinculos;
+	@Autowired TutorAdminService tutores;
 	@Autowired TransactionTemplate transaccion;
 
 	@Test
@@ -168,10 +173,39 @@ class CierreVigenciasServiciosDbTest extends BaseDbTest {
 		assertThat(auditorias(a, "DEPORTISTA_DESACTIVADO")).isEqualTo(1);
 	}
 
+	private enum Padre { FAMILIA, DEPORTISTA, VINCULO }
+
+	private static Stream<Arguments> carrerasDeCierre() {
+		return Stream.of(Padre.values()).flatMap(padre -> Stream.of(TransactionDefinition.ISOLATION_READ_COMMITTED,
+				TransactionDefinition.ISOLATION_REPEATABLE_READ).map(nivel -> Arguments.of(padre, nivel)));
+	}
+
+	private record CambioPadre(Runnable baja, BooleanSupplier activo, String causa, String auditoria) {}
+
+	private CambioPadre cambioPara(Padre padre, Caso c) {
+		return switch (padre) {
+			case FAMILIA -> new CambioPadre(() -> familias.desactivar(c.admin(), c.familia(), 0L, DATOS),
+					() -> familiaActiva(c), "FAMILIA_INACTIVA", "FAMILIA_DESACTIVADA");
+			case DEPORTISTA -> new CambioPadre(() -> deportistas.desactivar(c.admin(), c.deportista(), 0L, DATOS),
+					() -> deportistas.obtener(c.admin(), c.deportista()).activo(),
+					"DEPORTISTA_INACTIVO", "DEPORTISTA_DESACTIVADO");
+			case VINCULO -> {
+				long revision = version(c);
+				yield new CambioPadre(() -> vinculos.revocar(c.admin(), c.familia(), c.deportista(), revision, DATOS),
+						() -> jdbc.sql("""
+								SELECT estado='ACTIVO' FROM gestion_patin.familia_deportista
+								WHERE familia_id=:f AND deportista_id=:d
+								""").param("f", c.familia()).param("d", c.deportista()).query(Boolean.class).single(),
+						"FAMILIA_DEPORTISTA_REVOCADA", "VINCULO_REVOCADO");
+			}
+		};
+	}
+
 	@ParameterizedTest
-	@ValueSource(ints = { TransactionDefinition.ISOLATION_READ_COMMITTED, TransactionDefinition.ISOLATION_REPEATABLE_READ })
-	void altaConcurrenteSeCierraORequiereReintentarLaTransaccionCompleta(int aislamiento) throws Exception {
+	@MethodSource("carrerasDeCierre")
+	void altaConcurrenteSeCierraORequiereReintentarLaTransaccionCompleta(Padre padre, int aislamiento) throws Exception {
 		var a = caso();
+		CambioPadre cambio = cambioPara(padre, a);
 		var txBaja = new TransactionTemplate(transaccion.getTransactionManager());
 		txBaja.setIsolationLevel(aislamiento);
 		var alta = new AtomicReference<UUID>();
@@ -182,7 +216,7 @@ class CierreVigenciasServiciosDbTest extends BaseDbTest {
 				alta.set(vigencia(a.admin(), a.familia(), a.deportista()));
 				Future<?> futuro = hilos.submit(() -> txBaja.executeWithoutResult(b -> {
 					pidBaja.complete(pid());
-					familias.desactivar(a.admin(), a.familia(), 0L, DATOS);
+					cambio.baja().run();
 				}));
 				esperarBloqueo(primero, pidBaja);
 				return futuro;
@@ -190,21 +224,21 @@ class CierreVigenciasServiciosDbTest extends BaseDbTest {
 			if (aislamiento == TransactionDefinition.ISOLATION_REPEATABLE_READ) {
 				assertThatThrownBy(() -> baja.get(5, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
 						.hasCauseInstanceOf(PessimisticLockingFailureException.class);
-				assertThat(familiaActiva(a)).isTrue();
+				assertThat(cambio.activo().getAsBoolean()).isTrue();
 				assertThat(causa(a.vigencia())).isNull();
 				assertThat(causa(alta.get())).isNull();
 				assertThat(auditorias(a, "VIGENCIA_TUTOR_CERRADA")).isZero();
-				assertThat(auditorias(a, "FAMILIA_DESACTIVADA")).isZero();
-				txBaja.executeWithoutResult(tx -> familias.desactivar(a.admin(), a.familia(), 0L, DATOS));
+				assertThat(auditorias(a, cambio.auditoria())).isZero();
+				txBaja.executeWithoutResult(tx -> cambio.baja().run());
 			} else {
 				baja.get(5, TimeUnit.SECONDS);
 			}
 		}
-		assertThat(familiaActiva(a)).isFalse();
-		assertThat(causa(a.vigencia())).isEqualTo("FAMILIA_INACTIVA");
-		assertThat(causa(alta.get())).isEqualTo("FAMILIA_INACTIVA");
+		assertThat(cambio.activo().getAsBoolean()).isFalse();
+		assertThat(causa(a.vigencia())).isEqualTo(cambio.causa());
+		assertThat(causa(alta.get())).isEqualTo(cambio.causa());
 		assertThat(auditorias(a, "VIGENCIA_TUTOR_CERRADA")).isEqualTo(2);
-		assertThat(auditorias(a, "FAMILIA_DESACTIVADA")).isEqualTo(1);
+		assertThat(auditorias(a, cambio.auditoria())).isEqualTo(1);
 	}
 
 	@Test
@@ -231,6 +265,85 @@ class CierreVigenciasServiciosDbTest extends BaseDbTest {
 		assertThat(auditorias(a, "FAMILIA_DESACTIVADA")).isZero();
 		familias.desactivar(a.admin(), a.familia(), 0L, DATOS);
 		assertCierre(a, "FAMILIA_INACTIVA", "FAMILIA_DESACTIVADA");
+	}
+
+	@Test
+	void bajaTutorCierraSuVigenciaSinTocarLaFamiliaYReactivarNoLaReabre() {
+		var a = caso();
+		var otroTutor = vigencia(a.admin(), a.familia(), a.deportista());
+		UUID tutor = tutorDe(a);
+		long revisionVinculos = version(a);
+
+		var baja = tutores.desactivar(a.admin(), tutor, 0L, DATOS);
+		assertThat(baja.activo()).isFalse();
+		assertThat(baja.version()).isEqualTo("1");
+		assertThat(tutores.desactivar(a.admin(), tutor, 1L, DATOS).version()).isEqualTo("1");
+
+		var alta = tutores.activar(a.admin(), tutor, 1L, DATOS);
+		assertThat(alta.activo()).isTrue();
+		assertThat(alta.version()).isEqualTo("2");
+		assertThat(tutores.activar(a.admin(), tutor, 2L, DATOS).version()).isEqualTo("2");
+
+		assertCierre(a, "TUTOR_INACTIVO", "TUTOR_DESACTIVADO");
+		assertThat(causa(otroTutor)).isNull();
+		assertThat(auditorias(a, "TUTOR_ACTIVADO")).isEqualTo(1);
+		assertThat(familias.obtener(a.admin(), a.familia()).version()).isEqualTo("0");
+		assertThat(version(a)).isEqualTo(revisionVinculos);
+		assertThat(principal(a)).isTrue();
+	}
+
+	@Test
+	void tutorDeOtraEscuelaYRevisionViejaNoCierranVigenciasYElRollbackRevierteTodo() {
+		var a = caso();
+		var otra = caso();
+		UUID tutor = tutorDe(a);
+		assertThatThrownBy(() -> tutores.desactivar(otra.admin(), tutor, 0L, DATOS))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class,
+						ex -> assertThat(ex.getCodigo()).isEqualTo("TUTOR_NO_ENCONTRADO"));
+		assertThatThrownBy(() -> tutores.desactivar(a.admin(), tutor, 9L, DATOS))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class,
+						ex -> assertThat(ex.getCodigo()).isEqualTo("EDICION_DESACTUALIZADA"));
+
+		transaccion.executeWithoutResult(tx -> {
+			tutores.desactivar(a.admin(), tutor, 0L, DATOS);
+			assertThat(causa(a.vigencia())).isEqualTo("TUTOR_INACTIVO");
+			tx.setRollbackOnly();
+		});
+		assertThat(tutores.obtener(a.admin(), tutor).activo()).isTrue();
+		assertThat(tutores.obtener(a.admin(), tutor).version()).isEqualTo("0");
+		assertThat(causa(a.vigencia())).isNull();
+		assertThat(auditorias(a, "TUTOR_DESACTIVADO")).isZero();
+		assertThat(auditorias(a, "VIGENCIA_TUTOR_CERRADA")).isZero();
+	}
+
+	@Test
+	void bajaTutorEsperaElBloqueoDelPropietarioDocumentalSinInvertirElOrden() throws Exception {
+		var a = caso();
+		UUID tutor = tutorDe(a);
+		try (var hilos = Executors.newVirtualThreadPerTaskExecutor()) {
+			var pidTutor = new CompletableFuture<Integer>();
+			Future<?> baja = transaccion.execute(tx -> {
+				int primero = pid();
+				// La carga documental toma familia FOR SHARE antes del tutor FOR UPDATE.
+				jdbc.sql("SELECT id FROM gestion_patin.familia WHERE id=:id FOR SHARE")
+						.param("id", a.familia()).query(UUID.class).single();
+				jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE id=:id FOR UPDATE")
+						.param("id", tutor).query(UUID.class).single();
+				var futuro = hilos.submit(() -> transaccion.executeWithoutResult(b -> {
+					pidTutor.complete(pid());
+					tutores.desactivar(a.admin(), tutor, 0L, DATOS);
+				}));
+				esperarBloqueo(primero, pidTutor);
+				return futuro;
+			});
+			baja.get(5, TimeUnit.SECONDS);
+		}
+		assertCierre(a, "TUTOR_INACTIVO", "TUTOR_DESACTIVADO");
+	}
+
+	private UUID tutorDe(Caso c) {
+		return jdbc.sql("SELECT tutor_id FROM gestion_patin.tutor_deportista WHERE id=:id")
+				.param("id", c.vigencia()).query(UUID.class).single();
 	}
 
 	private int pid() {

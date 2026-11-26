@@ -40,9 +40,10 @@ class InventarioRutasTest {
 			"PUT /api/admin/familias/{id}",
 			"POST /api/admin/familias/{id}/activar",
 			"POST /api/admin/familias/{id}/desactivar",
-			// Tutores (slice 3): alta bajo la familia y reemplazo completo; sin DELETE ni PATCH.
+			// Tutores: alta, reemplazo completo y comandos C2-A de estado; sin DELETE ni PATCH.
 			"POST /api/admin/familias/{familiaId}/tutores",
 			"PUT /api/admin/tutores/{id}",
+			"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
 			// Deportistas (slice 4): alta, reemplazo completo y cambio de estado; sin DELETE ni PATCH.
 			"POST /api/admin/deportistas",
 			"PUT /api/admin/deportistas/{id}",
@@ -135,6 +136,7 @@ class InventarioRutasTest {
 				"POST /api/admin/familias", "PUT /api/admin/familias/{id}",
 				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar",
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
+				"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
@@ -166,12 +168,14 @@ class InventarioRutasTest {
 
 		assertThat(mutantes.stream().filter(r -> r.contains("/tutores"))).containsExactlyInAnyOrder(
 				"POST /api/admin/familias/{familiaId}/tutores", "PUT /api/admin/tutores/{id}",
+				"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
 				// Carga y reemplazo familiar de los DNI de un tutor (U19): no crean, borran ni cambian al tutor.
 				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 				// Revision administrativa de un DNI de un tutor (U19): no crea, borra ni cambia al tutor.
 				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
 				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos",
+				"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
 				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision", "GET /api/admin/tutores/{tutorId}/documentos/{documentoId}/archivo");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}

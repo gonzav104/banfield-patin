@@ -136,6 +136,10 @@ public class OpenApiConfig {
 			entry("GET /api/admin/tutores/{id}", ruta(200, "404 TUTOR_NO_ENCONTRADO")),
 			entry("PUT /api/admin/tutores/{id}", ruta(200, "404 TUTOR_NO_ENCONTRADO", "409 FAMILIA_INACTIVA",
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			entry("POST /api/admin/tutores/{id}/activar",
+					ruta(200, "404 TUTOR_NO_ENCONTRADO", "409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			entry("POST /api/admin/tutores/{id}/desactivar",
+					ruta(200, "404 TUTOR_NO_ENCONTRADO", "409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
 			// --- Deportistas
 			entry("GET /api/admin/deportistas", ruta(200)),
 			entry("POST /api/admin/deportistas",
