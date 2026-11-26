@@ -221,8 +221,8 @@ test.describe('flow of a family: list, sheet, back', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
     expect(await page.getByRole('heading', { level: 1 }).count()).toBe(1); // exactly one title
     // U15 adds the documents section after the season (it is always shown, whether uploads are enabled or not); U20 puts the
-    // partial DNI checklist right before it.
-    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Checklist de documentación', 'Documentos del deportista']);
+    // partial DNI checklist right before it; C3 puts the read-only «Responsables» block between the season and the checklist.
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Responsables', 'Checklist de documentación', 'Documentos del deportista']);
 
     await page.keyboard.press('Shift+Tab'); // the way back sits right before the title in the reading order
     const back = page.getByRole('link', { name: 'Volver a deportistas' });

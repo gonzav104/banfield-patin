@@ -24,6 +24,7 @@ import { AdminDeportistaNuevoPage } from '@/features/admin-deportistas/AdminDepo
 import { AdminDeportistasPage } from '@/features/admin-deportistas/AdminDeportistasPage';
 import { AdminDocumentosPendientesPage } from '@/features/admin-documentos-pendientes/AdminDocumentosPendientesPage';
 import { AdminTemporadasPage } from '@/features/admin-temporadas/AdminTemporadasPage';
+import { AdminResponsablesPage } from '@/features/admin-responsables/AdminResponsablesPage';
 import { AdminVinculosDeportistaPage } from '@/features/admin-vinculos/AdminVinculosDeportistaPage';
 import { AdminInvitationsPage } from '@/features/invitations/AdminInvitationsPage';
 import { RegistrationPage } from '@/features/registration/RegistrationPage';
@@ -89,6 +90,7 @@ export function AppRoutes() {
           <Route path="/admin/deportistas/:id" element={<AdminDeportistaDetallePage />} />
           <Route path="/admin/deportistas/:id/editar" element={<AdminDeportistaEditarPage />} />
           <Route path="/admin/deportistas/:id/vinculos" element={<AdminVinculosDeportistaPage />} />
+          <Route path="/admin/deportistas/:id/responsables" element={<AdminResponsablesPage />} />
           <Route path="/admin/deportistas/:id/temporadas" element={<AdminDatosDeportivosHistorialPage />} />
           <Route path="/admin/deportistas/:id/temporadas/nueva" element={<AdminDatosDeportivosAltaPage />} />
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId" element={<AdminDatosDeportivosDetallePage />} />

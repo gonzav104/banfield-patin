@@ -32,3 +32,9 @@ export const SPORTS_STATUS_LABEL: Record<SportsStatus, string> = {
   INACTIVO: 'Inactivo',
   SUSPENDIDO: 'Suspendido',
 };
+
+export const RESPONSABLES_TITLE = 'Responsables';
+export const RESPONSABLES_INTRO = 'Tutores de tu familia que el club registró como responsables de este deportista.';
+export const RESPONSABLES_LOADING = 'Cargando los responsables…';
+export const RESPONSABLES_EMPTY = 'Todavía no hay responsables registrados para este deportista. Si es un error, consultá con el club.';
+

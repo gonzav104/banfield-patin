@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { adminCredentials, loadState, saveState } from './state';
 import { freshCode } from './totp';
@@ -173,6 +173,53 @@ export class AdminSeed {
   /** Since FE-05/U11-A the revocation must carry the link revision observed: it is read just before and sent unchanged. */
   async revoke(familyId: string, athleteId: string): Promise<void> {
     await this.post(`/api/admin/familias/${familyId}/deportistas/${athleteId}/revocar`, { versionEsperada: await this.linksVersion(athleteId) }, 'revoke link');
+  }
+
+  /** The revision of a tutor as the backend stores it right now (FE-05/U4): a decimal string, read just before the write that carries it. */
+  private async tutorVersion(tutorId: string): Promise<string> {
+    const tutor = await expectOk<{ version?: unknown }>(await this.admin.get(`/api/admin/tutores/${tutorId}`), `read tutor ${tutorId}`);
+    expect(typeof tutor.version === 'string' && /^[0-9]{1,19}$/.test(tutor.version), `tutor ${tutorId}: version must be a decimal string`).toBe(true);
+    return tutor.version as string;
+  }
+
+  /**
+   * An explicit responsibility (C2-B) of a tutor over an athlete, through the real admin API. It needs the four revisions the caller observed
+   * (family of the tutor, athlete, tutor and links of the athlete): they are read just before and sent unchanged. The backend answers
+   * 503 unless the disposable E2E backend enabled `banfield.responsables.alta-habilitada` (the default stays disabled). A fresh
+   * `Idempotency-Key` per call: a new confirmation is a new key.
+   */
+  async addResponsable(athleteId: string, tutorId: string, familyId: string, tipo?: string | null): Promise<{ id: string; version: string }> {
+    const body = {
+      tutorId,
+      ...(tipo === undefined ? {} : { tipo }),
+      versionFamilia: await this.familyVersion(familyId),
+      versionDeportista: await this.athleteVersion(athleteId),
+      versionTutor: await this.tutorVersion(tutorId),
+      versionVinculos: await this.linksVersion(athleteId),
+    };
+    const response = await this.admin.post(`/api/admin/deportistas/${athleteId}/vinculos-tutores`, {
+      data: body,
+      headers: { ...(await csrfHeaders(this.admin)), 'Idempotency-Key': randomUUID() },
+    });
+    return expectOk(response, 'add responsable');
+  }
+
+  /** Revokes one responsibility: the revision is read from the open list just before and sent unchanged. */
+  async revokeResponsable(athleteId: string, responsableId: string): Promise<void> {
+    const page = await expectOk<{ contenido: { id: string; version: string }[] }>(
+      await this.admin.get(`/api/admin/deportistas/${athleteId}/vinculos-tutores?historial=false&page=0&size=100`), 'read responsables');
+    const found = page.contenido.find((r) => r.id === responsableId);
+    expect(found, 'the responsable to revoke must be open').toBeTruthy();
+    await this.post(`/api/admin/deportistas/${athleteId}/vinculos-tutores/${responsableId}/revocar`, { versionEsperada: found!.version }, 'revoke responsable');
+  }
+
+  /** Deactivating a tutor closes its open responsibilities; reactivating it never reopens them. */
+  async deactivateTutor(tutorId: string): Promise<void> {
+    await this.post(`/api/admin/tutores/${tutorId}/desactivar`, { versionEsperada: await this.tutorVersion(tutorId) }, 'deactivate tutor');
+  }
+
+  async activateTutor(tutorId: string): Promise<void> {
+    await this.post(`/api/admin/tutores/${tutorId}/activar`, { versionEsperada: await this.tutorVersion(tutorId) }, 'activate tutor');
   }
 
   /** The season of that year (created when missing); it is only created, not activated. */

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { responsableTipoSchema } from '@/features/responsables/tipo';
 
 /**
  * Contracts of the read-only family portal (GET /api/familia/*). Zod objects drop every key that is not declared, so
@@ -100,3 +101,17 @@ export const uploadAvailabilitySchema = z.object({
   maxBytes: z.number().int().positive().nullable(),
 });
 export type UploadAvailability = z.infer<typeof uploadAvailabilitySchema>;
+
+/**
+ * Responsables vigentes of ONE athlete as the family sees them (`GET /api/familia/deportistas/{id}/responsables`): a CLOSED list of four
+ * fields. `tipo` is null when nobody declared it (different from SIN_DETERMINAR). Anything else the server may add is dropped here.
+ */
+export const familyResponsableSchema = z.object({
+  tutorId: z.string(),
+  nombre: z.string(),
+  apellido: z.string(),
+  tipo: responsableTipoSchema.nullable(),
+});
+export const familyResponsablesSchema = z.object({ responsables: z.array(familyResponsableSchema) });
+export type FamilyResponsable = z.infer<typeof familyResponsableSchema>;
+

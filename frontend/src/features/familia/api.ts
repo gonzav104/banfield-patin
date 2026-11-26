@@ -8,11 +8,13 @@ import {
   athleteDocumentSchema,
   athleteFichaSchema,
   athletePageSchema,
+  familyResponsablesSchema,
   myFamilySchema,
   uploadAvailabilitySchema,
   type AthleteDocument,
   type AthleteFicha,
   type AthletePage,
+  type FamilyResponsable,
   type MyFamily,
   type UploadAvailability,
 } from './schemas';
@@ -58,6 +60,17 @@ export async function fetchAthleteFicha(athleteId: string): Promise<AthleteFicha
     throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
   }
   return parse(athleteFichaSchema, await apiGet(`/familia/deportistas/${athleteId}/ficha`));
+}
+
+/**
+ * The responsables vigentes of ONE own athlete: ONE request without parameters (the family comes from the session on the server). An id
+ * that is not a UUID is refused here without any request.
+ */
+export async function fetchAthleteResponsables(athleteId: string): Promise<FamilyResponsable[]> {
+  if (!isAthleteId(athleteId)) {
+    throw new ApiError('validation', 'El identificador del deportista no es válido.', { status: 400, code: 'SOLICITUD_INVALIDA' });
+  }
+  return parse(familyResponsablesSchema, await apiGet(`/familia/deportistas/${athleteId}/responsables`)).responsables;
 }
 
 /**
