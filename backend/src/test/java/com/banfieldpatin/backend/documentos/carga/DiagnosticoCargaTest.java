@@ -120,7 +120,7 @@ class DiagnosticoCargaTest {
 
   private void prepararFlujoFeliz() {
     when(almacen.prepararDestino()).thenReturn(destino);
-    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(new OperacionesCargaJdbc.Reserva(op, null));
     when(operaciones.iniciar(any(), any())).thenReturn(op);
     when(operaciones.almacenada(any())).thenReturn(op);
@@ -200,7 +200,7 @@ class DiagnosticoCargaTest {
   void fallaAntesDeExistirLaOperacionNoInventaIdentificador(CapturedOutput salida)
       throws Exception {
     when(almacen.prepararDestino()).thenReturn(destino);
-    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenThrow(new CannotCreateTransactionException(SENSIBLE + " " + temporal));
     var servicio = new CargaDocumentalService(operaciones, propiedades(3310), almacen);
 

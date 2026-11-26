@@ -66,8 +66,10 @@ class V5CasosLimiteDbTest {
            """).param("a",a).param("b",b).param("e",escuela).param("t",tutor).param("u",autor)
            .param("ka","sintetico/"+a).param("kb","sintetico/"+b).update());
     }
-    @Test void aptoTutorNoRecibeRestriccionesNuevasDeFaseCuatro() {
-        insertar(null,null,"APTO_FISICO"); insertar(null,temporada,"APTO_FISICO");
-        assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.documento").query(Long.class).single()).isEqualTo(2);
+    /** V17: el apto físico es del deportista y de una temporada; ya no se admite como documento de un tutor. */
+    @Test void aptoDeTutorYaNoEsAdmisibleDesdeV17() {
+        for (UUID temp : new UUID[] {null, temporada})
+            assertThatThrownBy(() -> insertar(null, temp, "APTO_FISICO")).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.documento").query(Long.class).single()).isZero();
     }
 }

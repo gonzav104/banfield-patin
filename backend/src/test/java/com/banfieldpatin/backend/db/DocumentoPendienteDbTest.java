@@ -43,17 +43,27 @@ class DocumentoPendienteDbTest extends BaseVinculosDb {
 		}
 	}
 
+	private final java.util.Map<UUID, UUID> temporadas = new java.util.HashMap<>();
+
+	/** El apto físico pertenece a una temporada: una sola, sintética, por escuela. */
+	private UUID temporadaDe(UUID escuela) {
+		return temporadas.computeIfAbsent(escuela, e -> datos.temporada(e, 2026, false));
+	}
+
 	UUID documento(UUID escuela, UUID titular, boolean esTutor, String tipo, String estado, boolean vigente,
 			OffsetDateTime creado, UUID anterior) {
 		return jdbc.sql("""
 				INSERT INTO gestion_patin.documento(escuela_id, deportista_id, tutor_id, tipo, nombre_original,
 				  storage_key, mime_type, tamanio_bytes, estado, vigente, cargado_por, creado_en, documento_anterior_id,
-				  motivo_observacion)
+				  motivo_observacion, temporada_id, fecha_emision, medico_nombre, medico_matricula)
 				VALUES (:e, CAST(:d AS uuid), CAST(:t AS uuid), :tipo, 'NOMBRE_PRIVADO.pdf', :key, 'application/pdf', 100,
 				  :estado, :vigente, :autor, :creado, CAST(:anterior AS uuid),
-				  CASE WHEN :estado = 'OBSERVADO' THEN 'MOTIVO_FICTICIO' END)
+				  CASE WHEN :estado = 'OBSERVADO' THEN 'MOTIVO_FICTICIO' END,
+				  CAST(:temp AS uuid), CASE WHEN :tipo = 'APTO_FISICO' THEN DATE '2026-03-01' END,
+				  CASE WHEN :tipo = 'APTO_FISICO' THEN 'Medico Sintetico' END,
+				  CASE WHEN :tipo = 'APTO_FISICO' THEN 'MP 0001' END)
 				RETURNING id
-				""").param("e", escuela).param("d", esTutor ? null : titular).param("t", esTutor ? titular : null)
+				""").param("e", escuela).param("temp", "APTO_FISICO".equals(tipo) ? temporadaDe(escuela) : null).param("d", esTutor ? null : titular).param("t", esTutor ? titular : null)
 				.param("tipo", tipo).param("key", "RUTA_PRIVADA/" + UUID.randomUUID()).param("estado", estado)
 				.param("vigente", vigente).param("autor", escuela.equals(escuelaA) ? adminId : adminDeB.id())
 				.param("creado", creado).param("anterior", anterior).query(UUID.class).single();

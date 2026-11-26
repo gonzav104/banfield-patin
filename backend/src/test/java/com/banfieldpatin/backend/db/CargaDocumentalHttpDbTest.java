@@ -269,6 +269,20 @@ class CargaDocumentalHttpDbTest {
   HttpResponse<String> cargarArchivo(
       UUID key, byte[] bytes, String sesion, boolean csrf, String nombre, String mime, String tipo)
       throws Exception {
+    return cargarArchivo(key, bytes, sesion, csrf, nombre, mime, tipo, "");
+  }
+
+  /** {@code partesExtra}: partes multipart ya serializadas que van después de {@code tipo} (U21: apto físico). */
+  HttpResponse<String> cargarArchivo(
+      UUID key,
+      byte[] bytes,
+      String sesion,
+      boolean csrf,
+      String nombre,
+      String mime,
+      String tipo,
+      String partesExtra)
+      throws Exception {
     var client = HttpClient.newHttpClient();
     var c =
         client.send(
@@ -291,7 +305,9 @@ class CargaDocumentalHttpDbTest {
                 + boundary
                 + "\r\nContent-Disposition: form-data; name=\"tipo\"\r\n\r\n"
                 + tipo
-                + "\r\n--"
+                + "\r\n"
+                + partesExtra
+                + "--"
                 + boundary
                 + "\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\""
                 + nombre
@@ -2831,5 +2847,334 @@ class CargaDocumentalHttpDbTest {
     assertThat((String) JsonPath.read(r.body(), "$.tipo")).isEqualTo("DNI_TUTOR_DORSO");
     assertThat(fila(frente)).containsEntry("vigente", true).containsEntry("estado", "APROBADO");
     assertThat(operacionesDe(frente)).isZero();
+  }
+
+  // ---- U21: apto físico anual con metadatos --------------------------------------------------------
+
+  static final String MEDICO = "Medico Sintetico";
+  static final String MATRICULA = "MP 0001";
+
+  String hace10Dias() {
+    return java.time.LocalDate.now(com.banfieldpatin.backend.documentos.apto.ReglaVigenciaApto.ZONA)
+        .minusDays(10)
+        .toString();
+  }
+
+  UUID temporadaApto(int anio) {
+    return new DatosDb(jdbc).temporada(escuela, anio, false);
+  }
+
+  String metadatos(String fecha, String nombre, String matricula) {
+    return (fecha == null ? "" : parteTexto("fechaEmision", fecha))
+        + (nombre == null ? "" : parteTexto("medicoNombre", nombre))
+        + (matricula == null ? "" : parteTexto("medicoMatricula", matricula));
+  }
+
+  HttpResponse<String> cargarApto(UUID key, UUID temporada, String metadatos) throws Exception {
+    return cargarArchivo(
+        key,
+        png(),
+        token,
+        true,
+        "sintetico.png",
+        "image/png",
+        "APTO_FISICO",
+        (temporada == null ? "" : parteTexto("temporadaId", temporada.toString())) + metadatos);
+  }
+
+  int operaciones() {
+    return jdbc.sql("SELECT count(*) FROM gestion_patin.operacion_carga_documental WHERE escuela_id=:e")
+        .param("e", escuela)
+        .query(Integer.class)
+        .single();
+  }
+
+  @Test
+  void aptoSePublicaConSusMetadatosYLaRepeticionNoDuplica() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    var key = UUID.randomUUID();
+    String meta = metadatos(hace10Dias(), "  " + MEDICO + "  ", " " + MATRICULA + " ");
+    var a = cargarApto(key, temporada, meta);
+    assertThat(a.statusCode()).as(a.body()).isEqualTo(201);
+    sinFugas(a);
+    assertThat((String) JsonPath.read(a.body(), "$.tipo")).isEqualTo("APTO_FISICO");
+    var fila = fila(idDe(a));
+    assertThat(fila)
+        .containsEntry("temporada_id", temporada)
+        .containsEntry("medico_nombre", MEDICO)
+        .containsEntry("medico_matricula", MATRICULA)
+        .containsEntry("estado", "CARGADO")
+        .containsEntry("vigente", true);
+    assertThat(fila.get("fecha_emision").toString()).isEqualTo(hace10Dias());
+    var b = cargarApto(key, temporada, meta);
+    assertThat(b.statusCode()).as(b.body()).isEqualTo(200);
+    assertThat(idDe(b)).isEqualTo(idDe(a));
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(auditorias("DOCUMENTO_CARGADO")).isEqualTo(1);
+  }
+
+  @Test
+  void laMismaClaveConOtrosMetadatosOOtraTemporadaEsConflictoDefinitivo() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    UUID otra = temporadaApto(2027);
+    var key = UUID.randomUUID();
+    assertThat(cargarApto(key, temporada, metadatos(hace10Dias(), MEDICO, MATRICULA)).statusCode()).isEqualTo(201);
+    for (var distinta :
+        List.of(
+            cargarApto(key, temporada, metadatos(hace10Dias(), MEDICO, "MP 0002")),
+            cargarApto(key, temporada, metadatos(hace10Dias(), "Otro Medico Sintetico", MATRICULA)),
+            cargarApto(
+                key,
+                temporada,
+                metadatos(java.time.LocalDate.parse(hace10Dias()).minusDays(1).toString(), MEDICO, MATRICULA)),
+            cargarApto(key, otra, metadatos(hace10Dias(), MEDICO, MATRICULA)))) {
+      assertThat(distinta.statusCode()).as(distinta.body()).isEqualTo(409);
+      assertThat(distinta.body()).contains(NO_REPETIBLE).doesNotContain(MEDICO, MATRICULA);
+    }
+    assertThat(documentos()).isEqualTo(1);
+    assertThat(POSTS.get()).isEqualTo(1);
+  }
+
+  @Test
+  void aptoConMetadatosAusentesOInvalidosNoIniciaNingunaOperacion() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    String futura =
+        java.time.LocalDate.now(com.banfieldpatin.backend.documentos.apto.ReglaVigenciaApto.ZONA)
+            .plusDays(2)
+            .toString();
+    for (String meta :
+        List.of(
+            "",
+            metadatos(hace10Dias(), MEDICO, null),
+            metadatos(hace10Dias(), null, MATRICULA),
+            metadatos(null, MEDICO, MATRICULA),
+            metadatos(futura, MEDICO, MATRICULA),
+            metadatos("no-es-fecha", MEDICO, MATRICULA),
+            metadatos("1999-12-31", MEDICO, MATRICULA),
+            metadatos(hace10Dias(), "   ", MATRICULA),
+            metadatos(hace10Dias(), "M".repeat(151), MATRICULA),
+            metadatos(hace10Dias(), MEDICO, "***"),
+            metadatos(hace10Dias(), MEDICO, "9".repeat(51)))) {
+      var r = cargarApto(UUID.randomUUID(), temporada, meta);
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(400);
+      assertThat(r.body()).contains("\"codigo\":\"VALIDACION\"").doesNotContain(MEDICO, MATRICULA, "no-es-fecha");
+    }
+    assertThat(operaciones()).isZero();
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void losMetadatosDelAptoSoloSeAceptanParaApto() throws Exception {
+    var r =
+        cargarArchivo(
+            UUID.randomUUID(),
+            png(),
+            token,
+            true,
+            "sintetico.png",
+            "image/png",
+            "OTRO",
+            metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(400);
+    assertThat(r.body()).doesNotContain(MEDICO, MATRICULA);
+    assertThat(operaciones()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void aptoSinTemporadaOConTemporadaAjenaEsArchivoInvalido() throws Exception {
+    var ajena = new DatosDb(jdbc).temporada(new DatosDb(jdbc).escuela("otra-" + UUID.randomUUID()), 2026, false);
+    for (UUID temporada : new UUID[] {null, ajena, UUID.randomUUID()}) {
+      var r = cargarApto(UUID.randomUUID(), temporada, metadatos(hace10Dias(), MEDICO, MATRICULA));
+      assertThat(r.statusCode()).as(r.body()).isEqualTo(422);
+      assertThat(r.body()).contains("ARCHIVO_INVALIDO");
+    }
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void unSegundoAptoVigenteDeLaMismaTemporadaEsConflictoYOtraTemporadaConvive() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    UUID siguiente = temporadaApto(2027);
+    String meta = metadatos(hace10Dias(), MEDICO, MATRICULA);
+    assertThat(cargarApto(UUID.randomUUID(), temporada, meta).statusCode()).isEqualTo(201);
+    var segundo = cargarApto(UUID.randomUUID(), temporada, meta);
+    assertThat(segundo.statusCode()).as(segundo.body()).isEqualTo(409);
+    assertThat(segundo.body()).contains(NO_REPETIBLE);
+    assertThat(cargarApto(UUID.randomUUID(), siguiente, meta).statusCode()).isEqualTo(201);
+    assertThat(documentos()).isEqualTo(2);
+    assertThat(POSTS.get()).isEqualTo(2);
+  }
+
+  UUID aptoObservado(UUID temporada) {
+    return jdbc.sql(
+            """
+            INSERT INTO gestion_patin.documento(escuela_id,deportista_id,temporada_id,tipo,nombre_original,storage_key,
+              mime_type,tamanio_bytes,estado,motivo_observacion,vigente,cargado_por,fecha_emision,medico_nombre,
+              medico_matricula)
+            VALUES(:e,:d,:t,'APTO_FISICO','documento',:k,'image/png',10,'OBSERVADO','Imagen ilegible',true,:a,
+              DATE '2026-01-15','Medico Anterior','MP 9999') RETURNING id
+            """)
+        .param("e", escuela)
+        .param("d", atleta)
+        .param("t", temporada)
+        .param("k", UUID.randomUUID().toString())
+        .param("a", usuario)
+        .query(UUID.class)
+        .single();
+  }
+
+  @Test
+  void reemplazarUnAptoObservadoHeredaLaTemporadaYTraeSusPropiosMetadatos() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    UUID predecesor = aptoObservado(temporada);
+    var r = reemplazar(UUID.randomUUID(), png(), predecesor, token, true, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    sinFugas(r);
+    var nuevo = fila(idDe(r));
+    assertThat(nuevo)
+        .containsEntry("tipo", "APTO_FISICO")
+        .containsEntry("temporada_id", temporada)
+        .containsEntry("medico_nombre", MEDICO)
+        .containsEntry("medico_matricula", MATRICULA)
+        .containsEntry("documento_anterior_id", predecesor)
+        .containsEntry("vigente", true);
+    assertThat(fila(predecesor))
+        .containsEntry("vigente", false)
+        .containsEntry("estado", "OBSERVADO")
+        .containsEntry("medico_nombre", "Medico Anterior")
+        .containsEntry("medico_matricula", "MP 9999");
+    assertThat(auditorias("DOCUMENTO_REEMPLAZADO")).isEqualTo(1);
+  }
+
+  @Test
+  void reemplazarUnAptoSinMetadatosOConUnaTemporadaNuevaNoInicia() throws Exception {
+    UUID predecesor = aptoObservado(temporadaApto(2026));
+    var sin = reemplazar(UUID.randomUUID(), png(), predecesor, token, true, "");
+    assertThat(sin.statusCode()).as(sin.body()).isEqualTo(400);
+    var otraTemporada =
+        reemplazar(
+            UUID.randomUUID(),
+            png(),
+            predecesor,
+            token,
+            true,
+            metadatos(hace10Dias(), MEDICO, MATRICULA) + parteTexto("temporadaId", UUID.randomUUID().toString()));
+    assertThat(otraTemporada.statusCode()).as(otraTemporada.body()).isEqualTo(422);
+    assertThat(operacionesDe(predecesor)).isZero();
+    assertThat(POSTS.get()).isZero();
+    assertThat((Boolean) fila(predecesor).get("vigente")).isTrue();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"CARGADO", "APROBADO", "VENCIDO"})
+  void unAptoQueNoEstaObservadoNoSeReemplaza(String estado) throws Exception {
+    UUID temporada = temporadaApto(2026);
+    UUID predecesor = aptoObservado(temporada);
+    jdbc.sql("UPDATE gestion_patin.documento SET estado=:s,motivo_observacion=NULL WHERE id=:i")
+        .param("s", estado)
+        .param("i", predecesor)
+        .update();
+    var r = reemplazar(UUID.randomUUID(), png(), predecesor, token, true, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE);
+    assertThat(operacionesDe(predecesor)).isZero();
+    assertThat(POSTS.get()).isZero();
+  }
+
+  @Test
+  void elAptoDeOtroDeportistaSeResuelveComoDocumentoNoEncontrado() throws Exception {
+    var d = new DatosDb(jdbc);
+    UUID ajeno = d.deportista(escuela, "SINTETICO3", "Otro", "Atleta");
+    UUID temporada = temporadaApto(2026);
+    UUID predecesor =
+        jdbc.sql(
+                """
+                INSERT INTO gestion_patin.documento(escuela_id,deportista_id,temporada_id,tipo,nombre_original,
+                  storage_key,mime_type,tamanio_bytes,estado,motivo_observacion,vigente,cargado_por,fecha_emision,
+                  medico_nombre,medico_matricula)
+                VALUES(:e,:d,:t,'APTO_FISICO','documento',:k,'image/png',10,'OBSERVADO','x',true,:a,
+                  DATE '2026-01-15','Medico Anterior','MP 9999') RETURNING id
+                """)
+            .param("e", escuela)
+            .param("d", ajeno)
+            .param("t", temporada)
+            .param("k", UUID.randomUUID().toString())
+            .param("a", usuario)
+            .query(UUID.class)
+            .single();
+    var r = reemplazar(UUID.randomUUID(), png(), predecesor, token, true, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(404);
+    assertThat(r.body()).contains(NO_ENCONTRADO);
+    assertThat(operacionesDe(predecesor)).isZero();
+  }
+
+  /** Una operación de apto ya almacenada con sus datos (p. ej. tras un corte): se publica sin repetir Storage y con SUS datos. */
+  UUID aptoAlmacenado(UUID key, byte[] file, UUID temporada) throws Exception {
+    // La operación nace con los datos del apto desde la reserva: se siembra con su identidad completa (no se borra ninguna).
+    UUID apto = UUID.randomUUID();
+    jdbc.sql(
+            """
+            INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tipo,
+              temporada_id,storage_bucket,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta,
+              fecha_emision,medico_nombre,medico_matricula)
+            VALUES(:id,:e,:u,:d,'APTO_FISICO',:t,'privado',:k,:sha,'image/png',:n,clock_timestamp()+interval '3 minutes',
+              CAST(:f AS date),:mn,:mm)
+            """)
+        .param("id", apto)
+        .param("e", escuela)
+        .param("u", usuario)
+        .param("d", atleta)
+        .param("t", temporada)
+        .param("k", key)
+        .param("sha", java.security.MessageDigest.getInstance("SHA-256").digest(file))
+        .param("n", (long) file.length)
+        .param("f", hace10Dias())
+        .param("mn", MEDICO)
+        .param("mm", MATRICULA)
+        .update();
+    for (String e : List.of("TRANSFIRIENDO", "ALMACENADA"))
+      jdbc.sql(
+              "UPDATE gestion_patin.operacion_carga_documental SET estado=:s,version=version+1,"
+                  + "reserva_hasta=clock_timestamp()+interval '3 minutes' WHERE id=:id")
+          .param("s", e)
+          .param("id", apto)
+          .update();
+    vencer(apto);
+    return apto;
+  }
+
+  @Test
+  void unAptoAlmacenadoSePublicaConLosDatosDeSuOperacionSinRepetirStorage() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    var key = UUID.randomUUID();
+    byte[] file = png();
+    UUID id = aptoAlmacenado(key, file, temporada);
+    var r = cargarApto(key, temporada, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(idDe(r)).isEqualTo(id);
+    assertThat(fase(key)).isEqualTo("PUBLICADA");
+    assertThat(POSTS.get()).as("no se repite el POST a Storage").isZero();
+    assertThat(fila(id))
+        .containsEntry("tipo", "APTO_FISICO")
+        .containsEntry("temporada_id", temporada)
+        .containsEntry("medico_nombre", MEDICO)
+        .containsEntry("medico_matricula", MATRICULA);
+  }
+
+  @Test
+  void unAptoAlmacenadoNoSePublicaSiLaRepeticionTraeOtrosDatos() throws Exception {
+    UUID temporada = temporadaApto(2026);
+    var key = UUID.randomUUID();
+    UUID id = aptoAlmacenado(key, png(), temporada);
+    var r = cargarApto(key, temporada, metadatos(hace10Dias(), MEDICO, "MP 0002"));
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(409);
+    assertThat(r.body()).contains(NO_REPETIBLE).doesNotContain(MEDICO, MATRICULA, "MP 0002");
+    assertThat(fase(key)).isEqualTo("ALMACENADA");
+    assertThat(documentos()).isZero();
+    assertThat(id).isNotNull();
   }
 }
