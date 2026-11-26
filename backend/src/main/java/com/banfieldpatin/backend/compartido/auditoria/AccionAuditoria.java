@@ -10,6 +10,8 @@ public enum AccionAuditoria {
 	DOCUMENTO_INTEGRIDAD_FALLIDA,
 	DOCUMENTOS_CONSULTADOS,
 	DOCUMENTO_REVISADO,
+	/** Corrección administrativa de los datos de un apto físico (U21): el detalle solo nombra campos, nunca valores. */
+	DOCUMENTO_APTO_CORREGIDO,
 	LOGIN_EXITOSO,
 	LOGIN_FALLIDO,
 	LOGOUT,

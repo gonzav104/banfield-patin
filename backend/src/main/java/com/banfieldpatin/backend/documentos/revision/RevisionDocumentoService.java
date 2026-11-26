@@ -30,7 +30,7 @@ import com.banfieldpatin.backend.usuarios.Rol;
 public class RevisionDocumentoService {
     private static final Duration PLAZO_BLOQUEO = Duration.ofSeconds(2);
 
-    /** Dueño y tipos revisables: solo los DNI (frente y dorso) del deportista o, desde U19, del tutor. */
+    /** Dueño y tipos revisables: los DNI (frente y dorso) y, desde U21, el apto físico del deportista; los DNI del tutor (U19). */
     private record Dueno(String columna, String tipos) {
         String alcance() {
             return "WHERE id = :documento AND escuela_id = :escuela AND " + columna + " = :dueno AND tipo IN ("
@@ -38,7 +38,8 @@ public class RevisionDocumentoService {
         }
     }
 
-    private static final Dueno DEPORTISTA = new Dueno("deportista_id", "'DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'");
+    private static final Dueno DEPORTISTA = new Dueno("deportista_id",
+            "'DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO', 'APTO_FISICO'");
     private static final Dueno TUTOR = new Dueno("tutor_id", "'DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'");
 
     private final JdbcClient jdbc;
