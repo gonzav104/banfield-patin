@@ -173,4 +173,47 @@ class DocumentosConsultaDbTest extends BaseVinculosDb {
   String detalle=jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE escuela_id=:e AND accion='DOCUMENTOS_CONSULTADOS'").param("e",escuelaA).query(String.class).single();
   assertThat(detalle).contains("cantidad","pagina").doesNotContain("PRIVAD","MOTIVO","storage","bucket");
  }
+ // ---- U21: el motivo de observación de un apto es de la familia que lo cargó ----
+ UUID aptoObservado(UUID cargadoPor) {
+  UUID temporada=datos.temporada(escuelaA,2026,false);
+  return jdbc.sql("""
+   INSERT INTO gestion_patin.documento(escuela_id,deportista_id,temporada_id,tipo,nombre_original,storage_key,mime_type,
+    tamanio_bytes,estado,vigente,cargado_por,motivo_observacion,fecha_emision,medico_nombre,medico_matricula)
+   VALUES(:e,:d,:t,'APTO_FISICO','NOMBRE_PRIVADO.pdf',:key,'application/pdf',100,'OBSERVADO',true,:a,'MOTIVO_DEL_APTO',
+    DATE '2026-03-01','Medico Sintetico','MP 0001') RETURNING id
+   """).param("e",escuelaA).param("d",deportistaA).param("t",temporada).param("key","RUTA_PRIVADA/"+UUID.randomUUID())
+   .param("a",cargadoPor).query(UUID.class).single();
+ }
+ UsuarioAutenticado segundaFamiliaVinculada() {
+  datos.vinculo(escuelaA,familiaOtra,deportistaA,"ACTIVO",false,adminId);
+  return new UsuarioAutenticado(datos.usuarioFamilia(escuelaA,familiaOtra,"otra-"+UUID.randomUUID()+"@example.invalid"),escuelaA,familiaOtra,Rol.FAMILIA);
+ }
+ @Test void elMotivoDeUnAptoObservadoSoloLoVeLaFamiliaQueLoCargoYLaOtraSoloVeElEstado() {
+  var id=aptoObservado(familiar.id());
+  var otra=segundaFamiliaVinculada();
+  var propia=leer(familiar,deportistaA,false,0,20).contenido().getFirst();
+  assertThat(propia.id()).isEqualTo(id);
+  assertThat(propia.estado()).isEqualTo(EstadoDocumento.OBSERVADO);
+  assertThat(propia.motivoObservacion()).isEqualTo("MOTIVO_DEL_APTO");
+  var ajena=leer(otra,deportistaA,false,0,20).contenido().getFirst();
+  assertThat(ajena.id()).isEqualTo(id);
+  assertThat(ajena.estado()).isEqualTo(EstadoDocumento.OBSERVADO);
+  assertThat(ajena.motivoObservacion()).isNull();
+  assertThat(ajena.toString()).doesNotContain("MOTIVO_DEL_APTO");
+  assertThat(documentos.deportistaAdmin(admin,deportistaA,Pagina.pedir(0,20),DATOS).contenido().getFirst().motivoObservacion())
+   .isEqualTo("MOTIVO_DEL_APTO");
+ }
+ @Test void unAptoCargadoPorOtroUsuarioNoMuestraSuMotivoALasFamiliasYElDniConservaSuPolitica() {
+  aptoObservado(adminId);
+  var dni=documento(escuelaA,deportistaA,false,true,"OBSERVADO");
+  var otra=segundaFamiliaVinculada();
+  for(var u:List.of(familiar,otra)) {
+   var filas=leer(u,deportistaA,false,0,20).contenido();
+   assertThat(filas).hasSize(2);
+   for(var f:filas) {
+    if(f.id().equals(dni)) assertThat(f.motivoObservacion()).isEqualTo("MOTIVO_FICTICIO");
+    else assertThat(f.motivoObservacion()).isNull();
+   }
+  }
+ }
 }

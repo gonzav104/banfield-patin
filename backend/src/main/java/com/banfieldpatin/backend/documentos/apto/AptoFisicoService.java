@@ -75,8 +75,8 @@ public class AptoFisicoService {
                     return new AptoFisicoTemporada.DocumentoApto(rs.getObject("id", UUID.class), rs.getString("estado"),
                             datos ? rs.getObject("fecha_emision", LocalDate.class) : null,
                             datos ? rs.getString("medico_nombre") : null, datos ? rs.getString("medico_matricula") : null,
-                            // El motivo lo escribe ADMIN y es lo que la familia necesita para actuar: viaja con el estado.
-                            EstadoDocumento.OBSERVADO.name().equals(rs.getString("estado"))
+                            // El motivo lo escribe ADMIN y puede aludir a los datos: solo ADMIN y la familia que cargó la versión.
+                            datos && EstadoDocumento.OBSERVADO.name().equals(rs.getString("estado"))
                                     ? rs.getString("motivo_observacion") : null,
                             rs.getObject("creado_en", OffsetDateTime.class).toInstant(), admin ? rs.getLong("version") : null,
                             datos);
@@ -84,8 +84,16 @@ public class AptoFisicoService {
         LocalDate hoy = LocalDate.now(reloj.withZone(ReglaVigenciaApto.ZONA));
         EstadoApto estado = CalculadoraEstadoApto.calcular(
                 documento == null ? null : EstadoDocumento.valueOf(documento.estado()), regla, hoy);
+        var avisos = new java.util.ArrayList<String>();
+        if (!regla.confirmada()) {
+            avisos.add(AptoFisicoTemporada.AVISO_REQUISITOS_SIN_CONFIRMAR);
+        }
+        // Otra familia vinculada sabe que hay que reemplazarlo, sin el motivo ni los datos de quien lo cargó.
+        if (documento != null && !documento.datosVisibles() && estado == EstadoApto.OBSERVADO) {
+            avisos.add(AptoFisicoTemporada.AVISO_OBSERVADO_REQUIERE_REEMPLAZO);
+        }
         return new AptoFisicoTemporada(deportistaId, temporadaId, anio, estado, false,
-                new AptoFisicoTemporada.Vigencia(regla.desde(), regla.hasta(), regla.confirmada(), regla.fuente()),
-                regla.confirmada() ? List.of() : List.of(AptoFisicoTemporada.AVISO_REQUISITOS_SIN_CONFIRMAR), documento);
+                new AptoFisicoTemporada.Vigencia(regla.desde(), regla.hasta(), regla.confirmada(), regla.fuente()), avisos,
+                documento);
     }
 }

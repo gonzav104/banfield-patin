@@ -18,6 +18,20 @@ public interface DocumentoRepository extends Repository<Documento, UUID> {
  """;
     String PROYECCION = "select new com.banfieldpatin.backend.documentos.DocumentoMetadatos("
             + CAMPOS_METADATOS + ")";
+    /**
+     * Proyección para la FAMILIA (U21): el motivo de observación de un APTO_FISICO solo lo recibe la familia que cargó esa versión
+     * (documento.cargado_por → usuario.familia_id); a otra familia vinculada le llega el estado OBSERVADO y nada más. Para los demás
+     * tipos la política no cambia.
+     */
+    String PROYECCION_FAMILIA = "select new com.banfieldpatin.backend.documentos.DocumentoMetadatos("
+            + """
+ doc.id, doc.tipo, doc.estado, doc.temporadaId, doc.creadoEn, doc.vigente, doc.fechaVencimiento,
+ case when doc.estado = com.banfieldpatin.backend.documentos.EstadoDocumento.OBSERVADO
+   and (doc.tipo <> com.banfieldpatin.backend.documentos.TipoDocumento.APTO_FISICO
+        or exists (select u.id from Usuario u where u.id = doc.cargadoPor and u.escuelaId = doc.escuelaId
+                   and u.familiaId = :familiaId))
+ then doc.motivoObservacion else null end
+ """ + ")";
     String PROYECCION_ADMIN = "select new com.banfieldpatin.backend.documentos.DocumentoAdminMetadatos("
             + CAMPOS_METADATOS + ", doc.version)";
     String ORDEN = " order by doc.creadoEn desc, doc.id";
@@ -34,7 +48,7 @@ public interface DocumentoRepository extends Repository<Documento, UUID> {
     Page<DocumentoAdminMetadatos> tutorAdmin(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, Pageable pagina);
 
-    @Query(value = PROYECCION + DEPORTISTA_FAMILIA + ORDEN, countQuery = "select count(doc)" + DEPORTISTA_FAMILIA)
+    @Query(value = PROYECCION_FAMILIA + DEPORTISTA_FAMILIA + ORDEN, countQuery = "select count(doc)" + DEPORTISTA_FAMILIA)
     Page<DocumentoMetadatos> deportistaFamilia(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId,
             @Param("familiaId") UUID familiaId, Pageable pagina);
@@ -49,7 +63,7 @@ public interface DocumentoRepository extends Repository<Documento, UUID> {
     List<DocumentoMetadatos> requisitosAdmin(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, @Param("tipos") Collection<TipoDocumento> tipos);
 
-    @Query(PROYECCION + DEPORTISTA_FAMILIA + " and doc.tipo in :tipos" + ORDEN)
+    @Query(PROYECCION_FAMILIA + DEPORTISTA_FAMILIA + " and doc.tipo in :tipos" + ORDEN)
     List<DocumentoMetadatos> requisitosFamilia(@Param("escuelaId") UUID escuelaId,
             @Param("propietarioId") UUID propietarioId, @Param("familiaId") UUID familiaId,
             @Param("tipos") Collection<TipoDocumento> tipos);

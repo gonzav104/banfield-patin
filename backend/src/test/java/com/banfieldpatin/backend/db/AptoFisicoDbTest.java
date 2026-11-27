@@ -296,4 +296,30 @@ class AptoFisicoDbTest extends BaseVinculosDb {
 		assertThat(r.documento().medicoMatricula()).isNull();
 		assertThat(servicio.consultar(admin, deportista, temporada2026).documento().medicoMatricula()).isEqualTo("MP DE ADMIN");
 	}
+
+	@Test
+	void elMotivoDeLaObservacionSoloLoVeLaFamiliaQueCargoYLaOtraRecibeUnAvisoGenerico() {
+		apto(escuelaA, deportista, temporada2026, "OBSERVADO", true, "MP PRIVADA");
+		var segunda = segundaFamilia();
+		var propia = servicio.consultar(familiar, deportista, temporada2026);
+		assertThat(propia.estado()).isEqualTo(EstadoApto.OBSERVADO);
+		assertThat(propia.documento().motivoObservacion()).isEqualTo("MOTIVO_FICTICIO");
+		assertThat(propia.avisos()).doesNotContain(AptoFisicoTemporada.AVISO_OBSERVADO_REQUIERE_REEMPLAZO);
+		var ajena = servicio.consultar(segunda, deportista, temporada2026);
+		assertThat(ajena.estado()).isEqualTo(EstadoApto.OBSERVADO);
+		assertThat(ajena.documento().estado()).isEqualTo("OBSERVADO");
+		assertThat(ajena.documento().motivoObservacion()).isNull();
+		assertThat(ajena.avisos()).contains(AptoFisicoTemporada.AVISO_OBSERVADO_REQUIERE_REEMPLAZO);
+		assertThat(ajena.toString()).doesNotContain("MOTIVO_FICTICIO", "MP PRIVADA");
+		var admin = servicio.consultar(this.admin, deportista, temporada2026);
+		assertThat(admin.documento().motivoObservacion()).isEqualTo("MOTIVO_FICTICIO");
+		assertThat(admin.avisos()).doesNotContain(AptoFisicoTemporada.AVISO_OBSERVADO_REQUIERE_REEMPLAZO);
+	}
+
+	@Test
+	void unAptoQueNoEstaObservadoNoAgregaElAvisoDeReemplazo() {
+		apto(escuelaA, deportista, temporada2026, "CARGADO", true, "MP PRIVADA");
+		assertThat(servicio.consultar(segundaFamilia(), deportista, temporada2026).avisos())
+				.doesNotContain(AptoFisicoTemporada.AVISO_OBSERVADO_REQUIERE_REEMPLAZO);
+	}
 }

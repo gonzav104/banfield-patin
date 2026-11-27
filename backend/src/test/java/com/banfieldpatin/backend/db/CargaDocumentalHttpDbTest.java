@@ -3248,4 +3248,40 @@ class CargaDocumentalHttpDbTest {
     assertThat(despues.statusCode()).isEqualTo(200);
     assertThat(despues.body()).doesNotContain(MEDICO, MATRICULA);
   }
+
+  @Test
+  void elMotivoDeLaObservacionDelAptoSoloLoVeLaFamiliaQueCargoPorTodosLosContratosFamiliares() throws Exception {
+    var d = new DatosDb(jdbc);
+    UUID temporada = temporadaApto(2026);
+    var subida = cargarApto(UUID.randomUUID(), temporada, metadatos(hace10Dias(), MEDICO, MATRICULA));
+    assertThat(subida.statusCode()).as(subida.body()).isEqualTo(201);
+    jdbc.sql(
+            "UPDATE gestion_patin.documento SET estado='OBSERVADO', motivo_observacion='MOTIVO_SENSIBLE',"
+                + " version=version+1 WHERE id=:i")
+        .param("i", idDe(subida))
+        .update();
+    UUID otraFamilia = d.familia(escuela, "Segunda familia sintética", true);
+    UUID otroUsuario = d.usuarioFamilia(escuela, otraFamilia, "segunda@example.invalid");
+    d.vinculo(escuela, otraFamilia, atleta, "ACTIVO", false, d.admin(escuela, "admin2@example.invalid", true));
+    String segunda = tokens.emitir(otroUsuario, Rol.FAMILIA, escuela, otraFamilia);
+    String apto = "/api/familia/deportistas/" + atleta + "/temporadas/" + temporada + "/apto-fisico";
+    String lista = "/api/familia/deportistas/" + atleta + "/documentos";
+    String checklist = "/api/familia/deportistas/" + atleta + "/checklist-documental";
+
+    var propia = obtener(apto, token);
+    assertThat((String) JsonPath.read(propia.body(), "$.estado")).isEqualTo("OBSERVADO");
+    assertThat((String) JsonPath.read(propia.body(), "$.documento.motivoObservacion")).isEqualTo("MOTIVO_SENSIBLE");
+    assertThat(obtener(lista, token).body()).contains("MOTIVO_SENSIBLE");
+
+    var ajena = obtener(apto, segunda);
+    assertThat((String) JsonPath.read(ajena.body(), "$.estado")).isEqualTo("OBSERVADO");
+    assertThat((String) JsonPath.read(ajena.body(), "$.documento.estado")).isEqualTo("OBSERVADO");
+    assertThat(ajena.body()).contains("APTO_OBSERVADO_REQUIERE_REEMPLAZO").doesNotContain("MOTIVO_SENSIBLE", MEDICO, MATRICULA);
+    for (String ruta : List.of(lista, checklist)) {
+      var r = obtener(ruta, segunda);
+      assertThat(r.statusCode()).as(ruta + r.body()).isEqualTo(200);
+      assertThat(r.body()).doesNotContain("MOTIVO_SENSIBLE", MEDICO, MATRICULA);
+    }
+    assertThat(obtener(lista, segunda).body()).contains("OBSERVADO");
+  }
 }

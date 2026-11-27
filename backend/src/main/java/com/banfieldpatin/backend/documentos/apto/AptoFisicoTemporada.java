@@ -16,6 +16,8 @@ import java.util.UUID;
 public record AptoFisicoTemporada(UUID deportistaId, UUID temporadaId, int anio, EstadoApto estado, boolean bloqueante,
         Vigencia vigencia, List<String> avisos, DocumentoApto documento) {
 
+    /** Otra familia vinculada ve que el apto fue observado y debe reemplazarse, sin el motivo escrito por ADMIN. */
+    public static final String AVISO_OBSERVADO_REQUIERE_REEMPLAZO = "APTO_OBSERVADO_REQUIERE_REEMPLAZO";
     public static final String AVISO_REQUISITOS_SIN_CONFIRMAR = "REQUISITOS_DE_LA_TEMPORADA_PENDIENTES_DE_CONFIRMACION";
 
     public AptoFisicoTemporada {
