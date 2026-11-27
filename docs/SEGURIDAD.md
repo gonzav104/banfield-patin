@@ -21,7 +21,7 @@ Este documento describe lo que el código hace hoy; los puntos abiertos están e
 | Aspecto | Valor |
 |---|---|
 | Algoritmo | HS256 con un secreto compartido (`JWT_SECRET`, base64, mínimo 32 bytes decodificados) |
-| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`) y `mfa_renovado` (solo en el token pendiente renovado al enrolar, sección 9). Sin email ni datos personales |
+| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`) y `mfa_renovado` (solo en el token pendiente renovado al enrolar, sección 9) y `version_sesion` (entero, V19: generación de sesiones de la cuenta; ver «Revalidación»). Sin email ni datos personales |
 | Duración | `JWT_DURACION`, por defecto `PT8H` (se valida entre `PT5M` y `PT24H`). El token de un ADMIN con MFA pendiente dura `MFA_DURACION_PENDIENTE`, por defecto `PT5M` (entre `PT1M` y `PT15M`) |
 | Cookie | Nombre `BP_SESION` (configurable), `HttpOnly`, `Path=/`, `Max-Age` igual a la duración del JWT |
 | `Secure` | `AUTH_COOKIE_SECURE`; el valor por defecto de la aplicación es `true`. Solo el perfil `dev` y los ejemplos locales lo desactivan |
@@ -40,6 +40,12 @@ solo es vigente si:
 - su escuela está activa;
 - el `rol` y el `familia_id` del token coinciden con la fila del usuario (un token de ADMIN de quien hoy es FAMILIA, o con la familia de otro, se rechaza);
 - para un token de FAMILIA, la familia existe en esa escuela y está activa (desactivar una familia cierra la sesión de todos sus usuarios).
+- la `version_sesion` del token es la vigente de la cuenta (`usuario.version_sesion`, V19). Quitar el acceso a una cuenta la incrementa **en la misma
+  sentencia** que la desactiva y nunca retrocede (trigger): todo token anterior queda revocado para siempre, sin depender de la hora ni de la
+  precisión del `iat`, y reactivar la cuenta no lo revive. Un login emite la versión de la cuenta activa leída con su fila tomada (`FOR NO KEY UPDATE`); la
+  renovación del token de MFA pendiente y la sesión completa heredan la del token presentado. Un token **sin** el claim (emitido por un backend
+  anterior a este contrato) se lee como versión 0: vale mientras la cuenta nunca haya sido revocada y deja de valer con la primera revocación.
+  Un claim presente que no es un entero no negativo es un token mal formado (`401`).
 
 | Resultado de la revalidación | Respuesta |
 |---|---|
@@ -336,12 +342,36 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   Hay que reiniciar el MFA de todos los ADMIN con el SQL anterior (sin el `WHERE`, para todos los de la escuela). No hay rotación de clave sin reenrolar.
 - Un secreto copiado a la fila de otro usuario no sirve para saltarse el MFA: el id del usuario es el AAD del cifrado, así que no descifra.
 
+### Gestión de cuentas familiares por ADMIN (U21-BIS C0)
+
+- `GET /api/admin/familias/{familiaId}/cuentas` lista las cuentas FAMILIA de esa familia (nombre, apellido, correo, si está activa, último
+  ingreso y alta; nunca contraseña, rol, datos de MFA ni de sesiones) e informa `gestionHabilitada`.
+- `POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar` y `/reactivar` (CSRF): idempotentes, expresan el estado final y se
+  aplican con un `UPDATE` condicional (dos ADMIN a la vez dejan un solo cambio auditado). Solo cuentas FAMILIA de una familia de la escuela
+  del ADMIN; la familia y la cuenta se exigen juntas: una cuenta de otra familia o escuela, un ADMIN o un id inexistente dan el mismo
+  `404 CUENTA_NO_ENCONTRADA` (familia ajena: `404 FAMILIA_NO_ENCONTRADA`).
+- **Sesiones ya iniciadas:** desactivar las corta desde la siguiente solicitud y las revoca para siempre (`version_sesion`, V19); reactivar no
+  las revive y exige un nuevo inicio de sesión. Cada persona de una familia tiene credenciales y versión propias: quitar el acceso a una no
+  afecta a las demás. Repetir la acción no cambia la versión ni vuelve a auditar; si la auditoría falla, no se aplica ni la desactivación ni la
+  revocación (misma transacción).
+- **Carga documental en curso:** cada paso (reserva, inicio, publicación) exige la versión del token de esa solicitud bajo el mismo
+  `FOR SHARE` de la cuenta: una carga iniciada antes de quitar el acceso no publica aunque la cuenta se reactive mientras transfiere
+  (el archivo sigue el camino de limpieza/reconciliación de siempre). Los pasos son transacciones cortas; la transferencia a Storage no
+  retiene bloqueos.
+- **Login concurrente con la desactivación:** el login lee la `version_sesion` de la cuenta activa con su fila tomada (`FOR NO KEY UPDATE`, el mismo bloqueo que su
+  escritura del último acceso: dos logins simultáneos se serializan sin deadlock) hasta el commit: si la desactivación llegó antes, el login se rechaza como cuenta inactiva; si llega después, espera al login y su incremento
+  revoca el token recién emitido. Además la entidad `Usuario` ya no escribe `activo` (`updatable = false`): guardar el último acceso no
+  puede deshacer una desactivación (antes, Hibernate reescribía la columna completa).
+- Las escrituras están detrás de `CUENTAS_GESTION_HABILITADA` (`false` por defecto → `503 GESTION_CUENTAS_DESHABILITADA`).
+- `GET /api/admin/invitaciones?familiaId=…` filtra las invitaciones de una familia de la escuela (una familia ajena da una página vacía).
+- La pertenencia de una cuenta (familia, escuela, rol) no cambia (V18): no existe reasignación entre familias.
+
 ## 10. Auditoría
 
 Tabla `auditoria` (escritura por `JdbcClient`). Eventos: `LOGIN_EXITOSO`, `LOGIN_FALLIDO`, `LOGOUT`, `ADMIN_BOOTSTRAP`,
 `FAMILIA_CREADA`, `INVITACION_CREADA`, `INVITACION_REVOCADA`, `REGISTRO_POR_INVITACION`, `REGISTRO_FALLIDO` y los de MFA:
 `MFA_ENROLADO`, `MFA_CONFIRMADO`, `MFA_VERIFICADO`, `MFA_FALLO` (con `etapa` y `motivo`, nunca el código) y `MFA_REINICIADO` (actor = el ADMIN que reinicia,
-recurso = el ADMIN afectado). Un `LOGIN_EXITOSO` de ADMIN solo prueba la contraseña: la sesión completa queda marcada por `MFA_CONFIRMADO` o `MFA_VERIFICADO`.
+recurso = el ADMIN afectado). `USUARIO_DESACTIVADO` y `USUARIO_REACTIVADO` (actor = ADMIN, recurso = la cuenta, detalle = solo la familia). Un `LOGIN_EXITOSO` de ADMIN solo prueba la contraseña: la sesión completa queda marcada por `MFA_CONFIRMADO` o `MFA_VERIFICADO`.
 
 - Los eventos de éxito comparten la transacción del cambio de negocio; los de fallo usan una transacción propia y su error
   de escritura se ignora, de modo que una falla de auditoría no cambia la respuesta genérica.
@@ -368,6 +398,7 @@ contiene únicamente valores ficticios.
 | `FRONTEND_URL_BASE` | **sí en `prod`** (https); no en otros perfiles | Base para generar `enlaceRegistro` (`{base}/registro/invitacion#{token}`, sección 7). Vacía fuera de `prod` = sin enlace |
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
+| `CUENTAS_GESTION_HABILITADA` | no | `false` por defecto: desactivar/reactivar cuentas familiares desde el panel ADMIN (U21-BIS C0) |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
 
 ## 12. Pruebas y convención de pruebas con base de datos
@@ -413,7 +444,7 @@ contiene únicamente valores ficticios.
   - **Reinicio y sesiones vigentes:** reiniciar el MFA de un ADMIN no invalida su JWT ya emitido (hasta `JWT_DURACION`). Para cortarlo ya, rotar `JWT_SECRET`.
   - **Límites en memoria:** el limitador de MFA es por instancia (sección 5), y el secreto TOTP es simétrico: quien lea la base **y** `MFA_CLAVE_CIFRADO` puede generar códigos.
   - **Reloj:** el servidor debe tener la hora sincronizada (NTP); el margen es ±30 s.
-- **Apto físico (U21): datos médicos mínimos de menores.** Se guardan la fecha de emisión, el nombre y la matrícula del médico (nunca contenido clínico) y el archivo en Storage privado. Garantías: lectura/carga/descarga con el mismo alcance que el DNI (sin ampliar permisos), 404 uniforme, descarga auditada, corrección ADMIN auditada solo con nombres de campos, y sin valores en logs, errores, auditoría ni `toString`. Con dos familias vinculadas al mismo deportista, ambas ven el estado y la vigencia, pero los datos del apto solo los ve la familia que cargó esa versión (procedencia `cargado_por`). Riesgos aceptados: (1) la procedencia depende de que `usuario.familia_id` no cambie (ningún código lo modifica y la entidad lo mapea `updatable=false`, pero la base no lo impide con una restricción propia); (2) **no hay política de retención ni borrado** de documentación médica vencida: **condición pendiente antes del despliegue** (plazo, borrado en Storage y en BD, auditoría); (3) la carga sigue apagada por defecto en producción (`DOCUMENTOS_CARGA_HABILITADA`).
+- **Apto físico (U21): datos médicos mínimos de menores.** Se guardan la fecha de emisión, el nombre y la matrícula del médico (nunca contenido clínico) y el archivo en Storage privado. Garantías: lectura/carga/descarga con el mismo alcance que el DNI (sin ampliar permisos), 404 uniforme, descarga auditada, corrección ADMIN auditada solo con nombres de campos, y sin valores en logs, errores, auditoría ni `toString`. Con dos familias vinculadas al mismo deportista, ambas ven el estado y la vigencia, pero los datos del apto solo los ve la familia que cargó esa versión (procedencia `cargado_por`). Riesgos aceptados: (1) la procedencia depende de que `usuario.familia_id` no cambie: desde **V18** lo impide la base (trigger `trg_usuario_pertenencia`: la familia, la escuela, el rol y el id de una cuenta no cambian; `USUARIO_PERTENENCIA_INMUTABLE`) y el autor de un documento tampoco (`trg_documento_procedencia`, `DOCUMENTO_PROCEDENCIA_INMUTABLE`), para cualquier rol que escriba, incluido el runtime; no existe ningún mecanismo de reasignación entre familias; (2) **no hay política de retención ni borrado** de documentación médica vencida: **condición pendiente antes del despliegue** (plazo, borrado en Storage y en BD, auditoría); (3) la carga sigue apagada por defecto en producción (`DOCUMENTOS_CARGA_HABILITADA`).
 - **CERRADO: un usuario desactivado ya no conserva su JWT.** Antes un usuario desactivado seguía autenticado con su JWT hasta su vencimiento (hasta 8 h por
   defecto) en todo endpoint salvo `/api/auth/me`. Ahora cada solicitud autenticada revalida la sesión en la base (sección 2, «Revalidación de la sesión en
   cada solicitud»): desactivar al usuario, a su escuela o (FAMILIA) a su familia corta la sesión en la **siguiente** solicitud (`401` y cookie borrada), y

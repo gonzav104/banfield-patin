@@ -38,15 +38,17 @@ public class ProveedorJwtSesionVigente implements AuthenticationProvider {
 			throw new SesionNoVigenteException("Resultado de autenticacion inesperado.");
 		}
 		UsuarioAutenticado identidad;
+		long versionSesion;
 		try {
 			identidad = UsuarioAutenticado.desde(token.getToken());
+			versionSesion = ServicioTokens.versionSesion(token.getToken());
 		} catch (RuntimeException e) {
 			throw new SesionNoVigenteException("Reclamos del token mal formados.", e);
 		}
 		boolean vigente;
 		try {
 			vigente = verificador.vigente(identidad.id(), identidad.escuelaId(), identidad.rol().name(),
-					identidad.familiaId());
+					identidad.familiaId(), versionSesion);
 		} catch (DataAccessException e) {
 			throw new AuthenticationServiceException("No se pudo verificar la vigencia de la sesion.", e);
 		}

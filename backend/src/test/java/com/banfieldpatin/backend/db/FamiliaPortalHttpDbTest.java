@@ -1,6 +1,7 @@
 package com.banfieldpatin.backend.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -415,12 +416,10 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 		datos.reactivarEscuela(escuelaA);
 		pedir(RUTA_LISTA, viejo).andExpect(status().isOk());
 
-		// 4. el usuario pasa a otra familia: el reclamo familia_id del token ya no coincide -> 401.
-		jdbc.sql("UPDATE gestion_patin.usuario SET familia_id = :f WHERE id = :u").param("f", fa2).param("u", usuarioFa1)
-				.update();
-		sesionMuerta(pedir(RUTA_MI_FAMILIA, viejo));
-		jdbc.sql("UPDATE gestion_patin.usuario SET familia_id = :f WHERE id = :u").param("f", fa1).param("u", usuarioFa1)
-				.update();
+		// 4. la familia de una cuenta no cambia (V18 lo impide en la base) y un token que reclama otra familia -> 401.
+		assertThatThrownBy(() -> jdbc.sql("UPDATE gestion_patin.usuario SET familia_id = :f WHERE id = :u").param("f", fa2)
+				.param("u", usuarioFa1).update()).hasMessageContaining("USUARIO_PERTENENCIA_INMUTABLE");
+		sesionMuerta(pedir(RUTA_MI_FAMILIA, familia(usuarioFa1, escuelaA, fa2)));
 		pedir(RUTA_MI_FAMILIA, viejo).andExpect(status().isOk());
 
 		// 5. usuario borrado de la base (sin auditoria que lo referencie) -> 401.

@@ -11,7 +11,8 @@ import com.banfieldpatin.backend.seguridad.VerificadorSesionVigente;
  * Revalidacion central de la sesion contra PostgreSQL (REQ-XC-09, design 9.4): UNA sentencia por solicitud
  * autenticada, solo lookups por clave primaria, sin cache, sin transaccion ni Hibernate (auto-commit: sin BEGIN/COMMIT
  * extra). Mismas reglas que el login y {@code /api/auth/me} (usuario, escuela y, para FAMILIA, familia activos) mas la
- * coherencia de los reclamos: el {@code rol} y el {@code familia_id} del token deben ser los de la fila.
+ * coherencia de los reclamos: el {@code rol}, el {@code familia_id} y la {@code version_sesion} del token deben ser los de
+ * la fila (V19: quitar el acceso incrementa la version y revoca para siempre los tokens anteriores).
  * <p>
  * No registra identificadores. Una falla de la base se propaga como {@code DataAccessException}: nunca se responde
  * {@code true} ante un error.
@@ -25,7 +26,8 @@ public class SesionVigenteJdbc implements VerificadorSesionVigente {
 			  join gestion_patin.escuela e on e.id = u.escuela_id
 			  left join gestion_patin.familia f on f.id = u.familia_id and f.escuela_id = u.escuela_id
 			  where u.id = :usuarioId and u.escuela_id = :escuelaId and u.activo and e.activa and u.rol = :rol
-			    and (u.rol <> 'FAMILIA' or (u.familia_id = :familiaId and f.activa)))
+			    and (u.rol <> 'FAMILIA' or (u.familia_id = :familiaId and f.activa))
+			    and u.version_sesion = :versionSesion)
 			""";
 
 	private final JdbcClient jdbc;
@@ -35,12 +37,13 @@ public class SesionVigenteJdbc implements VerificadorSesionVigente {
 	}
 
 	@Override
-	public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId) {
+	public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId, long versionSesion) {
 		return Boolean.TRUE.equals(jdbc.sql(SQL)
 				.param("usuarioId", usuarioId)
 				.param("escuelaId", escuelaId)
 				.param("rol", rol)
 				.param("familiaId", familiaId)
+				.param("versionSesion", versionSesion)
 				.query(Boolean.class)
 				.single());
 	}

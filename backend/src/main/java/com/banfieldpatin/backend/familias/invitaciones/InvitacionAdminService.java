@@ -126,6 +126,18 @@ public class InvitacionAdminService {
 		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora));
 	}
 
+	/** Invitaciones de una familia de la escuela; una familia ajena o inexistente da una página vacía (sin oráculo). */
+	@Transactional(readOnly = true)
+	public Pagina<InvitacionRespuesta> listarDeFamilia(UsuarioAutenticado admin, UUID familiaId,
+			EstadoInvitacion estado, Pageable pageable) {
+		Instant ahora = reloj.instant();
+		Page<Invitacion> pagina = invitaciones.listarDeFamilia(admin.escuelaId(), familiaId,
+				estado == null ? InvitacionRepository.TODOS : estado.name(), ahora, pageable);
+		Familia familia = pagina.isEmpty() ? null
+				: familias.findByIdAndEscuelaId(familiaId, admin.escuelaId()).orElse(null);
+		return Pagina.de(pagina, i -> respuesta(i, familia, ahora));
+	}
+
 	@Transactional(readOnly = true)
 	public InvitacionRespuesta obtener(UsuarioAutenticado admin, UUID id) {
 		Invitacion invitacion = invitaciones.findByIdAndEscuelaId(id, admin.escuelaId())

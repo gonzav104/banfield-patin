@@ -123,8 +123,13 @@ class V16EscriturasVigenciasDbTest {
 	void v17LaAplicaElMigradorYElRuntimeOperaElAptoSinBorradoNiPermisosNuevos() {
 		flyway().load().migrate();
 		flyway().load().validate();
-		// Aplicada por el migrador y vigente: V17 es la última versión del esquema.
-		assertThat(flyway().load().info().current().getVersion().getVersion()).isEqualTo("17");
+		// Aplicada por el migrador con éxito (las posteriores, V18 y V19, tienen su propia prueba con roles separados). El
+		// esquema queda en la última versión: la prueba de la app real de esta clase arranca sobre él.
+		assertThat(java.util.Arrays.stream(flyway().load().info().applied())
+				.filter(m -> m.getVersion() != null && m.getVersion().getVersion().equals("17"))
+				.allMatch(m -> m.getState().isApplied() && !m.getState().isFailed())).isTrue();
+		assertThat(java.util.Arrays.stream(flyway().load().info().applied())
+				.anyMatch(m -> m.getVersion() != null && m.getVersion().getVersion().equals("17"))).isTrue();
 		var c = casoBase();
 		var cliente = JdbcClient.create(runtime);
 		UUID temporada = new DatosDb(JdbcClient.create(admin)).temporada(c.escuela(), 2026, false);
@@ -157,6 +162,9 @@ class V16EscriturasVigenciasDbTest {
 
 	@Test
 	void backendProdOperaAltaTipoYRevocacionConElLoginRuntimeSinDmlDirecto() {
+		// La app real valida su mapeo contra el esquema completo: se aplica (sin efecto si ya estaba) hasta la última versión,
+		// sin depender del orden en que JUnit ejecute las pruebas de esta clase.
+		flyway().load().migrate();
 		var a = casoBase();
 		var t = tutor(a);
 		try (var contexto = new SpringApplicationBuilder(BackendApplication.class)

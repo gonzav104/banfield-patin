@@ -17,6 +17,9 @@ export interface FakeUser {
   mfaEnrolado?: boolean;
   /** FAMILIA only. undefined = the default family 'familia-1'; null = an account with no family. */
   familiaId?: string | null;
+  /** U21-BIS C0: undefined = active. */
+  activo?: boolean;
+  ultimoAccesoEn?: string | null;
 }
 
 export interface LoggedRequest {
@@ -302,6 +305,8 @@ export class FakeBackend {
   readonly documentDownloads: FakeDocumentDownload[] = [];
   /** Mirrors `DOCUMENTOS_CARGA_HABILITADA`: off by default, like the real backend. */
   documentUpload: { enabled: boolean; maxBytes: number } = { enabled: false, maxBytes: 5_000_000 };
+  /** Mirrors `CUENTAS_GESTION_HABILITADA` (U21-BIS C0): off by default, like the real backend. */
+  accountsManagement: { enabled: boolean } = { enabled: false };
   /** Mirrors FRONTEND_URL_BASE: when null the backend returns `enlaceRegistro: null`. */
   frontendBase: string | null = 'http://app.test';
 
@@ -1330,6 +1335,8 @@ export class FakeBackend {
         .map(({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }) => ({ id, nombreReferencia, activa, cantidadTutores, cantidadDeportistasActivos }));
       return { status: 200, body: this.page(rows, params) };
     }
+    const accounts = this.accountsRoute(method, path);
+    if (accounts) return accounts;
     const links = this.linksRoute(method, path, body);
     if (links) return links;
     const detail = /^\/admin\/familias\/([^/]+)$/.exec(path);
@@ -1382,7 +1389,10 @@ export class FakeBackend {
     if (method === 'post' && athleteWrite?.[2]) return this.writeAthleteStatus(athleteWrite[1]!, athleteWrite[2] as 'activar' | 'desactivar', body);
     if (method === 'get' && path === '/admin/invitaciones') {
       const wanted = params.get('estado');
-      const rows = this.invitations.filter((i) => !wanted || this.statusOf(i) === wanted).map((i) => this.view(i));
+      const family = params.get('familiaId');
+      const rows = this.invitations
+        .filter((i) => (!wanted || this.statusOf(i) === wanted) && (!family || i.familyId === family))
+        .map((i) => this.view(i));
       return { status: 200, body: this.page(rows.reverse(), params) };
     }
     if (method === 'post' && path === '/admin/invitaciones') {
@@ -2154,6 +2164,27 @@ export class FakeBackend {
     return Promise.resolve(response);
   }
 
+  /**
+   * Mirrors CuentasFamiliaAdminController (U21-BIS C0): GET /admin/familias/{id}/cuentas lists the FAMILIA accounts of the family;
+   * POST …/cuentas/{cuentaId}/desactivar|reactivar is idempotent (503 GESTION_CUENTAS_DESHABILITADA while off; 404 FAMILIA_NO_ENCONTRADA /
+   * CUENTA_NO_ENCONTRADA). A deactivated account loses its session on the next request, like the real revalidation.
+   */
+  private accountsRoute(method: string, path: string) {
+    const list = /^\/admin\/familias\/([^/]+)\/cuentas$/.exec(path);
+    const write = /^\/admin\/familias\/([^/]+)\/cuentas\/([^/]+)\/(desactivar|reactivar)$/.exec(path);
+    if (!(method === 'get' && list) && !(method === 'post' && write)) return null;
+    const familyId = (list ?? write)![1]!;
+    if (!this.families.some((f) => f.id === familyId)) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+    const members = [...this.users.values()].filter((u) => u.rol === 'FAMILIA' && (u.familiaId === undefined ? 'familia-1' : u.familiaId) === familyId);
+    const view = (u: FakeUser) => ({ id: u.id, nombre: u.nombre, apellido: u.apellido, email: u.email, activa: u.activo !== false, ultimoAccesoEn: u.ultimoAccesoEn ?? null, creadaEn: null });
+    if (list) return { status: 200, body: { gestionHabilitada: this.accountsManagement.enabled, cuentas: members.map(view) } };
+    if (!this.accountsManagement.enabled) return this.error(503, 'GESTION_CUENTAS_DESHABILITADA', 'La gestión de cuentas no está habilitada.');
+    const account = members.find((u) => u.id === write![2]);
+    if (!account) return this.error(404, 'CUENTA_NO_ENCONTRADA', 'La cuenta no existe.');
+    account.activo = write![3] === 'reactivar';
+    return { status: 200, body: view(account) };
+  }
+
   private error(status: number, codigo: string, mensaje = 'error') {
     return { status, body: { codigo, mensaje, detalles: [] } };
   }
@@ -2189,7 +2220,8 @@ export class FakeBackend {
     }
 
     const sessionUserId = this.session?.userId;
-    const current = sessionUserId ? [...this.users.values()].find((u) => u.id === sessionUserId) : undefined;
+    // A deactivated account (U21-BIS C0) loses its session on the next request, like the real per-request revalidation.
+    const current = sessionUserId ? [...this.users.values()].find((u) => u.id === sessionUserId && u.activo !== false) : undefined;
 
     if (method === 'get' && url === '/auth/me') {
       if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');

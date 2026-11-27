@@ -20,4 +20,17 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
 	long contarAdminsActivos(@Param("escuelaId") UUID escuelaId);
 
 	Optional<Usuario> findByIdAndEscuelaId(UUID id, UUID escuelaId);
+
+	/**
+	 * Versión de sesión (V19) de una cuenta ACTIVA, con la fila tomada hasta el fin de la transacción del login: una
+	 * desactivación concurrente (UPDATE de la fila) espera a que el login termine, así que la versión que lleva el token es la
+	 * de una cuenta que seguía activa; si la desactivación ganó, no hay fila y el login se rechaza. Vacío = inactiva.
+	 * <p>
+	 * FOR NO KEY UPDATE y no FOR SHARE: el login escribe después la misma fila (último acceso). Con un bloqueo compartido dos
+	 * logins simultáneos de la cuenta lo tomarían a la vez y se bloquearían mutuamente al escribir (deadlock); así se
+	 * serializan y ambos terminan.
+	 */
+	@Query(value = "SELECT version_sesion FROM gestion_patin.usuario WHERE id = :id AND activo FOR NO KEY UPDATE",
+			nativeQuery = true)
+	Optional<Long> bloquearVersionSesionSiActiva(@Param("id") UUID id);
 }

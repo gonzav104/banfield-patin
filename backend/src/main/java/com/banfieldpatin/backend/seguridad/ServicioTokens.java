@@ -30,6 +30,12 @@ public class ServicioTokens {
 	 * (en el enrolamiento) y un token marcado no se vuelve a renovar, lo que acota la vida pendiente total a 2 x TTL.
 	 */
 	public static final String CLAIM_MFA_RENOVADO = "mfa_renovado";
+	/**
+	 * Generación de sesiones de la cuenta al emitir el token (V19, {@code usuario.version_sesion}). La revalidación de cada
+	 * solicitud exige que siga siendo la de la fila: quitar el acceso la incrementa y revoca para siempre todo token
+	 * anterior. Un token sin el claim (emitido por un backend anterior a este contrato) se lee como 0.
+	 */
+	public static final String CLAIM_VERSION_SESION = "version_sesion";
 
 	private final JwtEncoder encoder;
 	private final SeguridadPropiedades propiedades;
@@ -47,8 +53,17 @@ public class ServicioTokens {
 	 * contrasena de un ADMIN usa {@link #emitirMfaPendiente}.
 	 */
 	public String emitir(UUID usuarioId, Rol rol, UUID escuelaId, UUID familiaId) {
+		return emitir(usuarioId, rol, escuelaId, familiaId, 0L);
+	}
+
+	/**
+	 * Igual que {@link #emitir(UUID, Rol, UUID, UUID)} con la versión de sesión de la cuenta. Debe ser la versión leída
+	 * JUNTO con la comprobación de que la cuenta está activa (misma lectura de la fila) o la del token que la origina: nunca
+	 * una lectura posterior, que podría pertenecer a una cuenta reactivada.
+	 */
+	public String emitir(UUID usuarioId, Rol rol, UUID escuelaId, UUID familiaId, long versionSesion) {
 		Instant ahora = reloj.instant();
-		JwtClaimsSet.Builder claims = base(usuarioId, rol, escuelaId, ahora, propiedades.jwt().duracion());
+		JwtClaimsSet.Builder claims = base(usuarioId, rol, escuelaId, ahora, propiedades.jwt().duracion(), versionSesion);
 		if (rol == Rol.FAMILIA && familiaId != null) {
 			claims.claim(CLAIM_FAMILIA_ID, familiaId.toString());
 		}
@@ -64,8 +79,12 @@ public class ServicioTokens {
 	 * identidad y cerrar sesion; no concede ROLE_ADMIN.
 	 */
 	public String emitirMfaPendiente(UUID usuarioId, UUID escuelaId) {
+		return emitirMfaPendiente(usuarioId, escuelaId, 0L);
+	}
+
+	public String emitirMfaPendiente(UUID usuarioId, UUID escuelaId, long versionSesion) {
 		Instant ahora = reloj.instant();
-		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente())
+		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente(), versionSesion)
 				.claim(CLAIM_MFA, MFA_PENDIENTE));
 	}
 
@@ -75,8 +94,13 @@ public class ServicioTokens {
 	 * vigente no se renueva otra vez.
 	 */
 	public String emitirMfaPendienteRenovado(UUID usuarioId, UUID escuelaId) {
+		return emitirMfaPendienteRenovado(usuarioId, escuelaId, 0L);
+	}
+
+	/** La renovación hereda la versión de sesión del token que se renueva: no puede revivir una sesión revocada. */
+	public String emitirMfaPendienteRenovado(UUID usuarioId, UUID escuelaId, long versionSesion) {
 		Instant ahora = reloj.instant();
-		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente())
+		return codificar(base(usuarioId, Rol.ADMIN, escuelaId, ahora, propiedades.mfa().duracionPendiente(), versionSesion)
 				.claim(CLAIM_MFA, MFA_PENDIENTE)
 				.claim(CLAIM_MFA_RENOVADO, true));
 	}
@@ -92,8 +116,28 @@ public class ServicioTokens {
 				&& !MFA_COMPLETADA.equals(jwt.getClaimAsString(CLAIM_MFA));
 	}
 
-	private JwtClaimsSet.Builder base(UUID usuarioId, Rol rol, UUID escuelaId, Instant ahora, Duration vigencia) {
+	/**
+	 * Versión de sesión que lleva el token: 0 si no tiene el claim (backend anterior a V19). Un claim presente que no es un
+	 * entero no negativo es un token mal formado.
+	 */
+	public static long versionSesion(Jwt jwt) {
+		Object valor = jwt.getClaim(CLAIM_VERSION_SESION);
+		if (valor == null) {
+			return 0L;
+		}
+		if (valor instanceof Number n && (n instanceof Long || n instanceof Integer || n instanceof Short) && n.longValue() >= 0) {
+			return n.longValue();
+		}
+		throw new IllegalArgumentException("version_sesion mal formada");
+	}
+
+	private JwtClaimsSet.Builder base(UUID usuarioId, Rol rol, UUID escuelaId, Instant ahora, Duration vigencia,
+			long versionSesion) {
+		if (versionSesion < 0) {
+			throw new IllegalArgumentException("version_sesion negativa");
+		}
 		return JwtClaimsSet.builder()
+				.claim(CLAIM_VERSION_SESION, versionSesion)
 				.issuer(propiedades.jwt().emisor())
 				.subject(usuarioId.toString())
 				.issuedAt(ahora)

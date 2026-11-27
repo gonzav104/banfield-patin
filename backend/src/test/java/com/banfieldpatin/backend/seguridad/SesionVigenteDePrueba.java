@@ -32,7 +32,7 @@ public class SesionVigenteDePrueba {
 		private final AtomicInteger llamadas = new AtomicInteger();
 
 		@Override
-		public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId) {
+		public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId, long versionSesion) {
 			llamadas.incrementAndGet();
 			return switch (modo) {
 				case PERMITIR -> true;

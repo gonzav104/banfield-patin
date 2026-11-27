@@ -50,9 +50,14 @@ public class InvitacionAdminController {
 	@GetMapping
 	public Pagina<InvitacionRespuesta> listar(@AuthenticationPrincipal Jwt jwt,
 			@RequestParam(required = false) EstadoInvitacion estado,
+			@RequestParam(required = false) UUID familiaId,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "" + Pagina.TAMANIO_POR_DEFECTO) int size) {
-		return servicio.listar(UsuarioAutenticado.desde(jwt), estado, Pagina.pedir(page, size));
+		UsuarioAutenticado admin = UsuarioAutenticado.desde(jwt);
+		if (familiaId != null) {
+			return servicio.listarDeFamilia(admin, familiaId, estado, Pagina.pedir(page, size));
+		}
+		return servicio.listar(admin, estado, Pagina.pedir(page, size));
 	}
 
 	@GetMapping("/{id}")

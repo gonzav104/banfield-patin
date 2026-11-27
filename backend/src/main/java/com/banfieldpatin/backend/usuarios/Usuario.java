@@ -54,7 +54,12 @@ public class Usuario {
 	@Column(name = "mfa_habilitado", nullable = false)
 	private boolean mfaHabilitado;
 
-	@Column(nullable = false)
+	/**
+	 * Solo se escribe al crear la cuenta. La activación la cambia ÚNICAMENTE la gestión de cuentas (U21-BIS C0) con un UPDATE
+	 * condicional: si Hibernate la reescribiera al guardar la entidad (por ejemplo, el último acceso de un login que leyó
+	 * la cuenta activa), podría deshacer una desactivación confirmada mientras tanto.
+	 */
+	@Column(nullable = false, updatable = false)
 	private boolean activo;
 
 	@Column(name = "ultimo_acceso_en")

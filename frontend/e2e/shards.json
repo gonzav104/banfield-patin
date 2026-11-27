@@ -14,7 +14,8 @@
       "tutores-edicion.real.spec.ts",
       "responsables-portal.real.spec.ts",
       "responsables-escrituras.real.spec.ts",
-      "documentos-apto-fisico.real.spec.ts"
+      "documentos-apto-fisico.real.spec.ts",
+      "cuentas-familia.real.spec.ts"
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",

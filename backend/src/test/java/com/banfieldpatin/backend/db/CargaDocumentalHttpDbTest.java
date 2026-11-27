@@ -188,6 +188,7 @@ class CargaDocumentalHttpDbTest {
     r.add("spring.datasource.password", PostgresDescartable::clave);
     r.add("spring.flyway.enabled", () -> true);
     r.add("banfield.documentos.carga.habilitada", () -> true);
+    r.add("banfield.cuentas.gestion-habilitada", () -> true);
     r.add("banfield.documentos.carga.temporales", () -> TEMPORAL.toString());
     r.add("banfield.documentos.carga.scanner-puerto", SCANNER::getLocalPort);
     r.add("banfield.documentos.carga.scanner-plazo", () -> "PT8S");
@@ -579,6 +580,33 @@ class CargaDocumentalHttpDbTest {
     assertThat(b.body()).contains(NO_REPETIBLE);
     assertThat(POSTS.get()).isEqualTo(1);
     assertThat(documentos()).isEqualTo(1);
+  }
+
+  /**
+   * U21-BIS C0: ADMIN quita el acceso Y lo devuelve mientras la carga transfiere. La sesión que inició la carga quedó
+   * revocada: la publicación posterior no la revive (aunque la cuenta vuelva a estar activa) y no se crea documento.
+   */
+  @Test
+  void quitarYDevolverElAccesoDuranteLaTransferenciaImpidePublicar() throws Exception {
+    var cuentas = contexto.getBean(com.banfieldpatin.backend.usuarios.cuentas.CuentasFamiliaAdminService.class);
+    var admin =
+        new com.banfieldpatin.backend.seguridad.UsuarioAutenticado(
+            new DatosDb(jdbc).admin(escuela, "admin-cuentas-" + UUID.randomUUID() + "@example.invalid", true),
+            escuela,
+            null,
+            Rol.ADMIN);
+    var datos = new com.banfieldpatin.backend.compartido.web.DatosSolicitud(null, null);
+    HOOK_STORAGE.set(
+        () -> {
+          cuentas.desactivar(admin, familia, usuario, datos);
+          cuentas.reactivar(admin, familia, usuario, datos);
+        });
+    var r = cargar(UUID.randomUUID(), png());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(401);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isEqualTo(1);
+    assertThat(jdbc.sql("SELECT activo FROM gestion_patin.usuario WHERE id = :u").param("u", usuario)
+        .query(Boolean.class).single()).isTrue();
   }
 
   @org.junit.jupiter.params.ParameterizedTest
