@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { FamilyAccountsSection } from '@/features/admin-cuentas/FamilyAccountsSection';
 import { FamilyAthletesSection } from '@/features/admin-vinculos/FamilyAthletesSection';
 import { useSession } from '@/features/auth/session';
 import { LoadingBlock } from '@/features/familia/FamilyStates';
@@ -138,6 +139,8 @@ function Detail({ family, created, tutorCreated, reload }: { family: FamilyDetai
       </section>
 
       <FamilyAthletesSection familyId={family.id} active={family.activa} />
+
+      <FamilyAccountsSection familyId={family.id} />
     </div>
   );
 }

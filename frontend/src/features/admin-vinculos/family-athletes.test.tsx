@@ -311,7 +311,13 @@ describe('athletes of a family: read-only consultation and private opt-in linkin
     open(familyPath(family.id));
     await screen.findByRole('heading', { level: 3, name: 'Vínculos activos' });
 
-    const allowed = [new RegExp(`^/admin/familias/${family.id}$`), new RegExp(`^/admin/familias/${family.id}/deportistas$`)];
+    const allowed = [
+      new RegExp(`^/admin/familias/${family.id}$`),
+      new RegExp(`^/admin/familias/${family.id}/deportistas$`),
+      // U21-BIS C0: the access accounts of the family and its unused invitations (only the family id travels).
+      new RegExp(`^/admin/familias/${family.id}/cuentas$`),
+      new RegExp(`^/admin/invitaciones\\?familiaId=${family.id}&estado=PENDIENTE&page=0&size=20$`),
+    ];
     for (const request of adminRequests()) {
       expect(request.method).toBe('get');
       expect(allowed.some((pattern) => pattern.test(request.url)), request.url).toBe(true);
