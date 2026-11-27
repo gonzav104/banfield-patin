@@ -58,3 +58,7 @@ Orden: `ci-1` y `ci-2` antes de cerrar Fase 1; `temp-4` puede hacerse en paralel
 - Las pruebas que necesitan PostgreSQL real llevan `@Tag("db")` y corren con `-Pdb-tests`.
 - Sin secretos en el repositorio ni en los workflows.
 - Sin datos de menores en logs ni en memorias de trabajo.
+
+## 4. Decisión de producto: alcance multiescuela (2026-11-27)
+
+El sistema está destinado **exclusivamente a Patín Carrera Banfield San Pedro**. El modelo de datos sigue siendo multiescuela (RNF-18) y se conservan las protecciones internas ya implementadas, entre ellas la revocación de sesiones por escuela (V20). Se **posterga** cualquier desarrollo adicional de gestión multiescuela: no se implementan pantallas, endpoints ni funcionalidades comerciales para administrar varias escuelas (alta, baja, reactivación o configuración de escuelas). La baja o reactivación de una escuela sigue siendo una operación de mantenimiento con el rol propietario de la base, sin camino en la aplicación.
