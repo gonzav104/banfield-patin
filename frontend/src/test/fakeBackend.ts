@@ -56,6 +56,23 @@ export interface FakeDocumentUpload {
   replaces?: string;
 }
 
+/** The apto of one athlete in one season: a version (current or historical) with the three data its uploader declared (U21). */
+export interface FakeApto {
+  id: string;
+  athleteId: string;
+  seasonId: string;
+  estado: FakeDocumentStatus;
+  fechaEmision: string;
+  medicoNombre: string;
+  medicoMatricula: string;
+  motivoObservacion: string | null;
+  cargadoEn: string;
+  version: string;
+  vigente: boolean;
+  /** The family whose user uploaded this version; null when it was not a family (the data are then ADMIN-only). */
+  uploaderFamilyId: string | null;
+}
+
 /** One read of a document file by an administrator (the mock's view of the DOCUMENTO_DESCARGADO audit). */
 export interface FakeDocumentDownload {
   athleteId: string;
@@ -270,6 +287,12 @@ export class FakeBackend {
   private athletes = new Map<string, FakeAthlete>();
   private documents = new Map<string, FakeDocument[]>();
   private pendingInbox: FakePendingDocument[] = [];
+  private aptos: FakeApto[] = [];
+  /** athleteId -> the seasons the family portal lists for that athlete (with the sports fields the allow-list must drop). */
+  private familySeasons = new Map<string, { temporadaId: string; anio: number; temporadaActiva: boolean }[]>();
+  private aptoKeys = new Map<string, { athleteId: string; scope: string; signature: string; size: number; type: string; docId: string }>();
+  /** The multipart part names of every apto upload (for «only these fields were sent» assertions). */
+  readonly aptoUploadParts: string[][] = [];
   private uploadKeys = new Map<string, { athleteId: string; tipo: string; size: number; type: string; documentId: string; replaces?: string }>();
   /** The bytes of a stored document, by document id (an upload stores what it received). */
   private documentFiles = new Map<string, { file: Blob; disposition: string | null }>();
@@ -1453,6 +1476,46 @@ export class FakeBackend {
     return created;
   }
 
+  /** A season the athlete has data in, as `GET /familia/deportistas/{id}/temporadas` lists it. */
+  addFamilySeason(athleteId: string, season: FakeSeason): this {
+    this.familySeasons.set(athleteId, [...(this.familySeasons.get(athleteId) ?? []), { temporadaId: season.id, anio: season.anio, temporadaActiva: season.activa }]);
+    return this;
+  }
+
+  /** A version of the apto, seeded directly: current by default, uploaded by `uploaderFamilyId`. */
+  seedApto(athleteId: string, seasonId: string, data: Partial<Omit<FakeApto, 'id' | 'athleteId' | 'seasonId'>> = {}): FakeApto {
+    const created: FakeApto = {
+      id: `00000000-0000-4000-a000-${String(++this.counter).padStart(12, '0')}`,
+      athleteId,
+      seasonId,
+      estado: 'CARGADO',
+      fechaEmision: '2026-03-01',
+      medicoNombre: 'Medico Sintetico',
+      medicoMatricula: 'MP 0001',
+      motivoObservacion: null,
+      cargadoEn: '2026-03-10T14:00:00Z',
+      version: '0',
+      vigente: true,
+      uploaderFamilyId: null,
+      ...data,
+    };
+    this.aptos.push(created);
+    return created;
+  }
+
+  aptosOf(athleteId: string): FakeApto[] {
+    return this.aptos.filter((a) => a.athleteId === athleteId);
+  }
+
+  /** The apto changes behind the screen's back (another device or another administrator). */
+  changeAptoBehindTheScenes(id: string, change: Partial<Pick<FakeApto, 'estado' | 'fechaEmision' | 'medicoNombre' | 'medicoMatricula' | 'motivoObservacion' | 'vigente'>>): void {
+    const apto = this.aptos.find((a) => a.id === id);
+    if (apto) {
+      Object.assign(apto, change);
+      apto.version = String(BigInt(apto.version) + 1n);
+    }
+  }
+
   /** Rows of the pending-documents inbox: the mock cannot derive them, so a test states exactly what the backend would return. */
   seedPendingInbox(rows: FakePendingDocument[]): this {
     this.pendingInbox = [...rows];
@@ -1473,15 +1536,29 @@ export class FakeBackend {
   }
 
   /** Mirrors the list of current documents (GET /familia/... and GET /admin/deportistas/{id}/documentos): motivo only for OBSERVADO. */
-  private currentDocumentsPage(athleteId: string, params: URLSearchParams, admin = false) {
-    const contenido = this.documentsOf(athleteId).map(({ version, ...d }) => ({
+  private currentDocumentsPage(athleteId: string, params: URLSearchParams, admin = false, familyId: string | null = null) {
+    const apto = this.aptos
+      .filter((a) => a.athleteId === athleteId && a.vigente)
+      .map((a) => ({
+        id: a.id,
+        tipo: 'APTO_FISICO',
+        estado: a.estado,
+        creadoEn: a.cargadoEn,
+        ...(admin ? { version: a.version } : {}),
+        temporadaId: a.seasonId,
+        vigente: true,
+        fechaVencimiento: null,
+        // The review reason of an apto only goes to ADMIN and to the family that uploaded this version (U21).
+        motivoObservacion: a.estado === 'OBSERVADO' && (admin || (familyId !== null && a.uploaderFamilyId === familyId)) ? a.motivoObservacion : null,
+      }));
+    const contenido = [...this.documentsOf(athleteId).map(({ version, ...d }) => ({
       ...d,
       ...(admin ? { version: version ?? '0' } : {}),
       temporadaId: null,
       vigente: true,
       fechaVencimiento: null,
       motivoObservacion: d.estado === 'OBSERVADO' ? d.motivoObservacion : null,
-    }));
+    })), ...apto];
     return { status: 200, body: { contenido, pagina: 0, tamanio: Number(params.get('size') ?? 20), totalElementos: contenido.length } };
   }
 
@@ -1538,6 +1615,21 @@ export class FakeBackend {
       return { status: 200, body: this.documentChecklist(checklist[1]!) };
     }
     // The same routes for an athlete and, since U19, for a tutor (`tutores`): the owner kind decides the scope and the types.
+    const adminApto = method === 'get' ? /^\/admin\/deportistas\/([^/]+)\/temporadas\/([^/]+)\/apto-fisico$/.exec(path) : null;
+    if (adminApto) {
+      if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+      if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+      if (!this.adminOwnerExists(adminApto[1]!, false)) return this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
+      return this.aptoView(adminApto[1]!, adminApto[2]!, { admin: true });
+    }
+    const correction = method === 'put' ? /^\/admin\/deportistas\/([^/]+)\/documentos\/([^/]+)\/datos-apto$/.exec(path) : null;
+    if (correction) {
+      if (!csrfHeader || csrfHeader !== this.csrfToken) return this.error(403, 'CSRF_INVALIDO', 'Token CSRF ausente o inválido.');
+      if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+      if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+      const target = this.aptos.find((a) => a.id === correction[2] && a.athleteId === correction[1]);
+      return target ? this.correctApto(target, body) : this.error(404, 'DOCUMENTO_NO_ENCONTRADO');
+    }
     const list = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
     const file = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/archivo$/.exec(path);
     const review = /^\/admin\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/revision$/.exec(path);
@@ -1550,7 +1642,19 @@ export class FakeBackend {
       if (!this.adminOwnerExists(list[2]!, tutor)) {
         return tutor ? this.error(404, 'TUTOR_NO_ENCONTRADO', 'El tutor no existe.') : this.error(404, 'DEPORTISTA_NO_ENCONTRADO', 'El deportista no existe.');
       }
-      return this.currentDocumentsPage(list[2]!, params, true);
+      return this.currentDocumentsPage(list[2]!, params, true, null);
+    }
+    const reviewedApto = review ? this.aptos.find((a) => a.id === review[3] && a.athleteId === review[2] && review[1] === 'deportistas') : undefined;
+    if (review && reviewedApto) {
+      const decision = body as { estado?: FakeDocumentStatus; versionEsperada?: string; motivoObservacion?: string };
+      if (!reviewedApto.vigente) return this.error(409, 'DOCUMENTO_NO_VIGENTE');
+      if (decision.versionEsperada !== reviewedApto.version) return this.error(409, 'EDICION_DESACTUALIZADA');
+      if (decision.estado !== 'APROBADO' && decision.estado !== 'OBSERVADO') return this.error(400, 'SOLICITUD_INVALIDA');
+      if (reviewedApto.estado !== 'CARGADO' && !(reviewedApto.estado === 'APROBADO' && decision.estado === 'OBSERVADO')) return this.error(409, 'TRANSICION_DOCUMENTO_NO_PERMITIDA');
+      reviewedApto.estado = decision.estado;
+      reviewedApto.version = String(BigInt(reviewedApto.version) + 1n);
+      reviewedApto.motivoObservacion = decision.motivoObservacion ?? null;
+      return { status: 200, body: { id: reviewedApto.id, tipo: 'APTO_FISICO', estado: reviewedApto.estado, creadoEn: reviewedApto.cargadoEn, vigente: true, version: reviewedApto.version, motivoObservacion: reviewedApto.motivoObservacion } };
     }
     if (review) {
       const sides = review[1] === 'tutores' ? ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'] : ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'];
@@ -1571,13 +1675,164 @@ export class FakeBackend {
       return { status: 200, body: { ...doc, vigente: true } };
     }
     const [, kind, athleteId, documentId] = file!;
-    const known = this.adminOwnerExists(athleteId!, kind === 'tutores') && this.documentsOf(athleteId!).some((d) => d.id === documentId);
+    const known = this.adminOwnerExists(athleteId!, kind === 'tutores') && (this.documentsOf(athleteId!).some((d) => d.id === documentId) || this.aptos.some((a) => a.id === documentId && a.athleteId === athleteId && a.vigente));
     this.documentDownloads.push({ athleteId: athleteId!, documentId: documentId!, status: known ? 200 : 404 });
     if (!known) return this.error(404, 'DOCUMENTO_NO_ENCONTRADO', 'El documento no existe.');
     const stored = this.documentFiles.get(documentId!) ?? { file: new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }), disposition: defaultDisposition('image/png') };
     const headers: Record<string, string> = { 'content-type': stored.file.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
     if (stored.disposition !== null) headers['content-disposition'] = stored.disposition;
     return { status: 200, body: stored.file, headers };
+  }
+
+  private seasonYear(seasonId: string): number | null {
+    return this.seasons.find((x) => x.id === seasonId)?.anio ?? [...this.familySeasons.values()].flat().find((x) => x.temporadaId === seasonId)?.anio ?? null;
+  }
+
+  /** Mirrors GET …/temporadas/{temporadaId}/apto-fisico: the derived state, the vigencia of the season and what the audience may see. */
+  private aptoView(athleteId: string, seasonId: string, audience: { admin: true } | { admin: false; familyId: string | null }) {
+    const anio = this.seasonYear(seasonId);
+    if (anio === null) return this.error(404, 'TEMPORADA_NO_ENCONTRADA', 'La temporada no existe.');
+    const doc = this.aptos.find((a) => a.athleteId === athleteId && a.seasonId === seasonId && a.vigente);
+    const confirmada = anio === 2026;
+    const hasta = `${anio}-12-31`;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+    const estado = !doc ? 'FALTA' : doc.estado === 'OBSERVADO' ? 'OBSERVADO' : doc.estado === 'CARGADO' ? 'EN_REVISION' : doc.estado === 'VENCIDO' || (doc.estado === 'APROBADO' && today > hasta) ? 'VENCIDO' : doc.estado === 'APROBADO' ? 'CUMPLIDO' : 'FALTA';
+    const own = !!doc && (audience.admin || (audience.familyId !== null && doc.uploaderFamilyId === audience.familyId));
+    const avisos: string[] = [];
+    if (!confirmada) avisos.push('REQUISITOS_DE_LA_TEMPORADA_PENDIENTES_DE_CONFIRMACION');
+    if (doc && !own && estado === 'OBSERVADO') avisos.push('APTO_OBSERVADO_REQUIERE_REEMPLAZO');
+    return {
+      status: 200,
+      body: {
+        deportistaId: athleteId,
+        temporadaId: seasonId,
+        anio,
+        estado,
+        bloqueante: false,
+        vigencia: { desde: `${anio}-01-01`, hasta, confirmada, fuente: confirmada ? 'Reglamento Nacional 2026' : 'Provisional' },
+        avisos,
+        documento: doc
+          ? {
+              id: doc.id,
+              estado: doc.estado,
+              fechaEmision: own ? doc.fechaEmision : null,
+              medicoNombre: own ? doc.medicoNombre : null,
+              medicoMatricula: own ? doc.medicoMatricula : null,
+              datosVisibles: own,
+              motivoObservacion: own && doc.estado === 'OBSERVADO' ? doc.motivoObservacion : null,
+              cargadoEn: doc.cargadoEn,
+              revision: audience.admin ? Number(doc.version) : null,
+            }
+          : null,
+      },
+    };
+  }
+
+  private static readonly APTO_FIELDS = ['fechaEmision', 'medicoNombre', 'medicoMatricula'] as const;
+
+  /** The backend's validation of the three data (trimmed; 400 VALIDACION that names fields only, never values). */
+  private aptoDataOf(form: FormData | Record<string, unknown>): { ok: true; data: { fechaEmision: string; medicoNombre: string; medicoMatricula: string } } | { ok: false } {
+    const read = (name: string) => {
+      const value = form instanceof FormData ? form.get(name) : form[name];
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const data = { fechaEmision: read('fechaEmision'), medicoNombre: read('medicoNombre'), medicoMatricula: read('medicoMatricula') };
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+    const valid =
+      /^\d{4}-\d{2}-\d{2}$/.test(data.fechaEmision) && data.fechaEmision >= '2000-01-01' && data.fechaEmision <= today &&
+      data.medicoNombre.length >= 1 && data.medicoNombre.length <= 150 &&
+      /^[\p{L}\p{N}][\p{L}\p{N} ./-]{0,49}$/u.test(data.medicoMatricula);
+    return valid ? { ok: true, data } : { ok: false };
+  }
+
+  private aptoValidation() {
+    return { status: 400, body: { codigo: 'VALIDACION', mensaje: 'Hay datos inválidos en la solicitud.', detalles: FakeBackend.APTO_FIELDS.map((campo) => ({ campo, mensaje: 'inválido' })) } };
+  }
+
+  /** Mirrors the APTO_FISICO upload (first load of a season): the three data, the season and the key form the identity of the operation. */
+  private uploadApto(athleteId: string, body: FormData, key: string, family: PortalFamily | undefined): { status: number; body?: unknown } {
+    this.aptoUploadParts.push([...new Set([...body.keys()])]);
+    const archivo = body.get('archivo');
+    const seasonId = body.get('temporadaId');
+    if (!(archivo instanceof Blob) || typeof seasonId !== 'string') return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    if (this.seasonYear(seasonId) === null || !(this.familySeasons.get(athleteId) ?? []).some((x) => x.temporadaId === seasonId)) {
+      return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    }
+    const parsed = this.aptoDataOf(body);
+    if (!parsed.ok) return this.aptoValidation();
+    const signature = JSON.stringify([parsed.data.fechaEmision, parsed.data.medicoNombre, parsed.data.medicoMatricula]);
+    const record = (status: number) => this.documentUploads.push({ athleteId, tipo: 'APTO_FISICO', idempotencyKey: key, fileName: archivo instanceof File ? archivo.name : '', type: archivo.type, size: archivo.size, blob: archivo, status });
+    if (archivo.size > this.documentUpload.maxBytes) {
+      record(413);
+      return this.error(413, 'ARCHIVO_DEMASIADO_GRANDE', 'El archivo supera el límite permitido.');
+    }
+    const previous = this.aptoKeys.get(key);
+    if (previous) {
+      const same = previous.athleteId === athleteId && previous.scope === `season:${seasonId}` && previous.signature === signature && previous.size === archivo.size && previous.type === archivo.type;
+      const stored = this.aptos.find((a) => a.id === previous.docId);
+      record(same && stored ? 200 : 409);
+      return same && stored ? { status: 200, body: this.aptoAsUploadResult(stored) } : this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    if (this.aptos.some((a) => a.athleteId === athleteId && a.seasonId === seasonId && a.vigente)) {
+      record(409);
+      return this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    const created = this.seedApto(athleteId, seasonId, { ...parsed.data, estado: 'CARGADO', cargadoEn: new Date().toISOString(), uploaderFamilyId: family?.id ?? null });
+    this.attachDocumentFile(created.id, archivo);
+    this.aptoKeys.set(key, { athleteId, scope: `season:${seasonId}`, signature, size: archivo.size, type: archivo.type, docId: created.id });
+    record(201);
+    return { status: 201, body: this.aptoAsUploadResult(created) };
+  }
+
+  /** The upload answers with the document metadata only: never the data, as the backend does. */
+  private aptoAsUploadResult(a: FakeApto) {
+    return { id: a.id, tipo: 'APTO_FISICO', estado: a.estado, creadoEn: a.cargadoEn, motivoObservacion: null, temporadaId: a.seasonId, vigente: a.vigente, fechaVencimiento: null };
+  }
+
+  /** Mirrors the replacement of an OBSERVED apto: it brings its own data; a predecessor that is not observed is a 409. */
+  private replaceApto(athleteId: string, predecessor: FakeApto, body: FormData, key: string, family: PortalFamily | undefined): { status: number; body?: unknown } {
+    this.aptoUploadParts.push([...new Set([...body.keys()])]);
+    const archivo = body.get('archivo');
+    if (!(archivo instanceof Blob) || [...body.keys()].some((name) => name !== 'archivo' && !(FakeBackend.APTO_FIELDS as readonly string[]).includes(name))) {
+      return this.error(422, 'ARCHIVO_INVALIDO', 'El archivo no es válido o no está permitido.');
+    }
+    const parsed = this.aptoDataOf(body);
+    if (!parsed.ok) return this.aptoValidation();
+    const signature = JSON.stringify([parsed.data.fechaEmision, parsed.data.medicoNombre, parsed.data.medicoMatricula]);
+    const record = (status: number) => this.documentUploads.push({ athleteId, tipo: 'APTO_FISICO', idempotencyKey: key, fileName: archivo instanceof File ? archivo.name : '', type: archivo.type, size: archivo.size, blob: archivo, status, replaces: predecessor.id });
+    const previous = this.aptoKeys.get(key);
+    if (previous) {
+      const same = previous.athleteId === athleteId && previous.scope === `replaces:${predecessor.id}` && previous.signature === signature && previous.size === archivo.size && previous.type === archivo.type;
+      const stored = this.aptos.find((a) => a.id === previous.docId);
+      record(same && stored ? 200 : 409);
+      return same && stored ? { status: 200, body: this.aptoAsUploadResult(stored) } : this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    if (predecessor.estado !== 'OBSERVADO' || !predecessor.vigente) {
+      record(409);
+      return this.error(409, 'OPERACION_NO_REPETIBLE', 'La operación no coincide con la solicitud.');
+    }
+    predecessor.vigente = false;
+    const created = this.seedApto(athleteId, predecessor.seasonId, { ...parsed.data, estado: 'CARGADO', cargadoEn: new Date().toISOString(), uploaderFamilyId: family?.id ?? null });
+    this.attachDocumentFile(created.id, archivo);
+    this.aptoKeys.set(key, { athleteId, scope: `replaces:${predecessor.id}`, signature, size: archivo.size, type: archivo.type, docId: created.id });
+    record(201);
+    return { status: 201, body: this.aptoAsUploadResult(created) };
+  }
+
+  /** Mirrors PUT …/documentos/{id}/datos-apto: ADMIN, optimistic version, only CARGADO or APROBADO; a change withdraws the approval. */
+  private correctApto(apto: FakeApto, body: unknown): { status: number; body?: unknown } {
+    const input = (body ?? {}) as Record<string, unknown>;
+    if (!apto.vigente) return this.error(409, 'DOCUMENTO_NO_VIGENTE');
+    if (input.versionEsperada !== apto.version) return this.error(409, 'EDICION_DESACTUALIZADA');
+    if (apto.estado !== 'CARGADO' && apto.estado !== 'APROBADO') return this.error(409, 'APTO_NO_CORREGIBLE');
+    const parsed = this.aptoDataOf(input);
+    if (!parsed.ok) return this.aptoValidation();
+    const changed = parsed.data.fechaEmision !== apto.fechaEmision || parsed.data.medicoNombre !== apto.medicoNombre || parsed.data.medicoMatricula !== apto.medicoMatricula;
+    if (changed) {
+      Object.assign(apto, parsed.data, { estado: 'CARGADO' as const });
+      apto.version = String(BigInt(apto.version) + 1n);
+    }
+    return { status: 200, body: { id: apto.id, estado: apto.estado, fechaEmision: apto.fechaEmision, medicoNombre: apto.medicoNombre, medicoMatricula: apto.medicoMatricula, datosVisibles: true, motivoObservacion: null, cargadoEn: apto.cargadoEn, revision: Number(apto.version) } };
   }
 
   /** The athlete is linked and active, or the tutor belongs to the family (U19). */
@@ -1707,11 +1962,39 @@ export class FakeBackend {
 
     // The same document routes for an athlete and, since U19, for a tutor of the family (`tutores`).
     const documents = /^\/familia\/(deportistas|tutores)\/([^/]+)\/documentos$/.exec(path);
+    if (documents && method === 'post' && documents[1] === 'deportistas' && body instanceof FormData && body.get('tipo') === 'APTO_FISICO') {
+      if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
+      if (!idempotencyKey || !UUID_FORMAT.test(idempotencyKey)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!UUID_FORMAT.test(documents[2]!) || !this.ownerInFamily(family, documents[2]!, false)) return this.ownerNotFound(false);
+      return this.uploadApto(documents[2]!, body, idempotencyKey, family);
+    }
     if (documents && method === 'post') return this.uploadDocument(documents[2]!, body, idempotencyKey, family, documents[1] === 'tutores');
     const replacement = /^\/familia\/(deportistas|tutores)\/([^/]+)\/documentos\/([^/]+)\/reemplazo$/.exec(path);
+    if (replacement && method === 'post' && replacement[1] === 'deportistas' && body instanceof FormData) {
+      const apto = this.aptos.find((a) => a.id === replacement[3] && a.athleteId === replacement[2]);
+      if (apto) {
+        if (!this.documentUpload.enabled) return this.error(503, 'CARGA_NO_DISPONIBLE', 'La carga documental no está disponible.');
+        if (!idempotencyKey || !UUID_FORMAT.test(idempotencyKey)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+        if (!this.ownerInFamily(family, replacement[2]!, false)) return this.ownerNotFound(false);
+        return this.replaceApto(replacement[2]!, apto, body, idempotencyKey, family);
+      }
+    }
     if (replacement && method === 'post') return this.replaceDocument(replacement[2]!, replacement[3]!, body, idempotencyKey, family, replacement[1] === 'tutores');
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
+    const familySeasons = /^\/familia\/deportistas\/([^/]+)\/temporadas$/.exec(path);
+    if (familySeasons) {
+      // Mirrors GET /api/familia/deportistas/{id}/temporadas: ONE 404 for every cause; the rows also carry sports data the screens must drop.
+      if (!UUID_FORMAT.test(familySeasons[1]!)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!this.ownerInFamily(family, familySeasons[1]!, false)) return this.ownerNotFound(false);
+      return { status: 200, body: (this.familySeasons.get(familySeasons[1]!) ?? []).map((x) => ({ ...x, categoria: 'Sub-11', rama: 'Femenina', divisional: 'A', numeroCorredor: '12', estadoDeportivo: 'ACTIVO' })) };
+    }
+    const familyApto = /^\/familia\/deportistas\/([^/]+)\/temporadas\/([^/]+)\/apto-fisico$/.exec(path);
+    if (familyApto) {
+      if (!UUID_FORMAT.test(familyApto[1]!) || familyApto[2]!.length === 0) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!this.ownerInFamily(family, familyApto[1]!, false)) return this.ownerNotFound(false);
+      return this.aptoView(familyApto[1]!, familyApto[2]!, { admin: false, familyId: family?.id ?? null });
+    }
     const checklist = /^\/familia\/deportistas\/([^/]+)\/checklist-documental$/.exec(path);
     if (checklist) {
       // Mirrors GET /api/familia/deportistas/{id}/checklist-documental: the athlete must be an ACTIVE link of the family, ONE 404 otherwise.
@@ -1728,7 +2011,7 @@ export class FakeBackend {
       const tutor = documents[1] === 'tutores';
       if (!UUID_FORMAT.test(id)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
       if (!this.ownerInFamily(family, id, tutor)) return this.ownerNotFound(tutor);
-      return this.currentDocumentsPage(id, params);
+      return this.currentDocumentsPage(id, params, false, family?.id ?? null);
     }
 
     if (path === '/familia/mi-familia') {

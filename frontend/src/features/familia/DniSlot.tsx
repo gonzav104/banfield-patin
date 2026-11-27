@@ -36,7 +36,7 @@ export interface SlotUpload {
 const pickerLabel =
   'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-4 text-sm font-semibold peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-700';
 
-function Pickers({ title, onFile }: { title: string; onFile: (file: File) => void }) {
+export function Pickers({ title, onFile }: { title: string; onFile: (file: File) => void }) {
   const id = useId();
   const handle = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -61,7 +61,7 @@ function Pickers({ title, onFile }: { title: string; onFile: (file: File) => voi
   );
 }
 
-function Preview({ title, prepared, previewUrl }: { title: string; prepared: PreparedDocument; previewUrl: string | null }) {
+export function Preview({ title, prepared, previewUrl }: { title: string; prepared: PreparedDocument; previewUrl: string | null }) {
   return (
     <div className="space-y-2">
       {previewUrl ? (

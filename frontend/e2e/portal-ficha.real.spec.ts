@@ -222,7 +222,7 @@ test.describe('flow of a family: list, sheet, back', () => {
     expect(await page.getByRole('heading', { level: 1 }).count()).toBe(1); // exactly one title
     // U15 adds the documents section after the season (it is always shown, whether uploads are enabled or not); U20 puts the
     // partial DNI checklist right before it; C3 puts the read-only «Responsables» block between the season and the checklist.
-    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Responsables', 'Checklist de documentación', 'Documentos del deportista']);
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Datos del deportista', `Temporada ${YEAR}`, 'Responsables', 'Checklist de documentación', 'Documentos del deportista', 'Apto físico']);
 
     await page.keyboard.press('Shift+Tab'); // the way back sits right before the title in the reading order
     const back = page.getByRole('link', { name: 'Volver a deportistas' });
@@ -452,10 +452,13 @@ test.describe('sessions and identity changes', () => {
       page.waitForResponse(isAnswer(`${sheetPath}/documentos`)),
       page.waitForResponse(isAnswer('/api/familia/documentos/disponibilidad')),
       page.waitForResponse(isAnswer(`${sheetPath}/checklist-documental`)),
+      page.waitForResponse(isAnswer(`${sheetPath}/temporadas`)), // the apto section (U21) lists the athlete's seasons, then asks for the apto of one
     ]);
     sheetAnswers.catch(() => undefined); // a failure before the wait is the test's own failure; it is rethrown by the await below
     await openSheet(page, familyA, 'complete');
     await sheetAnswers;
+    // The apto section asks for the apto of the season AFTER the seasons answer: wait until it shows its state, still with a valid session.
+    await expect(page.getByRole('region', { name: 'Apto físico' })).toContainText(/Falta|En revisión|Observado|Cumplido|Vencido|Todavía no hay una temporada/);
     await context.clearCookies();
     await page.getByRole('link', { name: 'Volver a deportistas' }).click(); // a new request: 401
 

@@ -13,7 +13,8 @@
       "temporadas-gestion.real.spec.ts",
       "tutores-edicion.real.spec.ts",
       "responsables-portal.real.spec.ts",
-      "responsables-escrituras.real.spec.ts"
+      "responsables-escrituras.real.spec.ts",
+      "documentos-apto-fisico.real.spec.ts"
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",
@@ -32,7 +33,8 @@
       "responsables-admin.real.spec.ts"
     ],
     "3": [
-      "responsables-alta-deshabilitada.real.spec.ts"
+      "responsables-alta-deshabilitada.real.spec.ts",
+      "documentos-apto-fisico-carga-deshabilitada.real.spec.ts"
     ]
   }
 }

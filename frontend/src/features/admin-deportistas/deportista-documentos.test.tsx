@@ -67,12 +67,12 @@ describe('athlete documents: list (mock backend)', () => {
   it('lists every current document with its readable type, its state in writing, its upload date and the reason only when observed', async () => {
     backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'APROBADO', creadoEn: '2026-03-10T14:00:00Z' });
     backend.seedDocument(athlete.id, { tipo: 'DNI_TUTOR_DORSO', estado: 'OBSERVADO', motivoObservacion: 'La foto está borrosa.', creadoEn: '2026-03-11T02:30:00Z' });
-    backend.seedDocument(athlete.id, { tipo: 'APTO_FISICO', estado: 'VENCIDO' });
+    backend.seedDocument(athlete.id, { tipo: 'SOLICITUD_LICENCIA', estado: 'VENCIDO' });
     backend.seedDocument(athlete.id, { tipo: 'CERTIFICADO_WADA', estado: 'PENDIENTE' });
     await openDetail();
 
     const rows = await within(section()).findAllByRole('listitem');
-    expect(rows.map((row) => within(row).getByRole('heading').textContent)).toEqual(['DNI – frente', 'DNI del tutor – dorso', 'Apto físico', 'Certificado WADA']);
+    expect(rows.map((row) => within(row).getByRole('heading').textContent)).toEqual(['DNI – frente', 'DNI del tutor – dorso', 'Solicitud de licencia', 'Certificado WADA']);
     expect(rows[0]).toHaveTextContent('Estado: Aprobado');
     expect(rows[0]).toHaveTextContent('Fecha de carga: 10 mar 2026');
     // 02:30 UTC is still the 10th in Buenos Aires.
@@ -110,7 +110,7 @@ describe('athlete documents: list (mock backend)', () => {
     const url = `/admin/deportistas/${athlete.id}/documentos?page=0&size=100`;
     backend.override('get', url, {
       status: 200,
-      body: { contenido: [{ id: 'doc-1', tipo: 'APTO_FISICO', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', motivoObservacion: 'texto viejo' }], pagina: 0, tamanio: 100, totalElementos: 1 },
+      body: { contenido: [{ id: 'doc-1', tipo: 'CERTIFICADO_WADA', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', motivoObservacion: 'texto viejo' }], pagina: 0, tamanio: 100, totalElementos: 1 },
     });
     await openDetail();
     expect(await within(section()).findByRole('listitem')).toHaveTextContent('Estado: Cargado');
@@ -175,13 +175,13 @@ describe('athlete documents: opening a file (mock backend)', () => {
   });
 
   it('is usable with the keyboard only', async () => {
-    const document = backend.seedDocument(athlete.id, { tipo: 'APTO_FISICO' });
+    const document = backend.seedDocument(athlete.id, { tipo: 'CERTIFICADO_WADA' });
     backend.attachDocumentFile(document.id, PNG());
     await openDetail();
-    const button = await within(section()).findByRole('button', { name: 'Abrir documento: Apto físico' });
+    const button = await within(section()).findByRole('button', { name: 'Abrir documento: Certificado WADA' });
     button.focus();
     await userEvent.keyboard('{Enter}');
-    expect(await within(section()).findByRole('img', { name: 'Documento: Apto físico' })).toBeInTheDocument();
+    expect(await within(section()).findByRole('img', { name: 'Documento: Certificado WADA' })).toBeInTheDocument();
     await userEvent.tab();
     expect(within(section()).getByRole('button', { name: 'Cerrar' })).toHaveFocus();
     await userEvent.keyboard('{Enter}');
@@ -281,13 +281,13 @@ describe('athlete documents: opening a file (mock backend)', () => {
   it('keeps the file out of the query cache, the address, the storages and the console', async () => {
     const consoleSpies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((name) => vi.spyOn(console, name));
     const image = backend.seedDocument(athlete.id, { tipo: 'DNI_DEPORTISTA_FRENTE' });
-    const pdf = backend.seedDocument(athlete.id, { tipo: 'APTO_FISICO' });
+    const pdf = backend.seedDocument(athlete.id, { tipo: 'CERTIFICADO_WADA' });
     backend.attachDocumentFile(image.id, PNG()).attachDocumentFile(pdf.id, PDF());
     const { queryClient } = await openDetail();
 
     await userEvent.click(await within(section()).findByRole('button', { name: 'Abrir documento: DNI – frente' }));
     await within(section()).findByRole('img');
-    await userEvent.click(openButton('Apto físico'));
+    await userEvent.click(openButton('Certificado WADA'));
     await userEvent.click(await within(section()).findByRole('button', { name: 'Descargar PDF' }));
 
     const cached = queryClient.getQueryCache().getAll().map((query) => query.state.data);
@@ -405,12 +405,23 @@ describe('revisión administrativa de DNI', () => {
     const url = '/admin/deportistas/' + athlete.id + '/documentos?page=0&size=100';
     backend.override('get', url, { status: 200, body: { contenido: [
       { id: 'frente', tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
-      { id: 'apto', tipo: 'APTO_FISICO', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
+      { id: 'otro', tipo: 'OTRO', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
     ], pagina: 0, tamanio: 100, totalElementos: 2 } });
     await openDetail();
     expect(await within(section()).findByRole('button', { name: 'Aprobar documento: DNI – frente' })).toBeEnabled();
     expect(within(section()).getByRole('button', { name: 'Observar documento: DNI – frente' })).toBeEnabled();
-    expect(within(section()).queryByRole('button', { name: /Observar documento: Apto/ })).not.toBeInTheDocument();
+    expect(within(section()).queryByRole('button', { name: /Observar documento: Otro/ })).not.toBeInTheDocument();
+  });
+
+  it('no repite el apto físico en «Documentos»: tiene su propia sección con sus controles', async () => {
+    const url = '/admin/deportistas/' + athlete.id + '/documentos?page=0&size=100';
+    backend.override('get', url, { status: 200, body: { contenido: [
+      { id: 'frente', tipo: 'DNI_DEPORTISTA_FRENTE', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
+      { id: 'apto', tipo: 'APTO_FISICO', estado: 'CARGADO', creadoEn: '2026-03-10T14:00:00Z', vigente: true, version: '0' },
+    ], pagina: 0, tamanio: 100, totalElementos: 2 } });
+    await openDetail();
+    expect(await within(section()).findAllByRole('listitem')).toHaveLength(1);
+    expect(within(section()).queryByRole('button', { name: /Apto físico/ })).not.toBeInTheDocument();
   });
 
   it('exige motivo y confirmación expresa para revocar una aprobación; envía la versión como cadena una sola vez', async () => {

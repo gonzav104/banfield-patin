@@ -12,6 +12,7 @@ Secuencia vigente desde 2026-10-31 (estados actualizados el 2026-11-02). Reempla
 | **2** | Spike federativo | Playwright sobre los formularios reales de empadronamiento y apto: login Google, campos, secciones condicionales, uploads, hasta antes de "Enviar" | 0 |
 | **3** | Documentos privados | Supabase Storage privado; carga FAMILIA/ADMIN; revisión; reemplazo; descarga firmada; ZIP | 1, 2 |
 | **4** 🔄 | Aptos físicos | Apto por deportista/temporada con documento, médico, matrícula, estados | 1, 3 |
+| **4-BIS** | U21-BIS — Autoservicio y empadronamiento familiar *(provisoria, sin implementar; antes de U22)* | El modelo admite varios usuarios por familia, varios tutores (con o sin cuenta) y familias independientes, pero el portal solo permite cargar documentos: no deja completar datos de tutores ni de deportistas, ni vincula la identidad del usuario con la del tutor. Releva y define qué puede completar la familia y qué sigue siendo solo de ADMIN | 1, 3, 4 |
 | **5** | Empadronamiento y licencias | Checklist, estados, confirmación ADMIN, **historial de dominio** por cambio | 1, 3, 4 |
 | **6** | Competencias | Convocatoria explícita materializada; respuesta FAMILIA solo para convocados; consolidado ADMIN | 1, 5 |
 | **7** | LBF APM/Nacional | Plantillas oficiales reales, mapeo, Apache POI, validación previa | 6 + plantillas |
