@@ -132,7 +132,7 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 	}
 
 	private Cookie familia(UUID usuario, UUID escuela, UUID familiaId) {
-		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).single()));
+		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).optional().orElse(0L)));
 	}
 
 	private Cookie sesionFa1() {

@@ -411,7 +411,8 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 
 		assertThat(sentencias(() -> mvc.perform(get(RUTA_ADMIN)).andExpect(status().isUnauthorized()))).as("anonimo")
 				.isZero();
-		assertThat(sentencias(() -> mvc.perform(get("/api/auth/csrf").cookie(admin())).andExpect(status().isOk())))
+		Cookie conVersion = admin(); // la lectura de la versión de la cuenta es de la prueba, no de la solicitud medida
+		assertThat(sentencias(() -> mvc.perform(get("/api/auth/csrf").cookie(conVersion)).andExpect(status().isOk())))
 				.as("ruta publica con cookie").isZero();
 		assertThat(sentencias(() -> pedir(RUTA_ADMIN, manipulada).andExpect(status().isUnauthorized())))
 				.as("firma invalida").isZero();
