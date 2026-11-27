@@ -7,12 +7,15 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import com.banfieldpatin.backend.UuidsDeTest;
+
 import com.banfieldpatin.backend.FixturesDominio;
 import com.banfieldpatin.backend.deportistas.Deportista;
 
 class DeportistaResumenTest {
 
-	private final UUID id = UUID.randomUUID();
+	// Determinista: el texto imprime este id y la prueba afirma que no contiene «222» (parte del DNI enmascarado).
+	private final UUID id = UuidsDeTest.sin("id", "222", "Juan", "Perez");
 
 	@Test
 	void elResumenEnmascaraElDniYNoTieneUnComponenteDniCompleto() {
