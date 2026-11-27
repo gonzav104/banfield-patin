@@ -235,8 +235,8 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		// Sin cambios: no audita.
 		long antes = auditoria("PERFIL_ACTUALIZADO");
 		String v1 = version(madre, true);
-		mvc.perform(escribir(put(RUTA), CUERPO.replace("Laura", "Laurita").replace("}", ",\"versionEsperada\":\"" + v1 + "\"}"), madre, fam1,
-				escuela)).andExpect(status().isOk());
+		mvc.perform(escribir(put(RUTA), CUERPO.replace("\"nombre\":\"Laura\"", "\"nombre\":\"Laurita\"").replace("}", ",\"versionEsperada\":\"" + v1 + "\"}"), madre,
+				fam1, escuela)).andExpect(status().isOk());
 		assertThat(auditoria("PERFIL_ACTUALIZADO")).isEqualTo(antes);
 
 		// ADMIN verifica la identidad (C2 traerá la pantalla): ahora solo el contacto es editable por la familia.
