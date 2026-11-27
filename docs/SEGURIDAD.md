@@ -354,6 +354,17 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   las revive y exige un nuevo inicio de sesión. Cada persona de una familia tiene credenciales y versión propias: quitar el acceso a una no
   afecta a las demás. Repetir la acción no cambia la versión ni vuelve a auditar; si la auditoría falla, no se aplica ni la desactivación ni la
   revocación (misma transacción).
+- **Baja de una familia o de una escuela (V20):** desactivar una familia o una escuela incrementa la `version_sesion` de **todas las cuentas
+  de su alcance** (las de la familia; todas las de la escuela, ADMIN incluido) en la misma transacción que el cambio de estado, mediante triggers
+  que se disparan solo en la transición activa → inactiva: repetir la baja, reactivar o editar otros campos no incrementan nada ni duplican la
+  auditoría. Reactivar no revive ningún token anterior (hay que ingresar de nuevo). No tocan `usuario.activo`: una cuenta desactivada a mano
+  sigue desactivada al reactivar su familia o escuela; ni afectan a otras familias, escuelas ni a los deportistas (un deportista compartido sigue
+  activo y el vínculo de la otra familia, intacto). Bloqueos: la baja de una familia toma primero las cuentas en orden de id y después la
+  familia (el mismo orden de la carga documental: escuela → cuenta → familia); el login toma escuela (`FOR SHARE`), cuenta (`FOR NO KEY UPDATE`) y
+  familia (`FOR SHARE`) y rechaza si alguna dejó de estar activa, de modo que una cuenta creada mientras corre la baja no puede emitir una sesión
+  que sobreviva. La baja directa por SQL de una familia (sin pasar por el servicio) toma familia → cuentas: es válida pero puede cruzarse con una
+  carga en curso (deadlock detectado por PostgreSQL, una de las dos reintenta). El runtime no puede dar de baja una escuela (solo
+  `UPDATE(actualizado_en)`): es una operación de mantenimiento con el rol propietario.
 - **Carga documental en curso:** cada paso (reserva, inicio, publicación) exige la versión del token de esa solicitud bajo el mismo
   `FOR SHARE` de la cuenta: una carga iniciada antes de quitar el acceso no publica aunque la cuenta se reactive mientras transfiere
   (el archivo sigue el camino de limpieza/reconciliación de siempre). Los pasos son transacciones cortas; la transferencia a Storage no

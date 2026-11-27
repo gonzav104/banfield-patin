@@ -609,6 +609,33 @@ class CargaDocumentalHttpDbTest {
         .query(Boolean.class).single()).isTrue();
   }
 
+  /**
+   * Desactivar Y reactivar la familia (o la escuela) mientras la carga transfiere: la sesión que la inició queda revocada
+   * (V20) y la publicación posterior no la revive, aunque todo vuelva a estar activo.
+   */
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"familia", "escuela"})
+  void desactivarYReactivarDuranteTransferenciaNoReviveLaCarga(String entidad) throws Exception {
+    HOOK_STORAGE.set(
+        () -> {
+          var d = new DatosDb(jdbc);
+          if (entidad.equals("familia")) {
+            d.desactivarFamilia(familia);
+            d.reactivarFamilia(familia);
+          } else {
+            d.desactivarEscuela(escuela);
+            d.reactivarEscuela(escuela);
+          }
+        });
+    var r = cargar(UUID.randomUUID(), png());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(401);
+    assertThat(documentos()).isZero();
+    assertThat(POSTS.get()).isEqualTo(1);
+    // La cuenta de la prueba sigue activa pero su versión creció: hay que ingresar de nuevo.
+    token = tokens.emitir(usuario, Rol.FAMILIA, escuela, familia, jdbc.sql(
+        "SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).single());
+  }
+
   @org.junit.jupiter.params.ParameterizedTest
   @org.junit.jupiter.params.provider.ValueSource(strings = {"usuario", "familia", "escuela"})
   void desactivacionDuranteTransferenciaImpidePublicar(String entidad) throws Exception {

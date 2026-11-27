@@ -140,7 +140,7 @@ class FamiliaPortalFichaHttpDbTest extends BaseDbTest {
 	}
 
 	private Cookie familia(UUID usuario, UUID escuela, UUID familiaId) {
-		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId));
+		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).single()));
 	}
 
 	private Cookie sesionFa1() {
@@ -365,6 +365,9 @@ class FamiliaPortalFichaHttpDbTest extends BaseDbTest {
 		datos.desactivarFamilia(fa1);
 		sesionMuerta(pedir(ficha(dPropio), sesion));
 		datos.reactivarFamilia(fa1);
+		// Reactivar no revive la sesión anterior (V20): hay que ingresar de nuevo.
+		sesionMuerta(pedir(ficha(dPropio), sesion));
+		sesion = sesionFa1();
 		pedir(ficha(dPropio), sesion).andExpect(status().isOk());
 
 		datos.desactivarUsuario(usuarioFa1);

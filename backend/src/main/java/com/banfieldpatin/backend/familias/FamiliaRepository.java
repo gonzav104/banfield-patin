@@ -11,6 +11,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface FamiliaRepository extends JpaRepository<Familia, UUID> {
 
+	/** Familia activa tomada FOR SHARE hasta el fin de la transacción: una desactivación concurrente espera (login, V20). */
+	@Query(value = "select f.id from gestion_patin.familia f where f.id = :id and f.escuela_id = :escuelaId and f.activa for share",
+			nativeQuery = true)
+	java.util.Optional<UUID> bloquearActivaParaCompartir(@Param("id") UUID id, @Param("escuelaId") UUID escuelaId);
+
 	Optional<Familia> findByIdAndEscuelaId(UUID id, UUID escuelaId);
 
 	/**

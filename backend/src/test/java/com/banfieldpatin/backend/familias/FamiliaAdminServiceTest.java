@@ -56,6 +56,17 @@ class FamiliaAdminServiceTest {
 	private CierreVigenciasTutor cierres;
 	private FamiliaAdminService servicio;
 
+	/** EntityManager de prueba: las consultas nativas de bloqueo (cuentas de la familia) devuelven una lista vacía. */
+	private static jakarta.persistence.EntityManager entityManager() {
+		var consulta = mock(jakarta.persistence.Query.class);
+		org.mockito.Mockito.when(consulta.setParameter(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+				.thenReturn(consulta);
+		org.mockito.Mockito.when(consulta.getResultList()).thenReturn(java.util.List.of());
+		var em = mock(jakarta.persistence.EntityManager.class);
+		org.mockito.Mockito.when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(consulta);
+		return em;
+	}
+
 	@BeforeEach
 	void preparar() {
 		familias = mock(FamiliaRepository.class);
@@ -64,7 +75,7 @@ class FamiliaAdminServiceTest {
 		auditoria = mock(AuditoriaService.class);
 		cierres = mock(CierreVigenciasTutor.class);
 		servicio = new FamiliaAdminService(familias, tutores, vinculos, auditoria,
-				mock(jakarta.persistence.EntityManager.class), cierres);
+				entityManager(), cierres);
 		when(familias.saveAndFlush(any(Familia.class))).thenAnswer(inv -> {
 			Familia f = inv.getArgument(0);
 			if (f.getId() == null) {

@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 /**
- * V18 y V19 con el login runtime real ({@code banfield_runtime}, concesiones de {@code ops/postgresql}): la familia, la escuela y
+ * V18, V19 y V20 con el login runtime real ({@code banfield_runtime}, concesiones de {@code ops/postgresql}): la familia, la escuela y
  * el rol de una cuenta y el autor de un documento no cambian después de creados, de modo que la procedencia de lo ya
  * cargado no puede reescribirse. Lo demás de la cuenta (activo, contraseña, nombre) sigue editable.
  */
@@ -74,7 +74,8 @@ class V18PertenenciaUsuarioDbTest {
 		// Actualización desde main (V17) hasta el candidato: V18 y V19, aplicadas por el migrador sobre datos existentes.
 		assertThat(flyway().target("18").load().migrate().migrationsExecuted).isEqualTo(1);
 		assertThat(flyway().target("19").load().migrate().migrationsExecuted).isEqualTo(1);
-		flyway().target("19").load().validate();
+		assertThat(flyway().target("20").load().migrate().migrationsExecuted).isEqualTo(1);
+		flyway().target("20").load().validate();
 		try (var c = base(MIGRATOR, CLAVE).getConnection(); var s = c.createStatement()) {
 			s.execute("SET ROLE " + OWNER);
 			for (String script : List.of("c1", "c2a", "c2b")) {
@@ -122,6 +123,30 @@ class V18PertenenciaUsuarioDbTest {
 				.update()).isEqualTo(1);
 		assertThat(runtime.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuarioFamilia)
 				.query(Long.class).single()).isEqualTo(1);
+	}
+
+	/** V20 con el login runtime: la baja de la familia revoca solo a sus cuentas; la escuela no la puede dar de baja el runtime. */
+	@Test
+	void v20LaBajaDeLaFamiliaRevocaSusCuentasConElLoginRuntimeYSoloEnLaTransicion() {
+		UUID otraFamiliaV20 = datos.familia(escuela, "Otra familia V20", true);
+		UUID ajena = datos.usuarioFamilia(escuela, otraFamiliaV20, "ajena-" + UUID.randomUUID() + "@pertenencia.invalid");
+		long propia = versionSesion(usuarioFamilia);
+		long ajenaAntes = versionSesion(ajena);
+		long adminAntes = versionSesion(usuarioAdmin);
+		runtime.sql("UPDATE gestion_patin.familia SET activa = false WHERE id = :f").param("f", familia).update();
+		assertThat(versionSesion(usuarioFamilia)).isEqualTo(propia + 1);
+		assertThat(versionSesion(ajena)).isEqualTo(ajenaAntes);
+		assertThat(versionSesion(usuarioAdmin)).isEqualTo(adminAntes);
+		runtime.sql("UPDATE gestion_patin.familia SET activa = false WHERE id = :f").param("f", familia).update();
+		runtime.sql("UPDATE gestion_patin.familia SET activa = true WHERE id = :f").param("f", familia).update();
+		assertThat(versionSesion(usuarioFamilia)).as("reactivar y repetir no incrementan").isEqualTo(propia + 1);
+		assertThatThrownBy(() -> runtime.sql("UPDATE gestion_patin.escuela SET activa = false WHERE id = :e")
+				.param("e", escuela).update()).rootCause().hasMessageContaining("permission denied");
+	}
+
+	private long versionSesion(UUID usuario) {
+		return runtime.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario)
+				.query(Long.class).single();
 	}
 
 	@Test

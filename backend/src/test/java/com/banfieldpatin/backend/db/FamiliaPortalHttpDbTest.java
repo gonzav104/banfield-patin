@@ -132,7 +132,7 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 	}
 
 	private Cookie familia(UUID usuario, UUID escuela, UUID familiaId) {
-		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId));
+		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuela, familiaId, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).single()));
 	}
 
 	private Cookie sesionFa1() {
@@ -140,7 +140,7 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 	}
 
 	private Cookie admin() {
-		return new Cookie(COOKIE, tokens.emitir(adminId, Rol.ADMIN, escuelaA, null));
+		return new Cookie(COOKIE, tokens.emitir(adminId, Rol.ADMIN, escuelaA, null, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", adminId).query(Long.class).single()));
 	}
 
 	private ResultActions pedir(String ruta, Cookie sesion) throws Exception {
@@ -349,6 +349,11 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 
 		datos.reactivarFamilia(fa1);
 
+		// Reactivar no revive la sesión anterior (V20); una sesión nueva vuelve sin más trámite.
+		for (String ruta : rutasDelPortal()) {
+			sesionMuerta(pedir(ruta, sesion));
+		}
+		sesion = sesionFa1();
 		for (String ruta : rutasDelPortal()) {
 			pedir(ruta, sesion).andExpect(status().isOk());
 		}
@@ -414,6 +419,8 @@ class FamiliaPortalHttpDbTest extends BaseDbTest {
 		datos.desactivarEscuela(escuelaA);
 		sesionMuerta(pedir(RUTA_LISTA, viejo));
 		datos.reactivarEscuela(escuelaA);
+		sesionMuerta(pedir(RUTA_LISTA, viejo));
+		viejo = sesionFa1();
 		pedir(RUTA_LISTA, viejo).andExpect(status().isOk());
 
 		// 4. la familia de una cuenta no cambia (V18 lo impide en la base) y un token que reclama otra familia -> 401.
