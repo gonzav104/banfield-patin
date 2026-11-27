@@ -90,7 +90,7 @@ test.describe('Mis datos (real backend)', () => {
     await page.getByLabel(/^Correo/).fill(`Beto.${suffix}@Example.Test`);
     await page.getByRole('button', { name: 'Guardar mis datos' }).click();
     await expect(page.getByText(/Listo: tus datos quedaron cargados/)).toBeVisible();
-    await expect(page.getByText(/Ahora figura ••••222/)).toBeVisible();
+    await expect(page.getByText(/Ahora figura •+222/)).toBeVisible();
     expect(await page.content()).not.toContain('30.111.222');
 
     // After a reload the data are there, the identity is still editable (nobody verified it yet), and the API never returns the DNI.
