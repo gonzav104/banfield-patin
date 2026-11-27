@@ -9,7 +9,8 @@ import { AdminSeed, csrfHeaders, loginAdminUi, schoolToday, type SeededFamily } 
  * so without alarm and offer no way to send a file, and the read screens (family and ADMIN) must keep working.
  */
 test.describe.configure({ mode: 'serial' });
-test.skip(process.env.E2E_CARGA_DOCUMENTAL !== 'false', 'Runs only in the shard that starts the backend with the upload OFF (E2E_CARGA_DOCUMENTAL=false).');
+// Outside CI this file skips when the upload is on (a full local run); IN CI it never skips: a shard 3 that lost its wiring must fail, not report green.
+test.skip(process.env.E2E_CARGA_DOCUMENTAL !== 'false' && !process.env.CI, 'Runs only in the shard that starts the backend with the upload OFF (E2E_CARGA_DOCUMENTAL=false).');
 
 const suffix = randomBytes(3).toString('hex');
 const YEAR = Number(schoolToday().slice(0, 4));
@@ -21,6 +22,7 @@ let athleteId = '';
 let seasonId = '';
 
 test.beforeAll(async ({ browser }) => {
+  if (process.env.E2E_CARGA_DOCUMENTAL !== 'false') throw new Error('E2E_CARGA_DOCUMENTAL must be false for this file: the shard 3 wiring (script + workflow) is missing.');
   if (!hasDisposableDb()) throw new Error('E2E_DB_CONTAINER is not set.');
   adminContext = await browser.newContext({ baseURL: 'http://127.0.0.1:5173' });
   adminPage = await adminContext.newPage();

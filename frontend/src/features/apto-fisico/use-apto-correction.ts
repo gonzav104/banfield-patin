@@ -6,6 +6,7 @@ import { ApiError } from '@/lib/api-error';
 import { correctApto } from './api';
 import type { AptoData } from './form';
 import { aptoKeys } from './hooks';
+import { isSafeRevision } from './schemas';
 
 export type CorrectionFeedback = { tone: 'success' | 'error'; message: string };
 
@@ -54,7 +55,7 @@ export function useAptoCorrection(athleteId: string) {
   };
 
   async function confirm(documentId: string, revision: number | null, data: AptoData) {
-    if (active.current || revision === null || !Number.isSafeInteger(revision)) return;
+    if (active.current || !isSafeRevision(revision)) return;
     const currentUser = () => client.getQueryData<AuthUser | null>(sessionKey);
     const user = currentUser();
     if (!user || user.rol !== 'ADMIN' || user.mfaPendiente) return;
@@ -86,10 +87,14 @@ export function useAptoCorrection(athleteId: string) {
         setOpen(false);
       }
     } finally {
-      if (current()) await client.invalidateQueries({ queryKey: aptoKeys.adminAthlete(athleteId) });
+      if (current()) {
+        await client.invalidateQueries({ queryKey: aptoKeys.adminAthlete(athleteId) });
+        // A correction that withdrew an approval puts the apto back in the inbox of documents waiting for review.
+        await client.invalidateQueries({ queryKey: ['admin', 'pending-documents'] });
+      }
       unsubscribe();
       active.current = null;
-      if (current()) setPending(false);
+      setPending(false); // never left disabled, even when the request was aborted while this screen is still mounted
     }
   }
 

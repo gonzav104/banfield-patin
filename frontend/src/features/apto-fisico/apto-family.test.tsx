@@ -150,6 +150,10 @@ describe('apto físico — family: first upload', () => {
     await chooseAndFill(user, region);
     await user.click(within(region).getByRole('button', { name: 'Enviar' }));
     await user.click(await within(region).findByRole('button', { name: 'Cambiar los datos' }));
+    // what was typed is still there: only the datum to change is retyped
+    expect(within(region).getByLabelText('Nombre del médico')).toHaveValue(MEDICO);
+    expect(within(region).getByLabelText('Matrícula')).toHaveValue(MATRICULA);
+    expect(within(region).getByLabelText('Fecha de emisión')).toHaveValue(DAY);
     await user.clear(within(region).getByLabelText('Matrícula'));
     await user.type(within(region).getByLabelText('Matrícula'), 'MP 0002');
     await user.click(within(region).getByRole('button', { name: 'Enviar' }));
@@ -174,6 +178,8 @@ describe('apto físico — family: first upload', () => {
     expect(await within(region).findByText('Revisá la matrícula.')).toBeInTheDocument();
     expect(region).not.toHaveTextContent('valor-del-servidor');
     expect(within(region).getByAltText(/Vista previa/)).toBeInTheDocument(); // the file was kept
+    expect(within(region).getByLabelText('Nombre del médico')).toHaveValue(MEDICO); // and so is what was typed
+    expect(within(region).getByLabelText('Fecha de emisión')).toHaveValue(DAY);
     await user.clear(within(region).getByLabelText('Matrícula'));
     await user.type(within(region).getByLabelText('Matrícula'), 'MP 0003');
     await user.click(within(region).getByRole('button', { name: 'Enviar' }));

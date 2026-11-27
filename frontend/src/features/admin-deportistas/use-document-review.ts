@@ -8,6 +8,8 @@ import { aptoKeys } from '@/features/apto-fisico/hooks';
 import { athleteChecklistKey, athleteDocumentsKey } from './hooks';
 import type { AdminDocument } from './schemas';
 
+// APTO_FISICO is reviewable here only for the «Apto físico» section (U21): AthleteDocumentsSection filters it out of the generic list so the
+// controls are not duplicated. Changing one of the two means changing the other.
 const REVIEWABLE_TYPES: Record<DocumentOwnerKind, readonly string[]> = {
   deportista: ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO', 'APTO_FISICO'],
   tutor: ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'],

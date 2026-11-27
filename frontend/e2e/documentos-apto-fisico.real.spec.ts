@@ -151,6 +151,7 @@ test('mobile 360 px: the family starts at «Falta», uploads the apto with its t
   const region = aptoRegion(page);
   await expect(region.getByText('Falta')).toBeVisible();
   await expect(region.getByText(`Vigente hasta el 31 de diciembre de ${YEAR}.`)).toBeVisible();
+  // Only 2026 has a confirmed rule (ReglaVigenciaApto): any other year must show the provisional notice. When a season is confirmed, update both.
   await expect(region.getByText(/todavía no están confirmados/)).toHaveCount(YEAR === 2026 ? 0 : 1);
   expect(await noHorizontalOverflow(page)).toBe(true);
 

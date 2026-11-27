@@ -51,6 +51,9 @@ export const aptoSchema = z.object({
 });
 export type Apto = z.infer<typeof aptoSchema>;
 
+/** The optimistic revision travels as a decimal string: only a safe integer survives the JSON number without losing precision. */
+export const isSafeRevision = (revision: number | null | undefined): revision is number => revision !== null && revision !== undefined && Number.isSafeInteger(revision);
+
 /** One season of the athlete as the family portal lists it (`GET /api/familia/deportistas/{id}/temporadas`). */
 export const familySeasonSchema = z.object({ temporadaId: idSchema, anio: z.number().int().min(2020).max(2100), temporadaActiva: z.boolean() });
 export const familySeasonsSchema = z.array(familySeasonSchema);

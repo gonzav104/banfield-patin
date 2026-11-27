@@ -10,7 +10,7 @@ import { AptoCorrectionDialog } from './AptoCorrectionDialog';
 import { AptoSummary } from './AptoSummary';
 import { useAdminApto, useAdminSeasons } from './hooks';
 import { APTO_TITLE, SEASON_LABEL } from './messages';
-import type { AptoDocument } from './schemas';
+import { isSafeRevision, type AptoDocument } from './schemas';
 import { useAptoCorrection } from './use-apto-correction';
 
 export const ADMIN_APTO_SECTION_ID = 'apto-fisico-admin';
@@ -23,7 +23,7 @@ function asAdminDocument(doc: AptoDocument): AdminDocument {
     estado: doc.estado,
     creadoEn: doc.cargadoEn,
     vigente: true,
-    ...(doc.revision !== null && Number.isSafeInteger(doc.revision) ? { version: String(doc.revision) } : {}),
+    ...(isSafeRevision(doc.revision) ? { version: String(doc.revision) } : {}),
     ...(doc.motivoObservacion ? { motivoObservacion: doc.motivoObservacion } : {}),
   };
 }
@@ -47,7 +47,7 @@ export function AdminAptoSection({ athleteId }: { athleteId: string }) {
   const doc = apto.data?.documento ?? null;
   const adminDoc = doc ? asAdminDocument(doc) : null;
   const busy = review.pending || correction.pending || apto.isFetching;
-  const correctable = !!doc && doc.revision !== null && Number.isSafeInteger(doc.revision) && (doc.estado === 'CARGADO' || doc.estado === 'APROBADO');
+  const correctable = !!doc && isSafeRevision(doc.revision) && (doc.estado === 'CARGADO' || doc.estado === 'APROBADO');
 
   return (
     <section id={ADMIN_APTO_SECTION_ID} tabIndex={-1} aria-labelledby={titleId} className="space-y-3 rounded-2xl border border-line bg-white p-5 outline-none">

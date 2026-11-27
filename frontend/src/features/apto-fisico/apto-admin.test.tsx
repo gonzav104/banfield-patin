@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeAdminAthlete, FakeBackend, FakeSeason } from '@/test/fakeBackend';
@@ -189,21 +189,32 @@ describe('apto físico — ADMIN: corrección de datos', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('explains that an observed apto cannot be corrected when it became observed meanwhile', async () => {
+  it('explains that an observed apto cannot be corrected (the server answers APTO_NO_CORREGIBLE) and reloads it', async () => {
     const apto = backend.seedApto(athlete.id, season.id, { estado: 'CARGADO', uploaderFamilyId: 'familia-1' });
     const user = userEvent.setup();
     const { region } = await openDetail();
     const dialog = await openCorrection(user, region);
-    act(() => {
-      backend.changeAptoBehindTheScenes(apto.id, { estado: 'OBSERVADO', motivoObservacion: MOTIVO });
-      backend.changeAptoBehindTheScenes(apto.id, {});
-    });
-    // the revision moved twice: the stale-revision answer comes first, which is also a refresh of the screen
+    backend.override('put', `/admin/deportistas/${athlete.id}/documentos/${apto.id}/datos-apto`, { status: 409, body: { codigo: 'APTO_NO_CORREGIBLE', mensaje: 'x' } }, { once: true });
+    backend.changeAptoBehindTheScenes(apto.id, { estado: 'OBSERVADO', motivoObservacion: MOTIVO });
     await user.clear(within(dialog).getByLabelText('Matrícula'));
     await user.type(within(dialog).getByLabelText('Matrícula'), 'MP 0555');
     await user.click(within(dialog).getByRole('button', { name: 'Guardar corrección' }));
-    expect(await within(region).findByText(/El apto cambió mientras lo editabas|Un apto observado no se corrige/)).toBeInTheDocument();
+    expect(await within(region).findByText('Un apto observado no se corrige: la familia lo reemplaza. Actualizamos la información.')).toBeInTheDocument();
     await waitFor(() => expect(within(region).queryByRole('button', { name: /Corregir/ })).not.toBeInTheDocument());
+    expect(region).toHaveTextContent(MOTIVO);
+  });
+
+  it('invalidates the pending inbox after a correction that withdraws an approval', async () => {
+    backend.seedApto(athlete.id, season.id, { estado: 'APROBADO', uploaderFamilyId: 'familia-1' });
+    const user = userEvent.setup();
+    const { region, queryClient } = await openDetail();
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    const dialog = await openCorrection(user, region);
+    await user.clear(within(dialog).getByLabelText('Matrícula'));
+    await user.type(within(dialog).getByLabelText('Matrícula'), 'MP 0999');
+    await user.click(within(dialog).getByRole('button', { name: 'Corregir y retirar la aprobación' }));
+    await within(region).findByText('Datos corregidos. El apto vuelve a revisión.');
+    expect(spy.mock.calls.some(([filters]) => JSON.stringify((filters as { queryKey?: unknown }).queryKey) === JSON.stringify(['admin', 'pending-documents']))).toBe(true);
   });
 
   it('keeps the typed data out of the browser storages, the console and the address', async () => {
