@@ -97,7 +97,10 @@ class SesionVigenteJdbcDbTest extends BaseDbTest {
 
 		datos.reactivarEscuela(escuelaId);
 
-		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
+		// V20: la baja incrementó la versión de las cuentas; la versión anterior (0) no revive.
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 1L)).isTrue();
 	}
 
 	@Test
@@ -131,7 +134,10 @@ class SesionVigenteJdbcDbTest extends BaseDbTest {
 
 		datos.reactivarFamilia(familiaId);
 
-		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isTrue();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 1L)).isTrue();
+		// El ADMIN no es de la familia: su versión no cambió.
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
 	}
 
 	@Test

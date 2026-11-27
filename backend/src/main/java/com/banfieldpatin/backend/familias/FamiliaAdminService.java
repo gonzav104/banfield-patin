@@ -131,6 +131,9 @@ public class FamiliaAdminService {
 	@Transactional
 	public FamiliaDetalle desactivar(UsuarioAutenticado admin, UUID id, Long versionEsperada, DatosSolicitud datos) {
 		CierreVigenciasTutor.exigirAdmin(admin);
+		// Orden de bloqueos del resto del sistema (cuentas -> familia): la baja revoca las sesiones de las cuentas de la familia
+		// (trigger V20) y la carga documental toma cuenta y después familia. Las cuentas se toman en orden de id.
+		bloquearCuentasDeLaFamilia(admin.escuelaId(), id);
 		Familia familia = cargarParaModificar(admin, id, versionEsperada);
 		if (familia.isActiva()) {
 			cierres.deFamilia(admin, familia.getId());
@@ -139,6 +142,11 @@ public class FamiliaAdminService {
 			registrar(admin, AccionAuditoria.FAMILIA_DESACTIVADA, familia, Map.of(), datos);
 		}
 		return detalle(familia, admin.escuelaId());
+	}
+
+	private void bloquearCuentasDeLaFamilia(UUID escuelaId, UUID familiaId) {
+		em.createNativeQuery("SELECT id FROM gestion_patin.usuario WHERE escuela_id = :e AND familia_id = :f "
+				+ "ORDER BY id FOR NO KEY UPDATE").setParameter("e", escuelaId).setParameter("f", familiaId).getResultList();
 	}
 
 	public static ExcepcionNegocio edicionDesactualizada() {

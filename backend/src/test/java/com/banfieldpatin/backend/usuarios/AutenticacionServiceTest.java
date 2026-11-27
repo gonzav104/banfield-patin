@@ -67,6 +67,8 @@ class AutenticacionServiceTest {
 	void preparar() {
 		// Toda cuenta de estas pruebas sigue activa al tomar su fila: versión de sesión 0 (V19).
 		when(usuarios.bloquearVersionSesionSiActiva(any())).thenReturn(Optional.of(0L));
+		when(escuelas.bloquearActivaParaCompartir(any())).thenReturn(Optional.of(escuelaId));
+		when(familias.bloquearActivaParaCompartir(any(), any())).thenReturn(Optional.of(familiaId));
 		escuela = FixturesDominio.escuela(escuelaId, true);
 		familiaUsuario = FixturesDominio.usuario(UUID.randomUUID(), escuelaId, familiaId, Rol.FAMILIA,
 				"ana@example.com", encoder.encode(PASSWORD), true);

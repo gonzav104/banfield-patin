@@ -181,11 +181,11 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 	}
 
 	private Cookie admin() {
-		return new Cookie(COOKIE, tokens.emitir(adminId, Rol.ADMIN, escuelaId, null));
+		return new Cookie(COOKIE, tokens.emitir(adminId, Rol.ADMIN, escuelaId, null, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", adminId).query(Long.class).single()));
 	}
 
 	private Cookie familia() {
-		return new Cookie(COOKIE, tokens.emitir(usuarioFamiliaId, Rol.FAMILIA, escuelaId, familiaId));
+		return new Cookie(COOKIE, tokens.emitir(usuarioFamiliaId, Rol.FAMILIA, escuelaId, familiaId, jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuarioFamiliaId).query(Long.class).single()));
 	}
 
 	private Cookie adminPendiente() {
@@ -264,7 +264,7 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 	// ---------- S8, S11: familia inactiva (a1) ----------
 
 	@Test
-	void familiaInactivaCierraLaSesionDeSusUsuariosYAlReactivarlaElMismoTokenVuelveASerValido() throws Exception {
+	void familiaInactivaCierraLaSesionDeSusUsuariosYAlReactivarlaElMismoTokenNoRevive() throws Exception {
 		Cookie sesion = familia();
 		pedir(RUTA_FAMILIA, sesion).andExpect(status().isOk());
 
@@ -277,14 +277,18 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 
 		datos.reactivarFamilia(familiaId);
 
-		pedir(RUTA_FAMILIA, sesion).andExpect(status().isOk());
-		pedir("/api/auth/me", sesion).andExpect(status().isOk());
+		// V20: reactivar no revive la sesión anterior; una nueva funciona.
+		sesionMuerta(pedir(RUTA_FAMILIA, sesion));
+		sesionMuerta(pedir("/api/auth/me", sesion));
+		Cookie nueva = familia();
+		pedir(RUTA_FAMILIA, nueva).andExpect(status().isOk());
+		pedir("/api/auth/me", nueva).andExpect(status().isOk());
 	}
 
 	// ---------- S4: escuela inactiva ----------
 
 	@Test
-	void escuelaInactivaCierraLaSesionDeAdminYFamiliaYAlReactivarlaVuelven() throws Exception {
+	void escuelaInactivaCierraLaSesionDeAdminYFamiliaYAlReactivarlaNoReviven() throws Exception {
 		Cookie sesionAdmin = admin();
 		Cookie sesionFamilia = familia();
 
@@ -296,8 +300,11 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 
 		datos.reactivarEscuela(escuelaId);
 
-		pedir(RUTA_ADMIN, sesionAdmin).andExpect(status().isOk());
-		pedir(RUTA_FAMILIA, sesionFamilia).andExpect(status().isOk());
+		// V20: reactivar no revive las sesiones anteriores; las nuevas funcionan.
+		sesionMuerta(pedir(RUTA_ADMIN, sesionAdmin));
+		sesionMuerta(pedir(RUTA_FAMILIA, sesionFamilia));
+		pedir(RUTA_ADMIN, admin()).andExpect(status().isOk());
+		pedir(RUTA_FAMILIA, familia()).andExpect(status().isOk());
 	}
 
 	// ---------- S9: coherencia de reclamos ----------
@@ -404,7 +411,8 @@ class SesionVigenteHttpDbTest extends BaseDbTest {
 
 		assertThat(sentencias(() -> mvc.perform(get(RUTA_ADMIN)).andExpect(status().isUnauthorized()))).as("anonimo")
 				.isZero();
-		assertThat(sentencias(() -> mvc.perform(get("/api/auth/csrf").cookie(admin())).andExpect(status().isOk())))
+		Cookie conVersion = admin(); // la lectura de la versión de la cuenta es de la prueba, no de la solicitud medida
+		assertThat(sentencias(() -> mvc.perform(get("/api/auth/csrf").cookie(conVersion)).andExpect(status().isOk())))
 				.as("ruta publica con cookie").isZero();
 		assertThat(sentencias(() -> pedir(RUTA_ADMIN, manipulada).andExpect(status().isUnauthorized())))
 				.as("firma invalida").isZero();

@@ -118,9 +118,16 @@ public class AutenticacionService {
 		if (!principalesActivos(usuario, escuela)) {
 			throw fallo(escuela, usuario, rolRequerido, MOTIVO_INACTIVO, email, clave, solicitud);
 		}
+		// Bloqueos en el orden del resto del sistema (escuela -> cuenta -> familia, el mismo de la carga documental). Una
+		// desactivación concurrente de la escuela o la familia (que revoca las sesiones de sus cuentas, V20) espera a este login
+		// o, si llegó antes, lo rechaza: no puede quedar una sesión emitida que sobreviva a la baja.
+		if (escuelas.bloquearActivaParaCompartir(escuela.getId()).isEmpty()) {
+			throw fallo(escuela, usuario, rolRequerido, MOTIVO_INACTIVO, email, clave, solicitud);
+		}
 		// Versión de sesión de la MISMA cuenta activa, con su fila tomada hasta el commit (ver UsuarioRepository).
 		Long versionSesion = usuarios.bloquearVersionSesionSiActiva(usuario.getId()).orElse(null);
-		if (versionSesion == null) {
+		if (versionSesion == null || (usuario.getRol() == Rol.FAMILIA && (usuario.getFamiliaId() == null
+				|| familias.bloquearActivaParaCompartir(usuario.getFamiliaId(), usuario.getEscuelaId()).isEmpty()))) {
 			throw fallo(escuela, usuario, rolRequerido, MOTIVO_INACTIVO, email, clave, solicitud);
 		}
 
