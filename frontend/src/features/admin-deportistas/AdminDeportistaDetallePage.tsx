@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/api-error';
 import { isSafeAthleteId } from './api';
 import { AdminDocumentChecklist } from './AdminDocumentChecklist';
 import { AthleteDocumentsSection } from './AthleteDocumentsSection';
+import { AdminAptoSection } from '@/features/apto-fisico/AdminAptoSection';
 import { AthleteNotFound, BackToListLink } from './AthleteNotFound';
 import { AthleteStatusBadge } from './AthleteStatusBadge';
 import { AthleteStatusControl } from './AthleteStatusControl';
@@ -98,6 +99,7 @@ function Detail({ athlete, notice: initialNotice, reload }: { athlete: AthleteDe
       </Section>
       <AdminDocumentChecklist athleteId={athlete.id} />
       <AthleteDocumentsSection athleteId={athlete.id} />
+      <AdminAptoSection athleteId={athlete.id} />
     </div>
   );
 }

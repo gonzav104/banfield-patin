@@ -4,11 +4,12 @@ import type { AuthUser } from '@/features/auth/api';
 import { sessionKey } from '@/features/auth/session';
 import { ApiError } from '@/lib/api-error';
 import { reviewAthleteDocument, type DocumentOwnerKind, type DocumentReviewAction } from './api';
+import { aptoKeys } from '@/features/apto-fisico/hooks';
 import { athleteChecklistKey, athleteDocumentsKey } from './hooks';
 import type { AdminDocument } from './schemas';
 
 const REVIEWABLE_TYPES: Record<DocumentOwnerKind, readonly string[]> = {
-  deportista: ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO'],
+  deportista: ['DNI_DEPORTISTA_FRENTE', 'DNI_DEPORTISTA_DORSO', 'APTO_FISICO'],
   tutor: ['DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO'],
 };
 
@@ -85,6 +86,8 @@ export function useDocumentReview(athleteId: string, kind: DocumentOwnerKind = '
         await client.invalidateQueries({ queryKey: key, exact: true });
         // A review of the athlete's DNI changes the partial checklist (a tutor's does not).
         if (kind === 'deportista') await client.invalidateQueries({ queryKey: athleteChecklistKey(athleteId), exact: true });
+        // The apto of every season of this athlete is derived from the document that was just reviewed.
+        if (kind === 'deportista') await client.invalidateQueries({ queryKey: aptoKeys.adminAthlete(athleteId) });
       }
       unsubscribe();
       active.current = null;

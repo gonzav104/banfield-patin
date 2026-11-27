@@ -19,7 +19,7 @@ export function AthleteDocumentsSection({ athleteId, kind = 'deportista' }: { at
   return (
     <>
       <AthleteDocumentsView
-        documents={documents.data}
+        documents={documents.data?.filter((document) => document.tipo !== 'APTO_FISICO')}
         loading={documents.isPending}
         listError={listError}
         onRetryList={() => void documents.refetch()}

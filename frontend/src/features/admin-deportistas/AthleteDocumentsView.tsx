@@ -58,7 +58,7 @@ function DocumentRow({ document, busy, onOpen, rowRef, reviewDisabled, onReview,
   );
 }
 
-function Preview({ state, onClose, onDownload }: { state: Exclude<DocumentViewerState, { status: 'idle' | 'loading' }>; onClose: () => void; onDownload: () => void }) {
+export function DocumentPreview({ state, onClose, onDownload }: { state: Exclude<DocumentViewerState, { status: 'idle' | 'loading' }>; onClose: () => void; onDownload: () => void }) {
   const label = documentTypeLabel(state.document.tipo);
   const region = useRef<HTMLDivElement>(null);
   // Focus follows what was just opened (or what failed), so a keyboard or screen-reader user lands on it.
@@ -163,7 +163,7 @@ export function AthleteDocumentsView({ documents, loading, listError, onRetryLis
           {DOCUMENT_LOADING}
         </p>
       ) : null}
-      {viewer.status !== 'idle' && viewer.status !== 'loading' ? <Preview state={viewer} onClose={onClose} onDownload={onDownload} /> : null}
+      {viewer.status !== 'idle' && viewer.status !== 'loading' ? <DocumentPreview state={viewer} onClose={onClose} onDownload={onDownload} /> : null}
     </section>
   );
 }
