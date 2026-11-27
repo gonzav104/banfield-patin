@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
@@ -197,17 +196,71 @@ class CuentasFamiliaHttpDbTest extends BaseDbTest {
 		assertThat(auditoria("USUARIO_REACTIVADO")).isEqualTo(1);
 	}
 
+	/**
+	 * Lo que distingue a una sesión anterior a quitar el acceso no es su hora de emisión: aunque su {@code iat} caiga en el
+	 * mismo segundo que la reactivación (o después), no revive. Una sesión nueva con la MISMA emisión sí vale.
+	 */
 	@Test
-	void laEmisionSeComparaTruncadaAlSegundoConLaReactivacion() {
-		jdbc.sql("UPDATE gestion_patin.usuario SET sesiones_validas_desde = :r WHERE id = :u")
-				.param("r", OffsetDateTime.parse("2026-01-01T10:00:00.700Z")).param("u", madre).update();
-		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1, Instant.parse("2026-01-01T09:59:59Z"))).isFalse();
-		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1, Instant.parse("2026-01-01T10:00:00Z"))).isTrue();
-		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1, Instant.parse("2026-01-01T10:00:01Z"))).isTrue();
-		// Sin iat a mano (revalidación dentro de una operación ya autenticada) no se compara la emisión.
-		assertThat(verificador.vigenteSinComprobarEmision(madre, escuelaA, "FAMILIA", fa1)).isTrue();
-		// La cuenta nunca reactivada no tiene restricción adicional.
-		assertThat(verificador.vigente(padre, escuelaA, "FAMILIA", fa1, Instant.EPOCH)).isTrue();
+	void unaSesionAnteriorNoReviveAunqueSuEmisionCoincidaConLaReactivacion() throws Exception {
+		Instant mismoSegundo = Instant.now().plusSeconds(2).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+		long anterior = versionSesion(madre);
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/desactivar")).cookie(admin())).andExpect(status().isOk());
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/reactivar")).cookie(admin())).andExpect(status().isOk());
+
+		sesionMuerta(mvc.perform(get("/api/familia/mi-familia").cookie(familiaEmitidaEn(madre, fa1, mismoSegundo, anterior))));
+		mvc.perform(get("/api/familia/mi-familia").cookie(familiaEmitidaEn(madre, fa1, mismoSegundo, versionSesion(madre))))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void unTokenDeUnBackendAnteriorSinVersionValeHastaLaPrimeraRevocacionYDespuesNoRevive() throws Exception {
+		Cookie legado = familiaEmitidaEn(madre, fa1, Instant.now(), null);
+		mvc.perform(get("/api/familia/mi-familia").cookie(legado)).andExpect(status().isOk());
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/desactivar")).cookie(admin())).andExpect(status().isOk());
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/reactivar")).cookie(admin())).andExpect(status().isOk());
+		sesionMuerta(mvc.perform(get("/api/familia/mi-familia").cookie(legado)));
+		// Un token sin versión de OTRA cuenta de la familia (nunca revocada) sigue valiendo.
+		mvc.perform(get("/api/familia/mi-familia").cookie(familiaEmitidaEn(padre, fa1, Instant.now(), null)))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void laVersionCreceSoloAlQuitarElAccesoYEnLaMismaSentenciaQueLaDesactivacion() throws Exception {
+		assertThat(versionSesion(madre)).isZero();
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/desactivar")).cookie(admin())).andExpect(status().isOk());
+		assertThat(versionSesion(madre)).isEqualTo(1);
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/desactivar")).cookie(admin())).andExpect(status().isOk());
+		assertThat(versionSesion(madre)).as("repetir no cambia la versión").isEqualTo(1);
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/reactivar")).cookie(admin())).andExpect(status().isOk());
+		mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/reactivar")).cookie(admin())).andExpect(status().isOk());
+		assertThat(versionSesion(madre)).as("devolver el acceso no la toca").isEqualTo(1);
+		assertThat(versionSesion(padre)).as("otra cuenta de la familia no cambia").isZero();
+		assertThat(auditoria("USUARIO_DESACTIVADO")).isEqualTo(1);
+		assertThat(auditoria("USUARIO_REACTIVADO")).isEqualTo(1);
+	}
+
+	@Test
+	void siLaAuditoriaFallaLaDesactivacionYLaRevocacionNoQuedanAplicadas() throws Exception {
+		Cookie sesion = familia(madre, fa1);
+		jdbc.sql("""
+				CREATE FUNCTION gestion_patin.prueba_falla_auditoria() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+				  IF NEW.accion = 'USUARIO_DESACTIVADO' THEN RAISE EXCEPTION 'auditoria caida (simulada)'; END IF;
+				  RETURN NEW;
+				END; $$
+				""").update();
+		jdbc.sql("CREATE TRIGGER trg_prueba_falla_auditoria BEFORE INSERT ON gestion_patin.auditoria FOR EACH ROW "
+				+ "EXECUTE FUNCTION gestion_patin.prueba_falla_auditoria()").update();
+		try {
+			mvc.perform(conCsrf(post(ruta(fa1) + "/" + madre + "/desactivar")).cookie(admin()))
+					.andExpect(status().is5xxServerError());
+		} finally {
+			jdbc.sql("DROP TRIGGER trg_prueba_falla_auditoria ON gestion_patin.auditoria").update();
+			jdbc.sql("DROP FUNCTION gestion_patin.prueba_falla_auditoria()").update();
+		}
+		assertThat(activa(madre)).isTrue();
+		assertThat(versionSesion(madre)).isZero();
+		mvc.perform(get("/api/familia/mi-familia").cookie(sesion)).andExpect(status().isOk());
 	}
 
 	@Test
@@ -254,6 +307,39 @@ class CuentasFamiliaHttpDbTest extends BaseDbTest {
 			hilos.shutdownNow();
 		}
 		assertThat(auditoria("USUARIO_DESACTIVADO")).isEqualTo(1);
+		assertThat(versionSesion(madre)).isEqualTo(1);
+	}
+
+	@Test
+	void quitarYDevolverElAccesoALaVezDejanUnEstadoCoherenteConSusAuditorias() throws Exception {
+		UsuarioAutenticado admin = new UsuarioAutenticado(adminA, escuelaA, null, Rol.ADMIN);
+		ExecutorService hilos = Executors.newFixedThreadPool(4);
+		try {
+			for (int ronda = 0; ronda < 10; ronda++) {
+				CountDownLatch salida = new CountDownLatch(1);
+				List<Future<?>> tareas = new java.util.ArrayList<>();
+				for (int i = 0; i < 4; i++) {
+					boolean quitar = i % 2 == 0;
+					tareas.add(hilos.submit(() -> {
+						salida.await(10, TimeUnit.SECONDS);
+						return quitar ? servicio.desactivar(admin, fa1, madre, new DatosSolicitud(null, null))
+								: servicio.reactivar(admin, fa1, madre, new DatosSolicitud(null, null));
+					}));
+				}
+				salida.countDown();
+				for (Future<?> t : tareas) {
+					t.get(30, TimeUnit.SECONDS);
+				}
+			}
+		} finally {
+			hilos.shutdownNow();
+		}
+		long quitadas = auditoria("USUARIO_DESACTIVADO");
+		long devueltas = auditoria("USUARIO_REACTIVADO");
+		// Cada cambio efectivo se audita una vez; la versión crece exactamente una vez por cada vez que se quitó el acceso.
+		assertThat(versionSesion(madre)).isEqualTo(quitadas);
+		assertThat(quitadas - devueltas).isEqualTo(activa(madre) ? 0 : 1);
+		assertThat(versionSesion(padre)).isZero();
 	}
 
 	@Test
@@ -280,17 +366,27 @@ class CuentasFamiliaHttpDbTest extends BaseDbTest {
 		return new Cookie(COOKIE, tokens.emitir(adminA, Rol.ADMIN, escuelaA, null));
 	}
 
+	/** Una sesión iniciada ahora: lleva la versión de sesión vigente de la cuenta, como el login real. */
 	private Cookie familia(UUID usuario, UUID familiaId) {
-		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuelaA, familiaId));
+		return new Cookie(COOKIE, tokens.emitir(usuario, Rol.FAMILIA, escuelaA, familiaId, versionSesion(usuario)));
 	}
 
 	/** Mismo token que emite el servidor, con la emisión en el pasado. */
 	private Cookie familiaEmitidaEn(UUID usuario, UUID familiaId, Instant emitido) {
-		JwtClaimsSet claims = JwtClaimsSet.builder().issuer(propiedades.jwt().emisor()).subject(usuario.toString())
+		return familiaEmitidaEn(usuario, familiaId, emitido, null);
+	}
+
+	/** Token con emisión y versión de sesión elegidas; {@code version} null = sin el claim (backend anterior). */
+	private Cookie familiaEmitidaEn(UUID usuario, UUID familiaId, Instant emitido, Long version) {
+		JwtClaimsSet.Builder builder = JwtClaimsSet.builder().issuer(propiedades.jwt().emisor()).subject(usuario.toString())
 				.issuedAt(emitido).expiresAt(emitido.plus(propiedades.jwt().duracion())).id(UUID.randomUUID().toString())
 				.claim(ServicioTokens.CLAIM_ROL, Rol.FAMILIA.name())
 				.claim(ServicioTokens.CLAIM_ESCUELA_ID, escuelaA.toString())
-				.claim(ServicioTokens.CLAIM_FAMILIA_ID, familiaId.toString()).build();
+				.claim(ServicioTokens.CLAIM_FAMILIA_ID, familiaId.toString());
+		if (version != null) {
+			builder.claim("version_sesion", version);
+		}
+		JwtClaimsSet claims = builder.build();
 		String token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
 				.getTokenValue();
 		return new Cookie(COOKIE, token);
@@ -304,6 +400,11 @@ class CuentasFamiliaHttpDbTest extends BaseDbTest {
 	private static void sesionMuerta(ResultActions r) throws Exception {
 		r.andExpect(status().isUnauthorized()).andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"))
 				.andExpect(cookie().value(COOKIE, "")).andExpect(cookie().maxAge(COOKIE, 0));
+	}
+
+	private long versionSesion(UUID usuario) {
+		return jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario)
+				.query(Long.class).single();
 	}
 
 	private boolean activa(UUID usuario) {

@@ -3,10 +3,7 @@ package com.banfieldpatin.backend.usuarios.cuentas;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,8 +32,8 @@ import com.banfieldpatin.backend.usuarios.cuentas.dto.CuentasFamilia;
  * <li><b>Alcance:</b> solo cuentas FAMILIA de una familia de la escuela del ADMIN; la familia y la cuenta se exigen juntas
  * (una cuenta de otra familia o de otra escuela, un ADMIN o un id inexistente dan el mismo 404). Nunca cambia la
  * pertenencia de una cuenta (V18 lo impide en la base).</li>
- * <li><b>Sesiones ya iniciadas:</b> desactivar las corta desde la siguiente solicitud (la sesión se revalida en la base en
- * cada solicitud); reactivar fija {@code sesiones_validas_desde} para que los tokens anteriores no revivan (V19).</li>
+ * <li><b>Sesiones ya iniciadas:</b> desactivar las corta desde la siguiente solicitud y, al incrementar
+ * {@code version_sesion} en la misma sentencia (V19), las revoca para siempre: reactivar no las revive.</li>
  * <li><b>Concurrencia sin versión:</b> cada acción expresa el estado final y se aplica con un UPDATE condicional sobre el
  * estado contrario. Repetirla (doble clic, otro ADMIN) devuelve el estado actual y no vuelve a auditar.</li>
  * <li><b>Auditoría:</b> USUARIO_DESACTIVADO / USUARIO_REACTIVADO con la familia; sin nombres ni correos.</li>
@@ -54,14 +51,11 @@ public class CuentasFamiliaAdminService {
 	private final JdbcClient jdbc;
 	private final AuditoriaService auditoria;
 	private final CuentasPropiedades propiedades;
-	private final Clock reloj;
 
-	public CuentasFamiliaAdminService(JdbcClient jdbc, AuditoriaService auditoria, CuentasPropiedades propiedades,
-			Clock reloj) {
+	public CuentasFamiliaAdminService(JdbcClient jdbc, AuditoriaService auditoria, CuentasPropiedades propiedades) {
 		this.jdbc = jdbc;
 		this.auditoria = auditoria;
 		this.propiedades = propiedades;
-		this.reloj = reloj;
 	}
 
 	public static ExcepcionNegocio cuentaNoEncontrada() {
@@ -97,13 +91,13 @@ public class CuentasFamiliaAdminService {
 					"La gestión de cuentas no está habilitada.");
 		}
 		exigirFamilia(admin, familiaId);
-		// Reactivar fija el corte de sesiones: un token emitido antes ya no vale (V19). Desactivar no lo necesita.
-		String asignacion = activa ? "activo = true, sesiones_validas_desde = :ahora" : "activo = false";
+		// Quitar el acceso incrementa la versión de sesión EN LA MISMA SENTENCIA (V19): todo token anterior queda revocado
+		// para siempre. Devolverlo no la toca, así que tampoco revive nada.
+		String asignacion = activa ? "activo = true" : "activo = false, version_sesion = version_sesion + 1";
 		int cambiadas = jdbc.sql("UPDATE gestion_patin.usuario u SET " + asignacion + " WHERE u.id = :cuenta AND "
 				+ ALCANCE + " AND u.activo = :antes")
 				.param("cuenta", cuentaId).param("escuela", admin.escuelaId()).param("familia", familiaId)
 				.param("antes", !activa)
-				.param("ahora", OffsetDateTime.ofInstant(reloj.instant(), ZoneOffset.UTC))
 				.update();
 		CuentaFamiliar cuenta = jdbc.sql("SELECT " + COLUMNAS + " FROM gestion_patin.usuario u WHERE u.id = :cuenta AND "
 				+ ALCANCE)

@@ -95,8 +95,8 @@ class AutenticacionControllerWebMvcTest {
 
 	@Test
 	void loginExitosoSeteaCookieHttpOnlyLaxSinTokenNiHashEnElCuerpo() throws Exception {
-		when(servicio.autenticar(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any(DatosSolicitud.class)))
-				.thenReturn(familia);
+		when(servicio.iniciarSesion(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any(DatosSolicitud.class)))
+				.thenReturn(new AutenticacionService.SesionIniciada(familia, 0L));
 
 		MvcResult r = mvc.perform(login("/api/auth/login", CUERPO))
 				.andExpect(status().isOk())
@@ -119,7 +119,7 @@ class AutenticacionControllerWebMvcTest {
 	void adminLoginUsaRolAdmin() throws Exception {
 		UsuarioActualRespuesta admin = new UsuarioActualRespuesta(UUID.randomUUID(), "Root", "Admin",
 				"admin@example.com", Rol.ADMIN, escuelaId, null);
-		when(servicio.autenticar(eq(Rol.ADMIN), eq("admin@example.com"), any(), any())).thenReturn(admin);
+		when(servicio.iniciarSesion(eq(Rol.ADMIN), eq("admin@example.com"), any(), any())).thenReturn(new AutenticacionService.SesionIniciada(admin, 0L));
 
 		mvc.perform(login("/api/auth/admin/login",
 				"{\"email\":\"admin@example.com\",\"password\":\"clave-correcta-123\"}"))
@@ -137,7 +137,7 @@ class AutenticacionControllerWebMvcTest {
 	void adminLoginNoEmiteSesionCompletaSinoUnTokenConMfaPendienteDeVidaCorta() throws Exception {
 		UsuarioActualRespuesta admin = new UsuarioActualRespuesta(UUID.randomUUID(), "Root", "Admin",
 				"admin@example.com", Rol.ADMIN, escuelaId, null);
-		when(servicio.autenticar(eq(Rol.ADMIN), eq("admin@example.com"), any(), any())).thenReturn(admin);
+		when(servicio.iniciarSesion(eq(Rol.ADMIN), eq("admin@example.com"), any(), any())).thenReturn(new AutenticacionService.SesionIniciada(admin, 0L));
 
 		MvcResult r = mvc.perform(login("/api/auth/admin/login",
 				"{\"email\":\"admin@example.com\",\"password\":\"clave-correcta-123\"}"))
@@ -157,8 +157,25 @@ class AutenticacionControllerWebMvcTest {
 	}
 
 	@Test
+	void elTokenDelLoginLlevaLaVersionDeSesionLeidaJuntoConLaCuenta() throws Exception {
+		when(servicio.iniciarSesion(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any()))
+				.thenReturn(new AutenticacionService.SesionIniciada(familia, 4L));
+		MvcResult r = mvc.perform(login("/api/auth/login", CUERPO)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.versionSesion").doesNotExist()).andReturn();
+		assertThat((Object) decoder.decode(valorDeCookie(r)).getClaim("version_sesion")).isEqualTo(4L);
+
+		UsuarioActualRespuesta admin = new UsuarioActualRespuesta(UUID.randomUUID(), "Admin", "Prueba", "admin@example.com",
+				Rol.ADMIN, UUID.randomUUID(), null);
+		when(servicio.iniciarSesion(eq(Rol.ADMIN), eq("admin@example.com"), any(), any()))
+				.thenReturn(new AutenticacionService.SesionIniciada(admin, 2L));
+		MvcResult pendiente = mvc.perform(login("/api/auth/admin/login", "{\"email\":\"admin@example.com\",\"password\":\"clave-correcta-123\"}"))
+				.andExpect(status().isOk()).andReturn();
+		assertThat((Object) decoder.decode(valorDeCookie(pendiente)).getClaim("version_sesion")).isEqualTo(2L);
+	}
+
+	@Test
 	void loginDeFamiliaNoSeVeAfectadoPorMfa() throws Exception {
-		when(servicio.autenticar(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any())).thenReturn(familia);
+		when(servicio.iniciarSesion(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any())).thenReturn(new AutenticacionService.SesionIniciada(familia, 0L));
 
 		MvcResult r = mvc.perform(login("/api/auth/login", CUERPO))
 				.andExpect(status().isOk())
@@ -170,7 +187,7 @@ class AutenticacionControllerWebMvcTest {
 
 	@Test
 	void credencialesInvalidasDa401SinCookieDeSesion() throws Exception {
-		when(servicio.autenticar(any(), any(), any(), any())).thenThrow(AutenticacionService.credencialesInvalidas());
+		when(servicio.iniciarSesion(any(), any(), any(), any())).thenThrow(AutenticacionService.credencialesInvalidas());
 
 		MvcResult r = mvc.perform(login("/api/auth/login", CUERPO))
 				.andExpect(status().isUnauthorized())
@@ -181,7 +198,7 @@ class AutenticacionControllerWebMvcTest {
 
 	@Test
 	void loginYAdminLoginRechazadosPorRolDanElMismoCuerpoExacto() throws Exception {
-		when(servicio.autenticar(any(), any(), any(), any())).thenThrow(AutenticacionService.credencialesInvalidas());
+		when(servicio.iniciarSesion(any(), any(), any(), any())).thenThrow(AutenticacionService.credencialesInvalidas());
 
 		String deLogin = mvc.perform(login("/api/auth/login", CUERPO)).andReturn().getResponse().getContentAsString();
 		String deAdmin = mvc.perform(login("/api/auth/admin/login", CUERPO)).andReturn().getResponse()
@@ -193,9 +210,9 @@ class AutenticacionControllerWebMvcTest {
 	@Test
 	void bloqueoEsIndistinguibleDeCredencialesInvalidas() throws Exception {
 		// El servicio lanza la misma excepcion en ambos casos (R3): sin 429 ni Retry-After.
-		when(servicio.autenticar(any(), any(), eq("clave-mala"), any()))
+		when(servicio.iniciarSesion(any(), any(), eq("clave-mala"), any()))
 				.thenThrow(AutenticacionService.credencialesInvalidas());
-		when(servicio.autenticar(any(), any(), eq("clave-correcta-123"), any()))
+		when(servicio.iniciarSesion(any(), any(), eq("clave-correcta-123"), any()))
 				.thenThrow(AutenticacionService.credencialesInvalidas());
 
 		MvcResult mala = mvc.perform(login("/api/auth/login", "{\"email\":\"a@x.com\",\"password\":\"clave-mala\"}"))
@@ -218,13 +235,13 @@ class AutenticacionControllerWebMvcTest {
 
 	@Test
 	void escuelaIdYRolEnElCuerpoSeIgnoran() throws Exception {
-		when(servicio.autenticar(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any())).thenReturn(familia);
+		when(servicio.iniciarSesion(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any())).thenReturn(new AutenticacionService.SesionIniciada(familia, 0L));
 
 		mvc.perform(login("/api/auth/login", "{\"email\":\"ana@example.com\",\"password\":\"clave-correcta-123\","
 				+ "\"escuelaId\":\"" + UUID.randomUUID() + "\",\"rol\":\"ADMIN\"}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.rol").value("FAMILIA"));
-		verify(servicio).autenticar(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any());
+		verify(servicio).iniciarSesion(eq(Rol.FAMILIA), eq("ana@example.com"), any(), any());
 	}
 
 	@Test

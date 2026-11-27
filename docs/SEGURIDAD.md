@@ -21,7 +21,7 @@ Este documento describe lo que el código hace hoy; los puntos abiertos están e
 | Aspecto | Valor |
 |---|---|
 | Algoritmo | HS256 con un secreto compartido (`JWT_SECRET`, base64, mínimo 32 bytes decodificados) |
-| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`) y `mfa_renovado` (solo en el token pendiente renovado al enrolar, sección 9). Sin email ni datos personales |
+| Claims | `iss`, `sub` (id de usuario), `iat`, `exp`, `jti`, `rol`, `escuela_id`, `familia_id` (solo FAMILIA) y `mfa` (solo ADMIN: `PENDIENTE` o `COMPLETADA`) y `mfa_renovado` (solo en el token pendiente renovado al enrolar, sección 9) y `version_sesion` (entero, V19: generación de sesiones de la cuenta; ver «Revalidación»). Sin email ni datos personales |
 | Duración | `JWT_DURACION`, por defecto `PT8H` (se valida entre `PT5M` y `PT24H`). El token de un ADMIN con MFA pendiente dura `MFA_DURACION_PENDIENTE`, por defecto `PT5M` (entre `PT1M` y `PT15M`) |
 | Cookie | Nombre `BP_SESION` (configurable), `HttpOnly`, `Path=/`, `Max-Age` igual a la duración del JWT |
 | `Secure` | `AUTH_COOKIE_SECURE`; el valor por defecto de la aplicación es `true`. Solo el perfil `dev` y los ejemplos locales lo desactivan |
@@ -40,8 +40,12 @@ solo es vigente si:
 - su escuela está activa;
 - el `rol` y el `familia_id` del token coinciden con la fila del usuario (un token de ADMIN de quien hoy es FAMILIA, o con la familia de otro, se rechaza);
 - para un token de FAMILIA, la familia existe en esa escuela y está activa (desactivar una familia cierra la sesión de todos sus usuarios).
-- el token no es anterior a la última **reactivación** de la cuenta (`usuario.sesiones_validas_desde`, V19; el `iat` se compara con ese instante
-  truncado al segundo): reactivar una cuenta no revive las sesiones emitidas antes de desactivarla.
+- la `version_sesion` del token es la vigente de la cuenta (`usuario.version_sesion`, V19). Quitar el acceso a una cuenta la incrementa **en la misma
+  sentencia** que la desactiva y nunca retrocede (trigger): todo token anterior queda revocado para siempre, sin depender de la hora ni de la
+  precisión del `iat`, y reactivar la cuenta no lo revive. Un login emite la versión de la cuenta activa leída con su fila tomada `FOR SHARE`; la
+  renovación del token de MFA pendiente y la sesión completa heredan la del token presentado. Un token **sin** el claim (emitido por un backend
+  anterior a este contrato) se lee como versión 0: vale mientras la cuenta nunca haya sido revocada y deja de valer con la primera revocación.
+  Un claim presente que no es un entero no negativo es un token mal formado (`401`).
 
 | Resultado de la revalidación | Respuesta |
 |---|---|
@@ -346,8 +350,18 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   aplican con un `UPDATE` condicional (dos ADMIN a la vez dejan un solo cambio auditado). Solo cuentas FAMILIA de una familia de la escuela
   del ADMIN; la familia y la cuenta se exigen juntas: una cuenta de otra familia o escuela, un ADMIN o un id inexistente dan el mismo
   `404 CUENTA_NO_ENCONTRADA` (familia ajena: `404 FAMILIA_NO_ENCONTRADA`).
-- **Sesiones ya iniciadas:** desactivar las corta desde la siguiente solicitud (revalidación) y reactivar no las revive (V19). Cada persona
-  de una familia tiene credenciales propias: desactivar a una no afecta a las demás.
+- **Sesiones ya iniciadas:** desactivar las corta desde la siguiente solicitud y las revoca para siempre (`version_sesion`, V19); reactivar no
+  las revive y exige un nuevo inicio de sesión. Cada persona de una familia tiene credenciales y versión propias: quitar el acceso a una no
+  afecta a las demás. Repetir la acción no cambia la versión ni vuelve a auditar; si la auditoría falla, no se aplica ni la desactivación ni la
+  revocación (misma transacción).
+- **Carga documental en curso:** cada paso (reserva, inicio, publicación) exige la versión del token de esa solicitud bajo el mismo
+  `FOR SHARE` de la cuenta: una carga iniciada antes de quitar el acceso no publica aunque la cuenta se reactive mientras transfiere
+  (el archivo sigue el camino de limpieza/reconciliación de siempre). Los pasos son transacciones cortas; la transferencia a Storage no
+  retiene bloqueos.
+- **Login concurrente con la desactivación:** el login lee la `version_sesion` de la cuenta activa con su fila tomada `FOR SHARE` hasta el
+  commit: si la desactivación llegó antes, el login se rechaza como cuenta inactiva; si llega después, espera al login y su incremento
+  revoca el token recién emitido. Además la entidad `Usuario` ya no escribe `activo` (`updatable = false`): guardar el último acceso no
+  puede deshacer una desactivación (antes, Hibernate reescribía la columna completa).
 - Las escrituras están detrás de `CUENTAS_GESTION_HABILITADA` (`false` por defecto → `503 GESTION_CUENTAS_DESHABILITADA`).
 - `GET /api/admin/invitaciones?familiaId=…` filtra las invitaciones de una familia de la escuela (una familia ajena da una página vacía).
 - La pertenencia de una cuenta (familia, escuela, rol) no cambia (V18): no existe reasignación entre familias.

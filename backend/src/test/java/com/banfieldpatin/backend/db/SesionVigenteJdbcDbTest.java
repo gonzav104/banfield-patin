@@ -54,12 +54,12 @@ class SesionVigenteJdbcDbTest extends BaseDbTest {
 
 	@Test
 	void usuarioFamiliaActivoConFamiliaActivaEsVigente() {
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isTrue();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isTrue();
 	}
 
 	@Test
 	void adminActivoConFamiliaNulaEsVigente() {
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isTrue();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
 	}
 
 	@Test
@@ -67,77 +67,77 @@ class SesionVigenteJdbcDbTest extends BaseDbTest {
 		datos.desactivarUsuario(adminId);
 		datos.desactivarUsuario(usuarioFamiliaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 
 		datos.reactivarUsuario(adminId);
 		datos.reactivarUsuario(usuarioFamiliaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isTrue();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isTrue();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isTrue();
 	}
 
 	@Test
 	void usuarioInexistenteNoEsVigente() {
-		assertThat(verificador.vigenteSinComprobarEmision(UUID.randomUUID(), escuelaId, "ADMIN", null)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(UUID.randomUUID(), escuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(UUID.randomUUID(), escuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(UUID.randomUUID(), escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 
 		UUID borrado = datos.admin(escuelaId, "borrado@sv.example", true);
-		assertThat(verificador.vigenteSinComprobarEmision(borrado, escuelaId, "ADMIN", null)).isTrue();
+		assertThat(verificador.vigente(borrado, escuelaId, "ADMIN", null, 0L)).isTrue();
 		datos.borrarUsuario(borrado);
-		assertThat(verificador.vigenteSinComprobarEmision(borrado, escuelaId, "ADMIN", null)).isFalse();
+		assertThat(verificador.vigente(borrado, escuelaId, "ADMIN", null, 0L)).isFalse();
 	}
 
 	@Test
 	void escuelaInactivaNoEsVigenteYAlReactivarlaVuelveASerlo() {
 		datos.desactivarEscuela(escuelaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 
 		datos.reactivarEscuela(escuelaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isTrue();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
 	}
 
 	@Test
 	void unaEscuelaDelTokenQueNoEsLaDelUsuarioNoEsVigente() {
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, otraEscuelaId, "ADMIN", null)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, otraEscuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(adminId, otraEscuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, otraEscuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 	}
 
 	@Test
 	void unRolDelTokenQueNoEsElDeLaFilaNoEsVigente() {
 		// Token de ADMIN para quien hoy es FAMILIA, y token de FAMILIA para quien es ADMIN.
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "ADMIN", null)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "FAMILIA", familiaId)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ROL_INEXISTENTE", null)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "ADMIN", null, 0L)).isFalse();
+		assertThat(verificador.vigente(adminId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
+		assertThat(verificador.vigente(adminId, escuelaId, "ROL_INEXISTENTE", null, 0L)).isFalse();
 	}
 
 	@Test
 	void unaFamiliaDelTokenQueNoEsLaDelUsuarioNoEsVigente() {
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", otraFamiliaId)).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", UUID.randomUUID())).isFalse();
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", null)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", otraFamiliaId, 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", UUID.randomUUID(), 0L)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", null, 0L)).isFalse();
 	}
 
 	@Test
 	void familiaInactivaNoEsVigenteSoloParaSusUsuariosYAlReactivarlaVuelveASerlo() {
 		datos.desactivarFamilia(familiaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 		// Un ADMIN de la misma escuela no depende de ninguna familia.
-		assertThat(verificador.vigenteSinComprobarEmision(adminId, escuelaId, "ADMIN", null)).isTrue();
+		assertThat(verificador.vigente(adminId, escuelaId, "ADMIN", null, 0L)).isTrue();
 
 		datos.reactivarFamilia(familiaId);
 
-		assertThat(verificador.vigenteSinComprobarEmision(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId)).isTrue();
+		assertThat(verificador.vigente(usuarioFamiliaId, escuelaId, "FAMILIA", familiaId, 0L)).isTrue();
 	}
 
 	@Test
 	void unUsuarioFamiliaInactivoNoEsVigenteAunqueSuFamiliaLoSea() {
 		UUID inactivo = datos.usuarioFamilia(escuelaId, familiaId, "inactivo@sv.example", false);
 
-		assertThat(verificador.vigenteSinComprobarEmision(inactivo, escuelaId, "FAMILIA", familiaId)).isFalse();
+		assertThat(verificador.vigente(inactivo, escuelaId, "FAMILIA", familiaId, 0L)).isFalse();
 	}
 }

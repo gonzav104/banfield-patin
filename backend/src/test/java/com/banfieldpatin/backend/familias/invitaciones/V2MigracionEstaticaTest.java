@@ -50,7 +50,7 @@ class V2MigracionEstaticaTest {
 							"V14__crear_vigencias_tutor_deportista.sql", "V15__habilitar_cierre_acotado_vigencias_tutor.sql",
 							"V16__habilitar_escrituras_acotadas_vigencias_tutor.sql",
 							"V17__apto_fisico_en_documento.sql",
-							"V18__pertenencia_inmutable_usuario.sql", "V19__sesiones_validas_desde.sql",
+							"V18__pertenencia_inmutable_usuario.sql", "V19__version_sesion_usuario.sql",
 							"V1__crear_esquema_inicial.sql",
 							"V2__crear_invitacion.sql",
 							"V3__crear_usuario_mfa.sql", "V4__restricciones_familia_deportista.sql",

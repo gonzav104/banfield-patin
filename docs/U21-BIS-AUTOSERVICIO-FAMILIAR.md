@@ -125,7 +125,7 @@ Todas **aditivas**; V1–V17 no se tocan. Cada migración trae su script de conc
 | Migración | Corte | Contenido |
 |---|---|---|
 | **V18** (implementada en C0) | antes de C2 | Triggers que impiden cambiar familia, escuela, rol e id de `usuario` y `documento.cargado_por` tras la creación (**autorizado** el 2026-11-27). |
-| **V19** (implementada en C0) | C0 | `usuario.sesiones_validas_desde`: reactivar una cuenta no revive sus sesiones anteriores. |
+| **V19** (implementada en C0) | C0 | `usuario.version_sesion` (generación de sesiones, claim `version_sesion` del JWT, solo crece): quitar el acceso revoca para siempre los tokens anteriores; reactivar no los revive. |
 | **V20** | C1/C2 | `tutor`: `origen` (`ADMIN`/`FAMILIA`), `verificacion` (`DECLARADO`/`VERIFICADO`/`OBSERVADO`), `vinculo_cuenta` (`NULL`/`DECLARADO`/`VERIFICADO`), `declarado_por`, `verificado_por/en`, `motivo_observacion`. `DEFAULT` que conserva los tutores existentes como `ADMIN/VERIFICADO`. CHECK: `vinculo_cuenta` ⇒ `usuario_id`; verificado ⇒ `verificado_por/en`. |
 | **V21** | C3 | `solicitud_familiar` (sobre: `id`, `escuela_id`, `familia_id`, `solicitante_id`, `tipo`, `estado`, `idempotencia`, `huella`, `version`, `motivo_codigo`, `motivo_detalle`, `resuelta_por/en`, `resultado_deportista_id`, timestamps) + `solicitud_deportista` (datos **tipados** del deportista y relación declarada) con FK por escuela, CHECK de estados y de longitudes, `uq_solicitud_idempotencia`, `uq_solicitud_abierta_familia_dni`. |
 | **V22** | C4 | `solicitud_responsabilidad` (tutor, deportista, tipo declarado) sobre el mismo sobre. |

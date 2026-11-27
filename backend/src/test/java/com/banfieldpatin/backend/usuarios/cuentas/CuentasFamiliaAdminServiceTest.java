@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import java.time.Clock;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,7 @@ class CuentasFamiliaAdminServiceTest {
 	private final DatosSolicitud solicitud = new DatosSolicitud(null, null);
 
 	private CuentasFamiliaAdminService servicio(boolean habilitada) {
-		return new CuentasFamiliaAdminService(jdbc, auditoria, new CuentasPropiedades(habilitada), Clock.systemUTC());
+		return new CuentasFamiliaAdminService(jdbc, auditoria, new CuentasPropiedades(habilitada));
 	}
 
 	@Test

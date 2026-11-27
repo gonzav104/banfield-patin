@@ -1,6 +1,5 @@
 package com.banfieldpatin.backend.seguridad;
 
-import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,7 +32,7 @@ public class SesionVigenteDePrueba {
 		private final AtomicInteger llamadas = new AtomicInteger();
 
 		@Override
-		public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId, Instant emitidoEn) {
+		public boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId, long versionSesion) {
 			llamadas.incrementAndGet();
 			return switch (modo) {
 				case PERMITIR -> true;

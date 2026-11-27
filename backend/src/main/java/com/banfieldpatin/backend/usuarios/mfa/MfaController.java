@@ -59,7 +59,8 @@ public class MfaController {
 		// El secreto y la URI se muestran una sola vez: que ninguna cache los retenga.
 		ResponseEntity.BodyBuilder ok = ResponseEntity.ok().cacheControl(CacheControl.noStore());
 		if (!ServicioTokens.mfaRenovado(jwt)) {
-			String renovado = tokens.emitirMfaPendienteRenovado(identidad.id(), identidad.escuelaId());
+			String renovado = tokens.emitirMfaPendienteRenovado(identidad.id(), identidad.escuelaId(),
+					ServicioTokens.versionSesion(jwt));
 			ok.header(HttpHeaders.SET_COOKIE, cookieSesion.crearMfaPendiente(renovado).toString());
 		}
 		return ok.body(respuesta);
@@ -71,7 +72,7 @@ public class MfaController {
 			HttpServletResponse response) {
 		UsuarioActualRespuesta usuario = servicio.confirmar(UsuarioAutenticado.desde(jwt), solicitud.codigo(),
 				DatosSolicitud.de(request));
-		return sesionCompleta(usuario, request, response);
+		return sesionCompleta(usuario, ServicioTokens.versionSesion(jwt), request, response);
 	}
 
 	@PostMapping("/verificar")
@@ -80,12 +81,16 @@ public class MfaController {
 			HttpServletResponse response) {
 		UsuarioActualRespuesta usuario = servicio.verificar(UsuarioAutenticado.desde(jwt), solicitud.codigo(),
 				DatosSolicitud.de(request));
-		return sesionCompleta(usuario, request, response);
+		return sesionCompleta(usuario, ServicioTokens.versionSesion(jwt), request, response);
 	}
 
-	private ResponseEntity<UsuarioActualRespuesta> sesionCompleta(UsuarioActualRespuesta usuario,
+	/**
+	 * La sesión completa hereda la versión de sesión del token pendiente que completó el segundo factor (ya revalidado al
+	 * entrar): una versión leída ahora podría ser la de una cuenta revocada y reactivada en el medio.
+	 */
+	private ResponseEntity<UsuarioActualRespuesta> sesionCompleta(UsuarioActualRespuesta usuario, long versionSesion,
 			HttpServletRequest request, HttpServletResponse response) {
-		String token = tokens.emitir(usuario.id(), usuario.rol(), usuario.escuelaId(), null);
+		String token = tokens.emitir(usuario.id(), usuario.rol(), usuario.escuelaId(), null, versionSesion);
 		// Cambia el nivel de privilegio: se descarta el token CSRF anterior (el SPA vuelve a pedir /api/auth/csrf).
 		csrfRepo.saveToken(null, request, response);
 		return ResponseEntity.ok()

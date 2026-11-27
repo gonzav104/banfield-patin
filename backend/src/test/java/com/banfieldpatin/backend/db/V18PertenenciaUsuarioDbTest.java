@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 /**
- * V18 con el login runtime real ({@code banfield_runtime}, concesiones de {@code ops/postgresql}): la familia, la escuela y
+ * V18 y V19 con el login runtime real ({@code banfield_runtime}, concesiones de {@code ops/postgresql}): la familia, la escuela y
  * el rol de una cuenta y el autor de un documento no cambian después de creados, de modo que la procedencia de lo ya
  * cargado no puede reescribirse. Lo demás de la cuenta (activo, contraseña, nombre) sigue editable.
  */
@@ -71,8 +71,10 @@ class V18PertenenciaUsuarioDbTest {
 				""").param("e", escuela).param("d", deportista).param("k", UUID.randomUUID().toString())
 				.param("u", usuarioFamilia).query(UUID.class).single();
 
+		// Actualización desde main (V17) hasta el candidato: V18 y V19, aplicadas por el migrador sobre datos existentes.
 		assertThat(flyway().target("18").load().migrate().migrationsExecuted).isEqualTo(1);
-		flyway().target("18").load().validate();
+		assertThat(flyway().target("19").load().migrate().migrationsExecuted).isEqualTo(1);
+		flyway().target("19").load().validate();
 		try (var c = base(MIGRATOR, CLAVE).getConnection(); var s = c.createStatement()) {
 			s.execute("SET ROLE " + OWNER);
 			for (String script : List.of("c1", "c2a", "c2b")) {
@@ -100,6 +102,26 @@ class V18PertenenciaUsuarioDbTest {
 				.query(UUID.class).single()).isEqualTo(familia);
 		assertThat(runtime.sql("SELECT cargado_por FROM gestion_patin.documento WHERE id = :d").param("d", documento)
 				.query(UUID.class).single()).isEqualTo(usuarioFamilia);
+	}
+
+	@Test
+	void v19DejaLasCuentasExistentesEnLaVersionCeroYLaVersionNuncaRetrocede() {
+		for (UUID u : List.of(usuarioFamilia, usuarioAdmin)) {
+			assertThat(runtime.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", u)
+					.query(Long.class).single()).isZero();
+		}
+		assertThat(runtime.sql("UPDATE gestion_patin.usuario SET activo = false, version_sesion = version_sesion + 1 WHERE id = :u")
+				.param("u", usuarioFamilia).update()).isEqualTo(1);
+		rechazada("USUARIO_VERSION_SESION_NO_RETROCEDE", () -> runtime.sql(
+				"UPDATE gestion_patin.usuario SET version_sesion = version_sesion - 1 WHERE id = :u").param("u", usuarioFamilia)
+				.update());
+		// Un valor negativo también es un retroceso desde 0 (el CHECK ck_usuario_version_sesion cubre además las altas).
+		rechazada("USUARIO_VERSION_SESION_NO_RETROCEDE", () -> runtime.sql(
+				"UPDATE gestion_patin.usuario SET version_sesion = -1 WHERE id = :u").param("u", usuarioAdmin).update());
+		assertThat(runtime.sql("UPDATE gestion_patin.usuario SET activo = true WHERE id = :u").param("u", usuarioFamilia)
+				.update()).isEqualTo(1);
+		assertThat(runtime.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuarioFamilia)
+				.query(Long.class).single()).isEqualTo(1);
 	}
 
 	@Test

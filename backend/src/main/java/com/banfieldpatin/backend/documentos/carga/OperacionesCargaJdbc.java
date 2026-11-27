@@ -167,7 +167,7 @@ final class OperacionesCargaJdbc {
             .query(UUID.class)
             .optional()
             .isEmpty()) throw TutorAdminService.tutorNoEncontrado();
-    if (!sesiones.vigenteSinComprobarEmision(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
+    if (!sesiones.vigente(u.id(), u.escuelaId(), u.rol().name(), u.familiaId(), c.versionSesion()))
       throw new ExcepcionNegocio(
           HttpStatus.UNAUTHORIZED, "SESION_NO_VIGENTE", "La sesión ya no está vigente.");
     vigente(c);
@@ -189,7 +189,7 @@ final class OperacionesCargaJdbc {
             .isEmpty()
         || vinculos.deportistaEnAlcance(u.familiaId(), u.escuelaId(), atleta).isEmpty())
       throw DeportistaAdminService.deportistaNoEncontrado();
-    if (!sesiones.vigenteSinComprobarEmision(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
+    if (!sesiones.vigente(u.id(), u.escuelaId(), u.rol().name(), u.familiaId(), c.versionSesion()))
       throw new ExcepcionNegocio(
           HttpStatus.UNAUTHORIZED, "SESION_NO_VIGENTE", "La sesión ya no está vigente.");
     vigente(c);
@@ -208,11 +208,14 @@ final class OperacionesCargaJdbc {
             .optional()
             .isEmpty()
         || jdbc.sql(
+                // version_sesion bajo el mismo FOR SHARE: quitar el acceso (UPDATE de esta fila) no puede
+                // intercalarse entre la comprobación y la escritura de este paso.
                 "SELECT id FROM gestion_patin.usuario WHERE id=:u AND escuela_id=:e AND"
-                    + " familia_id=:f AND rol='FAMILIA' AND activo FOR SHARE")
+                    + " familia_id=:f AND rol='FAMILIA' AND activo AND version_sesion=:sv FOR SHARE")
             .param("u", u.id())
             .param("e", u.escuelaId())
             .param("f", u.familiaId())
+            .param("sv", c.versionSesion())
             .query(UUID.class)
             .optional()
             .isEmpty()

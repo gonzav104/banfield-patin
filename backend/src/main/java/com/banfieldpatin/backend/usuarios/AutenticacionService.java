@@ -71,8 +71,23 @@ public class AutenticacionService {
 				"Email o contraseña incorrectos.");
 	}
 
+	/** Resultado interno del login: la identidad para el cliente y la versión de sesión para el token (nunca se serializa). */
+	public record SesionIniciada(UsuarioActualRespuesta usuario, long versionSesion) {
+	}
+
 	@Transactional
 	public UsuarioActualRespuesta autenticar(Rol rolRequerido, String emailCrudo, String password,
+			DatosSolicitud solicitud) {
+		return iniciarSesion(rolRequerido, emailCrudo, password, solicitud).usuario();
+	}
+
+	/**
+	 * Login con la versión de sesión de la cuenta activa, leída con su fila tomada FOR SHARE: una desactivación concurrente
+	 * espera al commit del login y después incrementa la versión, así que el token emitido con esta ya nace revocado; si la
+	 * desactivación llegó antes, el login se rechaza como cuenta inactiva.
+	 */
+	@Transactional
+	public SesionIniciada iniciarSesion(Rol rolRequerido, String emailCrudo, String password,
 			DatosSolicitud solicitud) {
 		String email = emailCrudo.trim().toLowerCase(Locale.ROOT);
 		String clave = LimitadorIntentosLogin.clave(solicitud.ip(), email);
@@ -103,6 +118,11 @@ public class AutenticacionService {
 		if (!principalesActivos(usuario, escuela)) {
 			throw fallo(escuela, usuario, rolRequerido, MOTIVO_INACTIVO, email, clave, solicitud);
 		}
+		// Versión de sesión de la MISMA cuenta activa, con su fila tomada hasta el commit (ver UsuarioRepository).
+		Long versionSesion = usuarios.bloquearVersionSesionSiActiva(usuario.getId()).orElse(null);
+		if (versionSesion == null) {
+			throw fallo(escuela, usuario, rolRequerido, MOTIVO_INACTIVO, email, clave, solicitud);
+		}
 
 		usuario.registrarAcceso(reloj.instant());
 		if (passwordEncoder.upgradeEncoding(usuario.getPasswordHash())) {
@@ -112,7 +132,7 @@ public class AutenticacionService {
 		auditoria.registrar(new EventoAuditoria(usuario.getEscuelaId(), usuario.getId(),
 				AccionAuditoria.LOGIN_EXITOSO, "USUARIO", usuario.getId(), Map.of("canal", rolRequerido.name()),
 				solicitud));
-		return UsuarioActualRespuesta.de(usuario);
+		return new SesionIniciada(UsuarioActualRespuesta.de(usuario), versionSesion);
 	}
 
 	/** Recarga el usuario para que una desactivacion posterior al JWT se respete; vacio = sesion invalida. */

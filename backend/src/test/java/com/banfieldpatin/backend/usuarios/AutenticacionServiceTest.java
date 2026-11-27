@@ -65,6 +65,8 @@ class AutenticacionServiceTest {
 
 	@BeforeEach
 	void preparar() {
+		// Toda cuenta de estas pruebas sigue activa al tomar su fila: versión de sesión 0 (V19).
+		when(usuarios.bloquearVersionSesionSiActiva(any())).thenReturn(Optional.of(0L));
 		escuela = FixturesDominio.escuela(escuelaId, true);
 		familiaUsuario = FixturesDominio.usuario(UUID.randomUUID(), escuelaId, familiaId, Rol.FAMILIA,
 				"ana@example.com", encoder.encode(PASSWORD), true);
@@ -89,6 +91,17 @@ class AutenticacionServiceTest {
 		ArgumentCaptor<EventoAuditoria> c = ArgumentCaptor.forClass(EventoAuditoria.class);
 		verify(auditoria).registrarFallo(c.capture());
 		return c.getValue();
+	}
+
+	@Test
+	void siLaCuentaDejoDeEstarActivaAlTomarSuFilaElLoginSeRechazaComoInactivaYDevuelveLaVersionSiSigueActiva() {
+		when(usuarios.buscarPorEmail(escuelaId, "ana@example.com")).thenReturn(Optional.of(familiaUsuario));
+		when(usuarios.bloquearVersionSesionSiActiva(familiaUsuario.getId())).thenReturn(Optional.of(6L));
+		assertThat(servicio.iniciarSesion(Rol.FAMILIA, "ana@example.com", PASSWORD, SOLICITUD).versionSesion()).isEqualTo(6L);
+
+		when(usuarios.bloquearVersionSesionSiActiva(familiaUsuario.getId())).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> servicio.iniciarSesion(Rol.FAMILIA, "ana@example.com", PASSWORD, SOLICITUD))
+				.isInstanceOfSatisfying(ExcepcionNegocio.class, e -> assertThat(e.getCodigo()).isEqualTo("CREDENCIALES_INVALIDAS"));
 	}
 
 	@Test

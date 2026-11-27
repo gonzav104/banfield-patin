@@ -233,6 +233,20 @@ class MfaControllerWebMvcTest {
 		assertThat(sesionesEmitidas(r).get(0)).contains("Max-Age=28800");
 	}
 
+	@Test
+	void renovarYCompletarElSegundoFactorHeredanLaVersionDeSesionDelTokenPresentado() throws Exception {
+		Cookie conVersion = new Cookie("BP_SESION", tokens.emitirMfaPendiente(adminId, escuelaId, 3L));
+		when(servicio.enrolar(any(), any())).thenReturn(ENROLAMIENTO);
+		MvcResult renovada = mvc.perform(conCsrf(post("/api/auth/admin/mfa/enrolar")).cookie(conVersion))
+				.andExpect(status().isOk()).andReturn();
+		assertThat((Object) decoder.decode(valorDeCookie(renovada)).getClaim("version_sesion")).isEqualTo(3L);
+
+		when(servicio.confirmar(any(), eq(CODIGO), any())).thenReturn(admin);
+		MvcResult completa = mvc.perform(codigo("/api/auth/admin/mfa/confirmar", conVersion, cuerpo(CODIGO)))
+				.andExpect(status().isOk()).andReturn();
+		assertThat((Object) decoder.decode(valorDeCookie(completa)).getClaim("version_sesion")).isEqualTo(3L);
+	}
+
 	// ---------- confirmar / verificar ----------
 
 	@Test
