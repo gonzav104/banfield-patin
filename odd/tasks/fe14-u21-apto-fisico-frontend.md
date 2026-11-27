@@ -22,7 +22,7 @@ Runner: Vitest + Testing Library (`npm test`), FakeBackend, Playwright E2E real 
 - [x] T3 · S2 S3 · inline · ADMIN: sección en el detalle, revisión, descarga auditada, corrección con revisión optimista y advertencia, bandeja
 - [x] T4 · S4 · inline · FakeBackend + pruebas de componentes (formularios, idempotencia y conflictos, accesibilidad/móvil, privacidad)
 - [x] T5 · S4 · inline · E2E real (dos familias, revisión, corrección, observación, reemplazo, revocación, bandera apagada) + shards
-- [ ] T6 · S4 S5 · inline · docs, ODD, Engram, Gentle AI, commits, informe
+- [x] T6 · S4 S5 · inline · docs, ODD, Engram, Gentle AI, commits, informe
 
 Route: todo inline (módulo único y dependiente; sin unidades paralelas independientes ⇒ sin Writer trigger).
 
@@ -35,4 +35,9 @@ Pedido del usuario (2026-11-26/27): ver `S1`–`S6` (citas literales). Orden de 
 
 ### L2 — avance 2026-11-27
 Módulo `features/apto-fisico`, secciones familiar y ADMIN, FakeBackend, E2E y reparto de shards (commits 26b1125, 33603b5, 1caf05d). Hallazgos: (1) el portal solo lista temporadas hasta la **activa** (`ta.anio >= t.anio`): sin temporada activa o para una temporada posterior a la activa la familia no puede cargar el apto; es una regla del backend ya vigente y se respeta (limitación registrada, no se cambia el backend en este PR); (2) `portal-ficha` fijaba la lista exacta de títulos y los requests de la ficha: se actualizó con el apto; (3) un escenario de `portal-ficha` borraba las cookies con la sección nueva todavía cargando: ahora espera su estado. El apto sale del listado genérico de documentos del detalle ADMIN para no duplicar controles.
+
+### L3 — cierre local 2026-11-27
+Commits sobre 3e51372: 26b1125 (familia), 33603b5 (ADMIN), 1caf05d (E2E + reparto + banderas), 25e54a9 (docs, U21-BIS), abcfe88 (ajustes tras revisión) y este registro. Verificación: Vitest 75 archivos / 1695 tests, lint, tipos y build limpios; `shards.ts check` = 262 escenarios (142 + 116 + 4). E2E reales sobre 1caf05d: shard 1 142/142; shard 2 115/116 (el fallo, `vinculos-vinculacion` «doble envío», pasó 15/15 aislado: flake de temporización de una pantalla no tocada); shard 3 4/4. Tras abcfe88 se reverificaron el shard rápido (auth + apto + portal-ficha) 37/37 y el shard 3 4/4; los shards completos no se repitieron.
+Gentle AI: cuatro candidatos por el presupuesto del revisor. 26b1125, 33603b5 y 1caf05d..25e54a9: aprobados y reconocidos, sin bloqueantes (se aplicaron los ajustes útiles: estado «pendiente» siempre consistente, invalidación de la bandeja, helper de revisión, tests deterministas, guarda de CI). abcfe88: el usuario eligió «Skip this time» (no hay registro de revisión; son 60 líneas de ajustes derivados de las revisiones y quedaron cubiertos por las pruebas anteriores).
+Pendiente: publicación (requiere autorización), CI de GitHub, retención de documentación médica y evaluación de endurecer `usuario.familia_id` (condiciones previas al despliegue), U21-BIS antes de U22. Limitación conocida: el portal lista temporadas solo hasta la activa, por lo que sin temporada activa o para una posterior la familia no puede cargar el apto.
 
