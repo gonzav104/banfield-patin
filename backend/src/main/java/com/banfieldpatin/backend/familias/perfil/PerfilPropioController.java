@@ -43,8 +43,8 @@ public class PerfilPropioController {
 	@PostMapping
 	public ResponseEntity<PerfilRespuesta> crear(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody PerfilSolicitud solicitud,
 			HttpServletRequest request) {
-		return ResponseEntity.status(201).cacheControl(CacheControl.noStore())
-				.body(servicio.crear(UsuarioAutenticado.desde(jwt), solicitud, DatosSolicitud.de(request)));
+		// 200 y no 201: no crea un recurso con dirección propia (es «mi perfil»), igual que el resto de las rutas del portal.
+		return privado(servicio.crear(UsuarioAutenticado.desde(jwt), solicitud, DatosSolicitud.de(request)));
 	}
 
 	@PutMapping

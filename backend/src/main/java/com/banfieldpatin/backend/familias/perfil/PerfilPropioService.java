@@ -140,7 +140,9 @@ public class PerfilPropioService {
 			throw edicionDesactualizada();
 		}
 		em.lock(tutor, LockModeType.OPTIMISTIC);
-		String dni = DocumentoIdentidad.normalizarDni(s.dni());
+		// El DNI nunca viaja completo hacia la familia, así que no puede reenviarlo: sin DNI en el pedido se conserva el cargado.
+		// Cambiarlo es mandar uno nuevo (permitido solo mientras la identidad no esté verificada); borrarlo no es posible desde acá.
+		String dni = s.dni() == null ? tutor.getDni() : DocumentoIdentidad.normalizarDni(s.dni());
 		boolean cambiaIdentidad = !java.util.Objects.equals(tutor.getNombre(), s.nombre())
 				|| !java.util.Objects.equals(tutor.getApellido(), s.apellido())
 				|| !java.util.Objects.equals(tutor.getDni(), dni);

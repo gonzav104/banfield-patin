@@ -109,6 +109,29 @@ interface FakeFamily {
   version: number;
 }
 
+interface FakeProfile {
+  tutorId: string;
+  familyId: string;
+  nombre: string;
+  apellido: string;
+  dni: string | null;
+  telefono: string | null;
+  email: string | null;
+  parentesco: string | null;
+  estado: 'DECLARADO' | 'VERIFICADO';
+  version: number;
+}
+
+export interface FakePerson {
+  tutorId: string;
+  familyId: string;
+  nombre: string;
+  apellido: string;
+  parentesco: string | null;
+  version: number;
+  claimedBy: string | null;
+}
+
 export interface FakeAdminTutor {
   id: string;
   nombre: string;
@@ -305,6 +328,30 @@ export class FakeBackend {
   readonly documentDownloads: FakeDocumentDownload[] = [];
   /** Mirrors `DOCUMENTOS_CARGA_HABILITADA`: off by default, like the real backend. */
   documentUpload: { enabled: boolean; maxBytes: number } = { enabled: false, maxBytes: 5_000_000 };
+  /** Mirrors `AUTOSERVICIO_PERFIL_HABILITADO` (U21-BIS C1): off by default, like the real backend. */
+  profileSelfService: { enabled: boolean } = { enabled: false };
+  private profiles = new Map<string, FakeProfile>();
+  private peopleWithoutAccount: FakePerson[] = [];
+
+  /** A person of the family that the club loaded and that has no account yet («¿Sos esta persona?»). */
+  addPersonWithoutAccount(familyId: string, nombre: string, apellido: string, parentesco: string | null = null): FakePerson {
+    const person: FakePerson = { tutorId: `per-${++this.counter}`, familyId, nombre, apellido, parentesco, version: 0, claimedBy: null };
+    this.peopleWithoutAccount.push(person);
+    return person;
+  }
+
+  /** The club verified the account's profile identity (name and DNI become read-only for the family). */
+  verifyProfileIdentity(userId: string): void {
+    const profile = this.profiles.get(userId);
+    if (profile) profile.estado = 'VERIFICADO';
+  }
+
+  /** Sets what another process did to the profile meanwhile (a stale revision on the next save). */
+  touchProfile(userId: string): void {
+    const profile = this.profiles.get(userId);
+    if (profile) profile.version += 1;
+  }
+
   /** Mirrors `CUENTAS_GESTION_HABILITADA` (U21-BIS C0): off by default, like the real backend. */
   accountsManagement: { enabled: boolean } = { enabled: false };
   /** Mirrors FRONTEND_URL_BASE: when null the backend returns `enlaceRegistro: null`. */
@@ -1397,7 +1444,7 @@ export class FakeBackend {
     }
     if (method === 'post' && path === '/admin/invitaciones') {
       const input = body as { familiaId?: string; nuevaFamilia?: { nombreReferencia: string }; emailSugerido?: string; diasVigencia?: number };
-      const allowed = ['familiaId', 'nuevaFamilia', 'emailSugerido', 'diasVigencia'];
+      const allowed = ['familiaId', 'tutorId', 'nuevaFamilia', 'emailSugerido', 'diasVigencia'];
       if (Object.keys(input).some((k) => !allowed.includes(k)) || !!input.familiaId === !!input.nuevaFamilia) {
         return this.error(400, 'VALIDACION', 'Indicá familiaId o nuevaFamilia, pero no ambos ni ninguno.');
       }
@@ -1990,6 +2037,9 @@ export class FakeBackend {
       }
     }
     if (replacement && method === 'post') return this.replaceDocument(replacement[2]!, replacement[3]!, body, idempotencyKey, family, replacement[1] === 'tutores');
+    // U21-BIS C1: the profile is the portal's writable exception, like the document upload.
+    if (path === '/familia/mi-perfil' || path === '/familia/mi-perfil/reclamar-tutor') return this.profileRoute(method, path, current, family?.id ?? null, body);
+
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
     const familySeasons = /^\/familia\/deportistas\/([^/]+)\/temporadas$/.exec(path);
@@ -2162,6 +2212,68 @@ export class FakeBackend {
       return Promise.reject(new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_RESPONSE', config, {}, response));
     }
     return Promise.resolve(response);
+  }
+
+  /**
+   * Mirrors PerfilPropioController (U21-BIS C1): the account's own tutor profile and «soy esta persona». Declaring never changes who
+   * sees what. A claim of a person that is not free (other family, claimed, stale revision) is ONE neutral 409.
+   */
+  private profileRoute(method: string, path: string, current: FakeUser, familyId: string | null, body: unknown) {
+    if (!familyId) return this.error(404, 'PERFIL_NO_ENCONTRADO', 'Todavía no cargaste tus datos.');
+    const own = this.profiles.get(current.id);
+    const view = (profile: FakeProfile | undefined) => ({
+      habilitado: this.profileSelfService.enabled,
+      perfil: profile
+        ? {
+            tutorId: profile.tutorId,
+            nombre: profile.nombre,
+            apellido: profile.apellido,
+            dniEnmascarado: profile.dni ? `••••${profile.dni.slice(-3)}` : null,
+            telefono: profile.telefono,
+            email: profile.email,
+            parentesco: profile.parentesco,
+            estado: profile.estado,
+            identidadEditable: profile.estado !== 'VERIFICADO',
+            version: String(profile.version),
+          }
+        : null,
+      personasSinCuenta: profile
+        ? []
+        : this.peopleWithoutAccount
+            .filter((p) => p.familyId === familyId && p.claimedBy === null)
+            .map((p) => ({ tutorId: p.tutorId, nombre: p.nombre, apellido: p.apellido, parentesco: p.parentesco, version: String(p.version) })),
+    });
+    if (method === 'get' && path === '/familia/mi-perfil') return { status: 200, body: view(own) };
+    if (!this.profileSelfService.enabled) return this.error(503, 'AUTOSERVICIO_PERFIL_DESHABILITADO', 'Completar tus datos desde acá todavía no está habilitado.');
+    const input = (body ?? {}) as Record<string, unknown>;
+    const text = (key: string) => (typeof input[key] === 'string' && (input[key]).trim() !== '' ? (input[key]).trim() : null);
+    if (path.endsWith('/reclamar-tutor')) {
+      const person = this.peopleWithoutAccount.find((p) => p.tutorId === input.tutorId);
+      if (own || !person || person.familyId !== familyId || person.claimedBy !== null || String(person.version) !== String(input.versionEsperada)) {
+        return this.error(409, 'PERSONA_NO_DISPONIBLE', 'No pudimos asociar a esa persona con tu cuenta.');
+      }
+      person.claimedBy = current.id;
+      const claimed: FakeProfile = { tutorId: person.tutorId, familyId, nombre: person.nombre, apellido: person.apellido, dni: null, telefono: null, email: null, parentesco: person.parentesco, estado: 'VERIFICADO', version: person.version + 1 };
+      this.profiles.set(current.id, claimed);
+      return { status: 200, body: view(claimed) };
+    }
+    if (method === 'post') {
+      if (own) return this.error(409, 'PERFIL_YA_EXISTE', 'Ya tenés tus datos cargados.');
+      if (!text('nombre') || !text('apellido')) return this.error(400, 'VALIDACION', 'Revisá los datos.');
+      const created: FakeProfile = { tutorId: `per-${++this.counter}`, familyId, nombre: text('nombre')!, apellido: text('apellido')!, dni: text('dni')?.replace(/[.\s]/g, '') ?? null, telefono: text('telefono'), email: text('email')?.toLowerCase() ?? null, parentesco: text('parentesco'), estado: 'DECLARADO', version: 0 };
+      this.profiles.set(current.id, created);
+      return { status: 200, body: view(created) };
+    }
+    if (method === 'put') {
+      if (!own) return this.error(404, 'PERFIL_NO_ENCONTRADO', 'Todavía no cargaste tus datos.');
+      if (String(input.versionEsperada) !== String(own.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Tus datos cambiaron.');
+      const dni = text('dni') === null ? own.dni : text('dni')!.replace(/[.\s]/g, '');
+      const identityChanged = text('nombre') !== own.nombre || text('apellido') !== own.apellido || dni !== own.dni;
+      if (identityChanged && own.estado === 'VERIFICADO') return this.error(409, 'IDENTIDAD_VERIFICADA', 'Tu nombre y tu DNI ya fueron verificados.');
+      Object.assign(own, { nombre: text('nombre'), apellido: text('apellido'), dni, telefono: text('telefono'), email: text('email')?.toLowerCase() ?? null, parentesco: text('parentesco'), version: own.version + 1 });
+      return { status: 200, body: view(own) };
+    }
+    return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
   }
 
   /**

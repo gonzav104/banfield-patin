@@ -117,7 +117,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 	void declararElPropioPerfilLoDejaDeclaradoSinTocarPermisosYSinFiltrarDatos() throws Exception {
 		long vinculosAntes = count("familia_deportista");
 		ResultActions r = mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela));
-		r.andExpect(status().isCreated()).andExpect(jsonPath("$.habilitado").value(true))
+		r.andExpect(status().isOk()).andExpect(jsonPath("$.habilitado").value(true))
 				.andExpect(jsonPath("$.perfil.nombre").value("Laura")).andExpect(jsonPath("$.perfil.estado").value("DECLARADO"))
 				.andExpect(jsonPath("$.perfil.identidadEditable").value(true))
 				.andExpect(jsonPath("$.perfil.email").value("laura@example.test"))
@@ -149,7 +149,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 
 	@Test
 	void unaCuentaConPerfilNoPuedeCrearOtroYDosPedidosSimultaneosDejanUnoSolo() throws Exception {
-		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isCreated());
+		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isOk());
 		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.codigo").value("PERFIL_YA_EXISTE"));
 
@@ -212,7 +212,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 
 	@Test
 	void editarExigeLaRevisionVistaYUnaIdentidadVerificadaNoSeCambiaSola() throws Exception {
-		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isCreated());
+		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isOk());
 		String v0 = version(madre, true);
 
 		// Mientras está DECLARADO la persona corrige todo.
@@ -224,6 +224,14 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"));
 		assertThat(jdbc.sql("SELECT nombre FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class)
 				.single()).isEqualTo("Laurita");
+		// Sin DNI en el pedido (la familia nunca lo recibe completo) se conserva el cargado; no es un cambio de identidad.
+		String v05 = version(madre, true);
+		mvc.perform(escribir(put(RUTA), "{\"nombre\":\"Laurita\",\"apellido\":\"Gomez\",\"telefono\":\"11 7777-2222\",\"versionEsperada\":\"" + v05 + "\"}",
+				madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.dniEnmascarado").exists());
+		assertThat(jdbc.sql("SELECT dni FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class).single())
+				.isEqualTo(DNI);
+		jdbc.sql("UPDATE gestion_patin.tutor SET telefono = '11 5555-0000', email = 'laura@example.test', parentesco = 'Madre' WHERE usuario_id = :u")
+				.param("u", madre).update();
 		// Sin cambios: no audita.
 		long antes = auditoria("PERFIL_ACTUALIZADO");
 		String v1 = version(madre, true);

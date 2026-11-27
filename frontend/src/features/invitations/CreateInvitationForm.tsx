@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { useFamilyDetail } from '@/features/admin-familias/hooks';
 import { FamilyPicker } from './FamilyPicker';
 import { useCreateInvitation } from './hooks';
 import { createInvitationErrorMessage } from './messages';
@@ -13,6 +14,8 @@ const formSchema = z
   .object({
     mode: z.enum(['existing', 'new']),
     familyId: z.string().optional(),
+    /** Optional: invite a person who already figures in the family (their account is then linked and verified). */
+    tutorId: z.string().optional(),
     familyName: z.string().optional(),
     email: z.string().optional(),
     days: z.string().optional(),
@@ -41,7 +44,7 @@ type FormValues = z.infer<typeof formSchema>;
 function toInput(values: FormValues): CreateInvitationInput {
   const input: CreateInvitationInput =
     values.mode === 'existing'
-      ? { familiaId: values.familyId ?? '' }
+      ? { familiaId: values.familyId ?? '', ...(values.tutorId ? { tutorId: values.tutorId } : {}) }
       : { nuevaFamilia: { nombreReferencia: (values.familyName ?? '').trim() } };
   const email = values.email?.trim();
   if (email) input.emailSugerido = email;
@@ -65,9 +68,12 @@ export function CreateInvitationForm({ onCreated, onCancel }: CreateInvitationFo
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { mode: 'new', familyId: undefined, familyName: '', email: '', days: '' },
+    defaultValues: { mode: 'new', familyId: undefined, tutorId: '', familyName: '', email: '', days: '' },
   });
   const mode = useWatch({ control, name: 'mode' });
+  const chosenFamily = useWatch({ control, name: 'familyId' });
+  const detail = useFamilyDetail(chosenFamily ?? '', mode === 'existing' && !!chosenFamily);
+  const people = (detail.data?.tutores ?? []).filter((tutor) => tutor.activo);
 
   return (
     <form
@@ -117,12 +123,39 @@ export function CreateInvitationForm({ onCreated, onCancel }: CreateInvitationFo
           render={({ field }) => (
             <FamilyPicker
               value={field.value}
-              onChange={(id) => setValue('familyId', id, { shouldValidate: true })}
+              onChange={(id) => {
+                setValue('familyId', id, { shouldValidate: true });
+                setValue('tutorId', '');
+              }}
               error={errors.familyId?.message}
             />
           )}
         />
       )}
+
+      {mode === 'existing' && chosenFamily && people.length > 0 ? (
+        <div className="space-y-1">
+          <label htmlFor="invitation-person" className="block text-sm font-semibold">
+            ¿Es para alguien que ya figura en la familia? (opcional)
+          </label>
+          <select
+            id="invitation-person"
+            className="block min-h-11 w-full rounded-lg border border-neutral-400 bg-white px-3 text-base text-ink"
+            {...register('tutorId')}
+          >
+            <option value="">Una persona nueva</option>
+            {people.map((tutor) => (
+              <option key={tutor.id} value={tutor.id}>
+                {tutor.nombre} {tutor.apellido}
+                {tutor.parentesco ? ` (${tutor.parentesco})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-sm text-muted">
+            Si elegís a una persona, su cuenta queda asociada a sus datos y no tiene que cargarlos de nuevo. No le da acceso a nada más.
+          </p>
+        </div>
+      ) : null}
 
       <Field
         label="Correo sugerido (opcional)"

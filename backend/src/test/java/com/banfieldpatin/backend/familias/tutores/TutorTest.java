@@ -80,9 +80,12 @@ class TutorTest {
 	}
 
 	@Test
-	void noExisteMapeoDeUsuarioNiSettersNiAsociaciones() {
-		assertThat(Tutor.class.getDeclaredFields()).extracting(Field::getName)
-				.doesNotContain("usuarioId", "usuario", "familia");
+	void noExistenSettersNiAsociacionesYLaCuentaSoloSeMapeaComoIdSinEscrituraPosterior() throws Exception {
+		// U21-BIS C1 mapea usuario_id (vínculo declarativo), pero solo como id: sin asociación JPA y sin UPDATE de Hibernate.
+		assertThat(Tutor.class.getDeclaredFields()).extracting(Field::getName).doesNotContain("usuario", "familia");
+		for (String campo : java.util.List.of("usuarioId", "origen", "verificacion", "vinculoCuenta", "declaradoPor")) {
+			assertThat(Tutor.class.getDeclaredField(campo).getAnnotation(Column.class).updatable()).as(campo).isFalse();
+		}
 		assertThat(Tutor.class.getDeclaredMethods()).extracting(java.lang.reflect.Method::getName)
 				.noneMatch(n -> n.startsWith("set"));
 	}

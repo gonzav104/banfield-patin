@@ -15,7 +15,8 @@
       "responsables-portal.real.spec.ts",
       "responsables-escrituras.real.spec.ts",
       "documentos-apto-fisico.real.spec.ts",
-      "cuentas-familia.real.spec.ts"
+      "cuentas-familia.real.spec.ts",
+      "mis-datos.real.spec.ts"
     ],
     "2": [
       "deportistas-consulta-alta.real.spec.ts",
@@ -35,7 +36,8 @@
     ],
     "3": [
       "responsables-alta-deshabilitada.real.spec.ts",
-      "documentos-apto-fisico-carga-deshabilitada.real.spec.ts"
+      "documentos-apto-fisico-carga-deshabilitada.real.spec.ts",
+      "mis-datos-deshabilitado.real.spec.ts"
     ]
   }
 }

@@ -161,7 +161,7 @@ public class OpenApiConfig {
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
 			// --- Perfil propio y vínculo cuenta ↔ tutor (U21-BIS C1)
 			entry("GET /api/familia/mi-perfil", ruta(200)),
-			entry("POST /api/familia/mi-perfil", ruta(201, "409 PERFIL_YA_EXISTE", "404 PERFIL_NO_ENCONTRADO",
+			entry("POST /api/familia/mi-perfil", ruta(200, "409 PERFIL_YA_EXISTE", "404 PERFIL_NO_ENCONTRADO",
 					"503 AUTOSERVICIO_PERFIL_DESHABILITADO")),
 			entry("PUT /api/familia/mi-perfil", ruta(200, "404 PERFIL_NO_ENCONTRADO",
 					"409 EDICION_DESACTUALIZADA o IDENTIDAD_VERIFICADA", "503 AUTOSERVICIO_PERFIL_DESHABILITADO")),

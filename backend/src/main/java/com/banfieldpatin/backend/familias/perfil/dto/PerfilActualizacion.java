@@ -16,7 +16,8 @@ import jakarta.validation.constraints.Size;
 /**
  * Reemplazo completo del perfil propio con la revisión que la persona vio ({@code versionEsperada}, cadena decimal): si otra
  * persona de la familia o ADMIN lo cambió mientras tanto, se rechaza con 409 sin pisar nada. Identidad (nombre, apellido, DNI)
- * y contacto (teléfono, correo, parentesco) se distinguen en el servicio: una identidad verificada no se cambia desde acá.
+ * y contacto (teléfono, correo, parentesco) se distinguen en el servicio: una identidad verificada no se cambia desde acá. El DNI nunca
+ * se devuelve completo a la familia: si se omite (o viene en blanco) se conserva el cargado.
  */
 public record PerfilActualizacion(
 		@NotBlank @Size(max = 100) String nombre,

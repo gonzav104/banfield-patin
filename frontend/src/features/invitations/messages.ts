@@ -5,6 +5,9 @@ export function createInvitationErrorMessage(error: ApiError): string {
   if (error.status === 404 && error.code === 'FAMILIA_NO_ENCONTRADA') {
     return 'La familia elegida ya no existe o está inactiva. Elegí otra.';
   }
+  if (error.status === 409 && error.code === 'TUTOR_NO_DISPONIBLE') {
+    return 'Esa persona ya no está disponible para invitarla: puede que ya tenga cuenta. Elegí «Una persona nueva» o revisá la familia.';
+  }
   if (error.kind === 'validation') return error.message || 'Revisá los datos de la invitación.';
   if (error.kind === 'forbidden') return 'No tenés permiso para crear invitaciones.';
   return commonErrorMessage(error) ?? 'No pudimos crear la invitación. Intentá de nuevo.';
