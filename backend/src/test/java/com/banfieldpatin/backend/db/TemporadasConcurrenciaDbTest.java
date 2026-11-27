@@ -72,7 +72,7 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t2, t1, DATOS));
 		String sentencia;
 		try {
-			sentencia = assertBloqueada(b);
+			sentencia = assertBloqueada(a, b);
 		} finally {
 			a.close();
 		}
@@ -126,7 +126,7 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 		Retencion a = new Retencion(() -> servicio.activar(admin, t, previa, DATOS));
 		Future<Object> b = enOtroHilo(() -> servicio.activar(admin, t, previa, DATOS));
 		try {
-			assertBloqueada(b);
+			assertBloqueada(a, b);
 		} finally {
 			a.close();
 		}
@@ -206,7 +206,7 @@ class TemporadasConcurrenciaDbTest extends BaseTemporadasDb {
 				.param("e", escuelaA).query(UUID.class).single());
 		Future<Object> familia = enOtroHilo(() -> datos.familia(escuelaA, "Bloqueada por FOR UPDATE", true));
 		try {
-			assertBloqueada(familia);
+			assertBloqueada(a, familia);
 		} finally {
 			a.close();
 		}

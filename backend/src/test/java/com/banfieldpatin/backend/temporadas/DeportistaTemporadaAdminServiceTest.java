@@ -25,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.banfieldpatin.backend.UuidsDeTest;
 import com.banfieldpatin.backend.compartido.auditoria.AccionAuditoria;
 import com.banfieldpatin.backend.compartido.auditoria.AuditoriaService;
 import com.banfieldpatin.backend.compartido.auditoria.EventoAuditoria;
@@ -46,7 +47,8 @@ class DeportistaTemporadaAdminServiceTest {
 	private final UUID escuelaId = UUID.randomUUID();
 	private final UUID adminId = UUID.randomUUID();
 	private final UUID deportistaId = UUID.randomUUID();
-	private final UUID temporadaId = UUID.randomUUID();
+	// Determinista: el detalle de auditoria imprime este id y la prueba afirma que no contiene «007» ni los datos deportivos.
+	private final UUID temporadaId = UuidsDeTest.sin("temporadaId", "007", "Sub 14", "Femenino");
 	private final UsuarioAutenticado admin = new UsuarioAutenticado(adminId, escuelaId, null, Rol.ADMIN);
 
 	private DeportistaTemporadaRepository datos;

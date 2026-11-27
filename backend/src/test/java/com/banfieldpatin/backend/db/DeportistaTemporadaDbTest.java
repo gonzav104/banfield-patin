@@ -85,8 +85,10 @@ class DeportistaTemporadaDbTest extends BaseTemporadasDb {
 				""").param("e", escuelaA).query().singleRow();
 		assertThat(evento).containsEntry("recurso_tipo", "DEPORTISTA_TEMPORADA").containsEntry("recurso_id", r.id())
 				.containsEntry("usuario_id", admin.id()).containsEntry("ip", "10.0.0.9");
-		assertThat((String) evento.get("detalle")).contains(t.toString(), "2027")
-				.doesNotContain("007", "Sub 12", "Femenino");
+		String detalle = (String) evento.get("detalle");
+		assertThat(detalle).contains(t.toString(), "2027");
+		// El id de la temporada lo genera la base (aleatorio): se lo quita antes de buscar datos, para que ningun azar hexadecimal cuente.
+		assertThat(detalle.replace(t.toString(), "<temporada>")).doesNotContain("007", "Sub 12", "Femenino");
 	}
 
 	@Test
