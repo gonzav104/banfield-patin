@@ -21,16 +21,16 @@ public interface EscuelaRepository extends JpaRepository<Escuela, UUID> {
 	@Query("select e from Escuela e where lower(e.slug) = lower(:slug)")
 	Optional<Escuela> findBySlugParaActualizar(@Param("slug") String slug);
 
+	/** Escuela activa tomada FOR SHARE hasta el fin de la transacción: una desactivación concurrente espera (login, V20). */
+	@Query(value = "select e.id from gestion_patin.escuela e where e.id = :id and e.activa for share", nativeQuery = true)
+	Optional<UUID> bloquearActivaParaCompartir(@Param("id") UUID id);
+
 	/**
 	 * Serializa SOLO las activaciones de temporada de esa escuela con {@code FOR NO KEY UPDATE}. A diferencia de
 	 * {@code FOR UPDATE} no choca con el {@code FOR KEY SHARE} que PostgreSQL toma sobre esta fila al comprobar toda clave
 	 * foranea hacia {@code escuela} (familias, auditoria, ...): esas operaciones de la misma escuela no esperan. Es nativa
 	 * a proposito: el SQL que se ejecuta es exactamente este y no depende del dialecto. Vacio si la escuela no existe.
 	 */
-	/** Escuela activa tomada FOR SHARE hasta el fin de la transacción: una desactivación concurrente espera (login, V20). */
-	@Query(value = "select e.id from gestion_patin.escuela e where e.id = :id and e.activa for share", nativeQuery = true)
-	Optional<UUID> bloquearActivaParaCompartir(@Param("id") UUID id);
-
 	@Query(value = "select e.id from gestion_patin.escuela e where e.id = :id for no key update", nativeQuery = true)
 	Optional<UUID> bloquearParaActivarTemporada(@Param("id") UUID id);
 }
