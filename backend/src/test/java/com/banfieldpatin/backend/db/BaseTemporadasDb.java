@@ -193,28 +193,41 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 
 	/**
 	 * Espera (hasta 10 s) a que PostgreSQL declare una sesion bloqueada POR la transaccion retenida {@code a}
-	 * ({@code pg_blocking_pids}) y devuelve la sentencia que esa sesion espera. Identifica a la sesion participante por su relacion
-	 * con A, nunca por «la primera que espere algun bloqueo» en una base que comparten todas las pruebas y cuyo contexto sigue
-	 * vivo: otra sesion esperando otra cosa no la confunde. Si hay mas de una bloqueada por A, falla con el detalle en lugar de
-	 * elegir una.
+	 * ({@code pg_blocking_pids}) y devuelve la sentencia que esa sesion espera. Dos garantias:
+	 * <ul>
+	 * <li><b>Identidad:</b> la sesion participante se identifica por su relacion con A, nunca por «la primera que espere algun
+	 * bloqueo» en una base que comparten todas las pruebas y cuyo contexto sigue vivo. Si hay mas de una bloqueada por A, falla
+	 * con el detalle en lugar de elegir una.</li>
+	 * <li><b>Texto estable:</b> {@code pg_stat_activity} no entrega el texto de la sentencia y la espera en el mismo instante:
+	 * justo cuando la sesion pasa de una sentencia a la siguiente puede verse «bloqueada por A» con el texto de la sentencia
+	 * ANTERIOR (un {@code select} previo al bloqueo). Una sesion bloqueada no puede cambiar de sentencia, asi que el texto solo
+	 * se acepta cuando es el mismo en dos lecturas consecutivas con la sesion todavia bloqueada.</li>
+	 * </ul>
 	 */
 	String sentenciaBloqueadaPor(Retencion a) throws InterruptedException {
 		List<java.util.Map<String, Object>> bloqueadas = List.of();
-		for (int i = 0; i < 100; i++) {
+		String anterior = null;
+		for (int i = 0; i < 200; i++) {
 			bloqueadas = jdbc.sql("""
 					SELECT pid, state, wait_event_type, wait_event, query FROM pg_stat_activity
 					WHERE datname = current_database() AND :pid = ANY(pg_blocking_pids(pid))
 					""").param("pid", a.pid()).query().listOfRows();
-			if (!bloqueadas.isEmpty()) {
+			if (bloqueadas.size() > 1) {
 				break;
 			}
-			Thread.sleep(100);
+			if (bloqueadas.size() == 1) {
+				String actual = (String) bloqueadas.get(0).get("query");
+				if (actual.equals(anterior)) {
+					return actual;
+				}
+				anterior = actual;
+			} else {
+				anterior = null;
+			}
+			Thread.sleep(50);
 		}
-		if (bloqueadas.size() != 1) {
-			throw new IllegalStateException("se esperaba exactamente una sesion bloqueada por la transaccion retenida (pid "
-					+ a.pid() + ") y hay " + bloqueadas.size() + ": " + bloqueadas);
-		}
-		return (String) bloqueadas.get(0).get("query");
+		throw new IllegalStateException("se esperaba exactamente una sesion bloqueada por la transaccion retenida (pid "
+				+ a.pid() + ") con una sentencia estable y hay " + bloqueadas.size() + ": " + bloqueadas);
 	}
 
 	/** B (en otro hilo) queda bloqueada de verdad detras de la retencion de A; devuelve la sentencia que espera. */
