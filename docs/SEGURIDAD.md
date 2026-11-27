@@ -42,7 +42,7 @@ solo es vigente si:
 - para un token de FAMILIA, la familia existe en esa escuela y está activa (desactivar una familia cierra la sesión de todos sus usuarios).
 - la `version_sesion` del token es la vigente de la cuenta (`usuario.version_sesion`, V19). Quitar el acceso a una cuenta la incrementa **en la misma
   sentencia** que la desactiva y nunca retrocede (trigger): todo token anterior queda revocado para siempre, sin depender de la hora ni de la
-  precisión del `iat`, y reactivar la cuenta no lo revive. Un login emite la versión de la cuenta activa leída con su fila tomada `FOR SHARE`; la
+  precisión del `iat`, y reactivar la cuenta no lo revive. Un login emite la versión de la cuenta activa leída con su fila tomada (`FOR NO KEY UPDATE`); la
   renovación del token de MFA pendiente y la sesión completa heredan la del token presentado. Un token **sin** el claim (emitido por un backend
   anterior a este contrato) se lee como versión 0: vale mientras la cuenta nunca haya sido revocada y deja de valer con la primera revocación.
   Un claim presente que no es un entero no negativo es un token mal formado (`401`).
@@ -358,8 +358,8 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   `FOR SHARE` de la cuenta: una carga iniciada antes de quitar el acceso no publica aunque la cuenta se reactive mientras transfiere
   (el archivo sigue el camino de limpieza/reconciliación de siempre). Los pasos son transacciones cortas; la transferencia a Storage no
   retiene bloqueos.
-- **Login concurrente con la desactivación:** el login lee la `version_sesion` de la cuenta activa con su fila tomada `FOR SHARE` hasta el
-  commit: si la desactivación llegó antes, el login se rechaza como cuenta inactiva; si llega después, espera al login y su incremento
+- **Login concurrente con la desactivación:** el login lee la `version_sesion` de la cuenta activa con su fila tomada (`FOR NO KEY UPDATE`, el mismo bloqueo que su
+  escritura del último acceso: dos logins simultáneos se serializan sin deadlock) hasta el commit: si la desactivación llegó antes, el login se rechaza como cuenta inactiva; si llega después, espera al login y su incremento
   revoca el token recién emitido. Además la entidad `Usuario` ya no escribe `activo` (`updatable = false`): guardar el último acceso no
   puede deshacer una desactivación (antes, Hibernate reescribía la columna completa).
 - Las escrituras están detrás de `CUENTAS_GESTION_HABILITADA` (`false` por defecto → `503 GESTION_CUENTAS_DESHABILITADA`).

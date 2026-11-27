@@ -82,7 +82,7 @@ public class AutenticacionService {
 	}
 
 	/**
-	 * Login con la versión de sesión de la cuenta activa, leída con su fila tomada FOR SHARE: una desactivación concurrente
+	 * Login con la versión de sesión de la cuenta activa, leída con su fila tomada (FOR NO KEY UPDATE): una desactivación concurrente
 	 * espera al commit del login y después incrementa la versión, así que el token emitido con esta ya nace revocado; si la
 	 * desactivación llegó antes, el login se rechaza como cuenta inactiva.
 	 */

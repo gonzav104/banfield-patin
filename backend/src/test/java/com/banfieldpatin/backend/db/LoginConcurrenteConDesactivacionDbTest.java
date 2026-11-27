@@ -78,9 +78,13 @@ class LoginConcurrenteConDesactivacionDbTest extends BaseDbTest {
 				.param("h", passwordEncoder.encode(CLAVE)).param("u", usuario).update();
 	}
 
+	/**
+	 * Solo el contenido: la escuela vigente se resuelve por slug y su id queda en caché ({@code EscuelaActual}); borrarla y
+	 * recrearla en la prueba siguiente dejaría al login buscando la cuenta en la escuela anterior.
+	 */
 	@AfterEach
 	void limpiar() {
-		datos.limpiarEscuela(escuela);
+		datos.limpiarContenido(escuela);
 	}
 
 	@Test
@@ -103,7 +107,7 @@ class LoginConcurrenteConDesactivacionDbTest extends BaseDbTest {
 					email, CLAVE, new DatosSolicitud(null, null)));
 			esperarBloqueadaPor(pid);
 			desactivacion.commit();
-			// El login toma la fila de la cuenta FOR SHARE: esperó a la desactivación y, al releer la fila, ya no está activa.
+			// El login toma la fila de la cuenta: esperó a la desactivación y, al releer la fila, ya no está activa.
 			assertThatThrownBy(() -> login.get(30, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
 					.cause().isInstanceOfSatisfying(ExcepcionNegocio.class,
 							e -> assertThat(e.getCodigo()).isEqualTo("CREDENCIALES_INVALIDAS"));
@@ -122,7 +126,7 @@ class LoginConcurrenteConDesactivacionDbTest extends BaseDbTest {
 		ExecutorService hilos = Executors.newSingleThreadExecutor();
 		AutenticacionService.SesionIniciada sesion;
 		try (Connection login = fuente.getConnection()) {
-			// Simula un login que ya tomó la fila FOR SHARE y todavía no confirmó.
+			// Simula un login que ya tomó la fila (con la sentencia exacta del login) y todavía no confirmó.
 			login.setAutoCommit(false);
 			long pid;
 			try (var s = login.createStatement()) {
@@ -131,8 +135,7 @@ class LoginConcurrenteConDesactivacionDbTest extends BaseDbTest {
 				pid = rs.getLong(1);
 			}
 			long version;
-			try (var ps = login.prepareStatement(
-					"SELECT version_sesion FROM gestion_patin.usuario WHERE id = ? AND activo FOR SHARE")) {
+			try (var ps = login.prepareStatement(sentenciaDelLogin())) {
 				ps.setObject(1, usuario);
 				var rs = ps.executeQuery();
 				assertThat(rs.next()).isTrue();
@@ -154,6 +157,50 @@ class LoginConcurrenteConDesactivacionDbTest extends BaseDbTest {
 		assertThat(verificador.vigente(usuario, escuela, "FAMILIA", familia, sesion.versionSesion()))
 				.as("reactivar no revive la sesión emitida antes").isFalse();
 		assertThat(verificador.vigente(usuario, escuela, "FAMILIA", familia, sesion.versionSesion() + 1)).isTrue();
+	}
+
+	/**
+	 * Dos inicios de sesión de la MISMA cuenta a la vez (doble envío, dos dispositivos, un reintento) terminan bien los dos.
+	 * El primero se simula con la sentencia exacta del login (la de {@code UsuarioRepository}) y su escritura del último
+	 * acceso, sin confirmar; el segundo es un login real que queda esperándolo. Con un bloqueo compartido ambos lo tomarían
+	 * y al escribir se bloquearían mutuamente (deadlock, 40P01).
+	 */
+	@Test
+	void dosLoginsSimultaneosDeLaMismaCuentaTerminanBienSinDeadlock() throws Exception {
+		String bloqueoDelLogin = sentenciaDelLogin();
+		ExecutorService hilos = Executors.newSingleThreadExecutor();
+		try (Connection primero = fuente.getConnection()) {
+			primero.setAutoCommit(false);
+			long pid;
+			try (var s = primero.createStatement()) {
+				var rs = s.executeQuery("SELECT pg_backend_pid()");
+				rs.next();
+				pid = rs.getLong(1);
+			}
+			try (var ps = primero.prepareStatement(bloqueoDelLogin)) {
+				ps.setObject(1, usuario);
+				assertThat(ps.executeQuery().next()).isTrue();
+			}
+			Future<AutenticacionService.SesionIniciada> segundo = hilos.submit(() -> autenticacion.iniciarSesion(Rol.FAMILIA,
+					email, CLAVE, new DatosSolicitud(null, null)));
+			esperarBloqueadaPor(pid);
+			try (var ps = primero.prepareStatement(
+					"UPDATE gestion_patin.usuario SET ultimo_acceso_en = now() WHERE id = ?")) {
+				ps.setObject(1, usuario);
+				assertThat(ps.executeUpdate()).isEqualTo(1);
+			}
+			primero.commit();
+			assertThat(segundo.get(30, TimeUnit.SECONDS).versionSesion()).isZero();
+		} finally {
+			hilos.shutdownNow();
+		}
+	}
+
+	/** La sentencia con la que el login toma la fila de la cuenta ({@code UsuarioRepository}), con parámetro JDBC. */
+	private static String sentenciaDelLogin() throws NoSuchMethodException {
+		return com.banfieldpatin.backend.usuarios.UsuarioRepository.class
+				.getMethod("bloquearVersionSesionSiActiva", UUID.class)
+				.getAnnotation(org.springframework.data.jpa.repository.Query.class).value().replace(":id", "?");
 	}
 
 	/** Espera (hasta 10 s) a que exactamente una sesión quede bloqueada por {@code pid}. */
