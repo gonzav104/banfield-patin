@@ -119,6 +119,8 @@ jobs:
           E2E_SHARD: ${{ matrix.shard }}
           # El shard 3 prueba la bandera de altas de responsables APAGADA (como en produccion); los demas la encienden solo en su base descartable.
           E2E_ALTA_RESPONSABLES: ${{ matrix.shard == '3' && 'false' || 'true' }}
+          # El shard 3 tambien prueba la carga documental APAGADA (DOCUMENTOS_CARGA_HABILITADA=false, el valor por defecto de produccion).
+          E2E_CARGA_DOCUMENTAL: ${{ matrix.shard == '3' && 'false' || 'true' }}
         run: bash .github/scripts/frontend-e2e.sh
 
       # Red de seguridad, en CADA shard: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.

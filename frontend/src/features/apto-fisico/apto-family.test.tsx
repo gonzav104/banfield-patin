@@ -8,7 +8,7 @@ import type * as ImageNormalizationModule from '@/features/familia/image-normali
 type ImageNormalization = typeof ImageNormalizationModule;
 
 // MOCK backend (src/test/fakeBackend.ts) inside the REAL app. jsdom has no Canvas: the image re-encoding is replaced at the
-// browser boundary exactly as in the DNI tests; the real browser, backend and Storage are proven by e2e/apto-fisico.real.spec.ts.
+// browser boundary exactly as in the DNI tests; the real browser, backend and Storage are proven by e2e/documentos-apto-fisico.real.spec.ts.
 vi.mock('@/features/familia/image-normalization', async (importOriginal) => {
   const real = await importOriginal<ImageNormalization>();
   return {

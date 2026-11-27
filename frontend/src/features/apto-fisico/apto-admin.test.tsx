@@ -8,7 +8,7 @@ import { KEEPS_IN_REVIEW, WITHDRAWS_APPROVAL } from './AptoCorrectionDialog';
 import { correctionFailure } from './use-apto-correction';
 
 // MOCK backend (src/test/fakeBackend.ts mirrors the apto routes of the backend at 3e51372). The real backend, PostgreSQL and the
-// audited download are proven by e2e/apto-fisico.real.spec.ts.
+// audited download are proven by e2e/documentos-apto-fisico.real.spec.ts.
 const MEDICO = 'Medico Sintetico';
 const MATRICULA = 'MP 0001';
 const MOTIVO = 'Motivo sintetico del club';

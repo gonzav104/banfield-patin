@@ -16,6 +16,8 @@
 #   E2E_PG_PORT (puerto local de la base, 55432 por defecto).
 #   E2E_ALTA_RESPONSABLES (true por defecto SOLO en esta base descartable de E2E; false prueba la bandera apagada, como en produccion. El
 #               valor por defecto del backend sigue siendo false).
+#   E2E_CARGA_DOCUMENTAL (true por defecto SOLO en esta base descartable de E2E; false prueba la bandera DOCUMENTOS_CARGA_HABILITADA apagada, como en
+#               produccion: lo usa el shard 3, junto con E2E_ALTA_RESPONSABLES=false).
 #   E2E_SHARD   (numero de shard, segun frontend/e2e/shards.json). Sin ella corre la suite COMPLETA, como siempre. Con ella corre solo
 #               los archivos de ese shard, en una base, un backend y unas credenciales propios: los shards de CI son runners distintos
 #               y cada uno tiene su administrador. Dos shards no pueden correr a la vez en la misma maquina (mismos puertos 8080/5173).
@@ -138,7 +140,7 @@ setsid env \
   AUTH_COOKIE_SECURE=false FRONTEND_URL_BASE="http://127.0.0.1:5173" \
   BOOTSTRAP_ADMIN_HABILITADO=true BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" BOOTSTRAP_ADMIN_NOMBRE=Admin \
   BOOTSTRAP_ADMIN_APELLIDO=CI BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-  DOCUMENTOS_CARGA_HABILITADA=true DOCUMENTOS_STORAGE_HABILITADO=true \
+  DOCUMENTOS_CARGA_HABILITADA="${E2E_CARGA_DOCUMENTAL:-true}" DOCUMENTOS_STORAGE_HABILITADO=true \
   BANFIELD_RESPONSABLES_ALTA_HABILITADA="${E2E_ALTA_RESPONSABLES:-true}" \
   SUPABASE_URL="http://127.0.0.1:${STORAGE_PORT}" SUPABASE_BUCKET_DOCUMENTOS="$STORAGE_BUCKET" \
   SUPABASE_SERVICE_ROLE_KEY="$STORAGE_CREDENTIAL" \
@@ -163,7 +165,7 @@ if [ "$NEEDS_ENROLMENT" = "yes" ]; then
   E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" E2E_BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}" \
     node e2e/support/enrol-admin.ts
 fi
-E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" E2E_CARGA_DOCUMENTAL="${E2E_CARGA_DOCUMENTAL:-true}" \
   E2E_DB_CONTAINER="$PG_NAME" E2E_DB_NAME="$PG_DB" \
   E2E_STORAGE_OBJECTS_DIR="$STORAGE_OBJECTS" E2E_STORAGE_BUCKET="$STORAGE_BUCKET" \
   npm run test:e2e -- ${E2E_ARGS[@]+"${E2E_ARGS[@]}"}
