@@ -82,7 +82,7 @@ class PermisoCargaTest {
     var s = servicio(1);
     var dentro = new CountDownLatch(1);
     var liberar = new CountDownLatch(1);
-    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenAnswer(
             inv -> {
               dentro.countDown();
@@ -123,7 +123,7 @@ class PermisoCargaTest {
     assertThat(libres(s)).isEqualTo(2);
 
     // Excepción no controlada de la base al reservar.
-    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenThrow(new IllegalStateException("sintetico"));
     assertThatThrownBy(() -> cargar(s, png())).isInstanceOf(ExcepcionNegocio.class);
     assertThat(libres(s)).isEqualTo(2);
@@ -154,7 +154,7 @@ class PermisoCargaTest {
             true,
             null,
             null);
-    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+    when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(new OperacionesCargaJdbc.Reserva(null, publicada));
     for (int i = 0; i < 3; i++) assertThat(cargar(s, png()).repetida()).isTrue();
     assertThat(libres(s)).isEqualTo(1);

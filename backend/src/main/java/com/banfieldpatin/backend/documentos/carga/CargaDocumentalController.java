@@ -2,6 +2,7 @@ package com.banfieldpatin.backend.documentos.carga;
 
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.documentos.*;
+import com.banfieldpatin.backend.documentos.apto.MetadatosApto;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.*;
 import org.springframework.beans.factory.ObjectProvider;
@@ -24,6 +25,9 @@ public class CargaDocumentalController {
       @RequestHeader("Idempotency-Key") UUID idempotencia,
       @RequestParam TipoDocumento tipo,
       @RequestParam(required = false) UUID temporadaId,
+      @RequestParam(required = false) String fechaEmision,
+      @RequestParam(required = false) String medicoNombre,
+      @RequestParam(required = false) String medicoMatricula,
       @RequestPart("archivo") MultipartFile archivo,
       HttpServletRequest request)
       throws Exception {
@@ -33,15 +37,26 @@ public class CargaDocumentalController {
         instanceof ContextoCarga contexto)) throw ErrorCarga.indisponible();
     var conteos = new HashMap<String, Integer>();
     for (var part : request.getParts()) conteos.merge(part.getName(), 1, Integer::sum);
-    if (!Set.of("archivo", "tipo", "temporadaId").containsAll(conteos.keySet())
+    if (!Set.of("archivo", "tipo", "temporadaId", "fechaEmision", "medicoNombre", "medicoMatricula")
+            .containsAll(conteos.keySet())
         || conteos.getOrDefault("archivo", 0) != 1
         || conteos.getOrDefault("tipo", 0) != 1
         || conteos.getOrDefault("temporadaId", 0) > 1
+        || conteos.getOrDefault("fechaEmision", 0) > 1
+        || conteos.getOrDefault("medicoNombre", 0) > 1
+        || conteos.getOrDefault("medicoMatricula", 0) > 1
         || Collections.list(request.getHeaders("Idempotency-Key")).size() != 1)
       throw ErrorCarga.invalido();
     var resultado =
         servicio.cargar(
-            contexto, id, tipo, temporadaId, idempotencia, archivo, DatosSolicitud.de(request));
+            contexto,
+            id,
+            tipo,
+            temporadaId,
+            new MetadatosApto.Solicitado(fechaEmision, medicoNombre, medicoMatricula),
+            idempotencia,
+            archivo,
+            DatosSolicitud.de(request));
     return ResponseEntity.status(resultado.repetida() ? HttpStatus.OK : HttpStatus.CREATED)
         .body(resultado.documento());
   }
@@ -56,6 +71,9 @@ public class CargaDocumentalController {
       @PathVariable UUID id,
       @PathVariable UUID documentoId,
       @RequestHeader("Idempotency-Key") UUID idempotencia,
+      @RequestParam(required = false) String fechaEmision,
+      @RequestParam(required = false) String medicoNombre,
+      @RequestParam(required = false) String medicoMatricula,
       @RequestPart("archivo") MultipartFile archivo,
       HttpServletRequest request)
       throws Exception {
@@ -65,13 +83,22 @@ public class CargaDocumentalController {
         instanceof ContextoCarga contexto)) throw ErrorCarga.indisponible();
     var conteos = new HashMap<String, Integer>();
     for (var part : request.getParts()) conteos.merge(part.getName(), 1, Integer::sum);
-    if (!Set.of("archivo").containsAll(conteos.keySet())
+    if (!Set.of("archivo", "fechaEmision", "medicoNombre", "medicoMatricula").containsAll(conteos.keySet())
         || conteos.getOrDefault("archivo", 0) != 1
+        || conteos.getOrDefault("fechaEmision", 0) > 1
+        || conteos.getOrDefault("medicoNombre", 0) > 1
+        || conteos.getOrDefault("medicoMatricula", 0) > 1
         || Collections.list(request.getHeaders("Idempotency-Key")).size() != 1)
       throw ErrorCarga.invalido();
     var resultado =
         servicio.reemplazar(
-            contexto, id, documentoId, idempotencia, archivo, DatosSolicitud.de(request));
+            contexto,
+            id,
+            documentoId,
+            new MetadatosApto.Solicitado(fechaEmision, medicoNombre, medicoMatricula),
+            idempotencia,
+            archivo,
+            DatosSolicitud.de(request));
     return ResponseEntity.status(resultado.repetida() ? HttpStatus.OK : HttpStatus.CREATED)
         .body(resultado.documento());
   }

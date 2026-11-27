@@ -11,7 +11,7 @@ Secuencia vigente desde 2026-10-31 (estados actualizados el 2026-11-02). Reempla
 | **1** 🔄 | Temporadas y datos anuales | `Temporada` + `DeportistaTemporada`; activación única; DNI enmascarado en listados | 0, CI-0 |
 | **2** | Spike federativo | Playwright sobre los formularios reales de empadronamiento y apto: login Google, campos, secciones condicionales, uploads, hasta antes de "Enviar" | 0 |
 | **3** | Documentos privados | Supabase Storage privado; carga FAMILIA/ADMIN; revisión; reemplazo; descarga firmada; ZIP | 1, 2 |
-| **4** | Aptos físicos | Apto por deportista/temporada con documento, médico, matrícula, estados | 1, 3 |
+| **4** 🔄 | Aptos físicos | Apto por deportista/temporada con documento, médico, matrícula, estados | 1, 3 |
 | **5** | Empadronamiento y licencias | Checklist, estados, confirmación ADMIN, **historial de dominio** por cambio | 1, 3, 4 |
 | **6** | Competencias | Convocatoria explícita materializada; respuesta FAMILIA solo para convocados; consolidado ADMIN | 1, 5 |
 | **7** | LBF APM/Nacional | Plantillas oficiales reales, mapeo, Apache POI, validación previa | 6 + plantillas |

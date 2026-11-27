@@ -6,6 +6,7 @@ import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.deportistas.*;
 import com.banfieldpatin.backend.documentos.*;
+import com.banfieldpatin.backend.documentos.apto.MetadatosApto;
 import com.banfieldpatin.backend.documentos.almacen.DestinoPreparado;
 import com.banfieldpatin.backend.familias.tutores.TutorAdminService;
 import com.banfieldpatin.backend.familias.vinculos.FamiliaDeportistaRepository;
@@ -38,7 +39,24 @@ final class OperacionesCargaJdbc {
       String mime,
       long bytes,
       UUID predecesor,
-      UUID tutor) {
+      UUID tutor,
+      MetadatosApto apto) {
+    Operacion(
+        UUID id,
+        long version,
+        String estado,
+        UUID atleta,
+        String tipo,
+        UUID temporada,
+        DestinoPreparado destino,
+        byte[] sha,
+        String mime,
+        long bytes,
+        UUID predecesor,
+        UUID tutor) {
+      this(id, version, estado, atleta, tipo, temporada, destino, sha, mime, bytes, predecesor, tutor, null);
+    }
+
     Operacion(
         UUID id,
         long version,
@@ -50,7 +68,7 @@ final class OperacionesCargaJdbc {
         byte[] sha,
         String mime,
         long bytes) {
-      this(id, version, estado, atleta, tipo, temporada, destino, sha, mime, bytes, null, null);
+      this(id, version, estado, atleta, tipo, temporada, destino, sha, mime, bytes, null, null, null);
     }
 
     /** El dueño de la operación: un tutor (U19) o, si no, el deportista. */
@@ -210,6 +228,9 @@ final class OperacionesCargaJdbc {
           HttpStatus.UNAUTHORIZED, "SESION_NO_VIGENTE", "La sesión ya no está vigente.");
   }
 
+  /** Sin datos de apto: para cualquier tipo que no sea APTO_FISICO. */
+  private static final MetadatosApto.Solicitado SIN_APTO = new MetadatosApto.Solicitado(null, null, null);
+
   Reserva reservar(
       ContextoCarga c,
       UUID atleta,
@@ -218,13 +239,26 @@ final class OperacionesCargaJdbc {
       UUID idem,
       DestinoPreparado destino,
       ArchivoPreparado a) {
-    return reservar(c, Propietario.deDeportista(atleta), tipo, temporada, null, idem, destino, a);
+    return reservar(c, Propietario.deDeportista(atleta), tipo, temporada, null, SIN_APTO, idem, destino, a);
+  }
+
+  /** Carga inicial de un deportista con los metadatos del apto (U21): exigidos si y solo si el tipo es APTO_FISICO. */
+  Reserva reservar(
+      ContextoCarga c,
+      UUID atleta,
+      TipoDocumento tipo,
+      UUID temporada,
+      MetadatosApto.Solicitado apto,
+      UUID idem,
+      DestinoPreparado destino,
+      ArchivoPreparado a) {
+    return reservar(c, Propietario.deDeportista(atleta), tipo, temporada, null, apto, idem, destino, a);
   }
 
   /** Carga inicial de un DNI de un tutor (U19): el tipo debe ser DNI_TUTOR_*; la temporada nunca aplica. */
   Reserva reservarTutor(
       ContextoCarga c, UUID tutor, TipoDocumento tipo, UUID idem, DestinoPreparado destino, ArchivoPreparado a) {
-    return reservar(c, Propietario.deTutor(tutor), tipo, null, null, idem, destino, a);
+    return reservar(c, Propietario.deTutor(tutor), tipo, null, null, SIN_APTO, idem, destino, a);
   }
 
   /**
@@ -233,21 +267,34 @@ final class OperacionesCargaJdbc {
    */
   Reserva reservarReemplazo(
       ContextoCarga c, UUID atleta, UUID predecesor, UUID idem, DestinoPreparado destino, ArchivoPreparado a) {
-    return reservar(c, Propietario.deDeportista(atleta), null, null, predecesor, idem, destino, a);
+    return reservar(c, Propietario.deDeportista(atleta), null, null, predecesor, SIN_APTO, idem, destino, a);
+  }
+
+  /** Reemplazo de un apto OBSERVADO (U21): la nueva versión trae sus propios metadatos y hereda la temporada del predecesor. */
+  Reserva reservarReemplazo(
+      ContextoCarga c,
+      UUID atleta,
+      UUID predecesor,
+      MetadatosApto.Solicitado apto,
+      UUID idem,
+      DestinoPreparado destino,
+      ArchivoPreparado a) {
+    return reservar(c, Propietario.deDeportista(atleta), null, null, predecesor, apto, idem, destino, a);
   }
 
   /** Reemplazo de un DNI OBSERVADO de un tutor (U19). */
   Reserva reservarReemplazoTutor(
       ContextoCarga c, UUID tutor, UUID predecesor, UUID idem, DestinoPreparado destino, ArchivoPreparado a) {
-    return reservar(c, Propietario.deTutor(tutor), null, null, predecesor, idem, destino, a);
+    return reservar(c, Propietario.deTutor(tutor), null, null, predecesor, SIN_APTO, idem, destino, a);
   }
 
   private Reserva reservar(
       ContextoCarga c,
       Propietario prop,
       TipoDocumento tipoSolicitado,
-      UUID temporada,
+      UUID temporadaSolicitada,
       UUID predecesor,
+      MetadatosApto.Solicitado solicitado,
       UUID idem,
       DestinoPreparado destino,
       ArchivoPreparado a) {
@@ -257,10 +304,15 @@ final class OperacionesCargaJdbc {
           var u = c.usuario();
           // Orden de bloqueos (V12, R3): ...dueño (autorizar) -> predecesor -> operación. Todo el que pueda
           // llegar a INSERT/PUBLICADA de un reemplazo toma el predecesor ANTES de la fila de la operación.
-          final TipoDocumento tipo =
-              predecesor == null ? tipoSolicitado : bloquearPredecesor(u.escuelaId(), prop, predecesor);
+          final Predecesor anterior = predecesor == null ? null : bloquearPredecesor(u.escuelaId(), prop, predecesor);
+          final TipoDocumento tipo = anterior == null ? tipoSolicitado : anterior.tipo();
+          // Un reemplazo hereda la temporada de su predecesor (el trigger de contexto la hace inmutable en la serie).
+          final UUID temporada = anterior == null ? temporadaSolicitada : anterior.temporada();
+          final boolean esApto = tipo == TipoDocumento.APTO_FISICO;
           if (!permitidos(prop).contains(tipo)
-              || temporada != null && tipo.name().startsWith("DNI_")) throw ErrorCarga.invalido();
+              || temporada != null && tipo.name().startsWith("DNI_")
+              || esApto && temporada == null) throw ErrorCarga.invalido();
+          final MetadatosApto apto = esApto ? MetadatosApto.validar(solicitado, reloj) : sinMetadatos(solicitado);
           if (temporada != null
               && jdbc.sql("SELECT id FROM gestion_patin.temporada WHERE id=:t AND escuela_id=:e")
                   .param("t", temporada)
@@ -274,9 +326,10 @@ final class OperacionesCargaJdbc {
                       """
                       INSERT INTO gestion_patin.operacion_carga_documental(id,escuela_id,solicitante_id,deportista_id,tutor_id,tipo,
                         temporada_id,storage_bucket,objeto_id,idempotencia,sha256_archivo,mime_type,tamanio_bytes,reserva_hasta,
-                        predecesor_id)
+                        predecesor_id,fecha_emision,medico_nombre,medico_matricula)
                       VALUES(:id,:e,:u,CAST(:d AS uuid),CAST(:tu AS uuid),:tipo,CAST(:t AS uuid),:b,:o,:k,:sha,:m,:n,
-                        clock_timestamp()+(:ms * interval '1 millisecond'),CAST(:pre AS uuid))
+                        clock_timestamp()+(:ms * interval '1 millisecond'),CAST(:pre AS uuid),
+                        CAST(:fe AS date),CAST(:mn AS varchar),CAST(:mm AS varchar))
                       ON CONFLICT(escuela_id,solicitante_id,idempotencia) DO NOTHING RETURNING id
                       """)
                   .param("id", id)
@@ -294,6 +347,9 @@ final class OperacionesCargaJdbc {
                   .param("n", a.bytes)
                   .param("ms", p.reserva().toMillis())
                   .param("pre", predecesor)
+                  .param("fe", apto == null ? null : apto.fechaEmision())
+                  .param("mn", apto == null ? null : apto.medicoNombre())
+                  .param("mm", apto == null ? null : apto.medicoMatricula())
                   .query(UUID.class)
                   .optional()
                   .isPresent();
@@ -313,6 +369,7 @@ final class OperacionesCargaJdbc {
               || op.bytes() != a.bytes
               || !op.mime().equals(a.mime)
               || !Objects.equals(op.predecesor(), predecesor)
+              || !Objects.equals(op.apto(), apto)
               || !MessageDigest.isEqual(op.sha(), a.sha)) throw ErrorCarga.conflicto();
           // El manifiesto ya coincide: sólo entonces un reintento puede retomar la operación.
           boolean retomada = false;
@@ -324,7 +381,7 @@ final class OperacionesCargaJdbc {
             retomada = true;
           }
           if (nueva || retomada && op.estado().equals("RESERVADA")) {
-            if (predecesor == null) comprobarPrimera(u.escuelaId(), prop, tipo.name());
+            if (predecesor == null) comprobarPrimera(u.escuelaId(), prop, tipo.name(), temporada);
             else comprobarReemplazo(op, predecesor);
           }
           return new Reserva(op, nueva || retomada ? null : metadatos(op.id()), retomada);
@@ -379,28 +436,46 @@ final class OperacionesCargaJdbc {
             TipoDocumento.DNI_DEPORTISTA_DORSO,
             TipoDocumento.SOLICITUD_LICENCIA,
             TipoDocumento.CERTIFICADO_WADA,
+            TipoDocumento.APTO_FISICO,
             TipoDocumento.OTRO);
   }
 
+  /** Tipo y temporada del predecesor ya bloqueado: el reemplazo hereda ambos. */
+  private record Predecesor(TipoDocumento tipo, UUID temporada) {}
+
   /**
-   * Bloquea el predecesor y devuelve su tipo. Solo los DNI del deportista, de esta escuela y de este
-   * deportista son reemplazables: cualquier otro caso es el mismo 404 (sin distinguir ajeno de inexistente).
+   * Bloquea el predecesor y devuelve su tipo y su temporada. Solo los DNI del deportista, de esta escuela y de este
+   * deportista (y, desde U21, su apto físico) son reemplazables: cualquier otro caso es el mismo 404 (sin distinguir ajeno de
+   * inexistente).
    */
-  private TipoDocumento bloquearPredecesor(UUID escuela, Propietario prop, UUID predecesor) {
+  private Predecesor bloquearPredecesor(UUID escuela, Propietario prop, UUID predecesor) {
     return jdbc.sql(
-            "SELECT tipo FROM gestion_patin.documento WHERE id=:p AND escuela_id=:e AND "
+            "SELECT tipo, temporada_id FROM gestion_patin.documento WHERE id=:p AND escuela_id=:e AND "
                 + prop.columna()
                 + "=:d AND tipo IN ("
                 + (prop.esTutor()
                     ? "'DNI_TUTOR_FRENTE','DNI_TUTOR_DORSO'"
-                    : "'DNI_DEPORTISTA_FRENTE','DNI_DEPORTISTA_DORSO'")
+                    : "'DNI_DEPORTISTA_FRENTE','DNI_DEPORTISTA_DORSO','APTO_FISICO'")
                 + ") FOR UPDATE")
         .param("p", predecesor)
         .param("e", escuela)
         .param("d", prop.id())
-        .query((r, n) -> TipoDocumento.valueOf(r.getString(1)))
+        .query((r, n) -> new Predecesor(TipoDocumento.valueOf(r.getString(1)), r.getObject(2, UUID.class)))
         .optional()
         .orElseThrow(ErrorCarga::documentoNoEncontrado);
+  }
+
+  /** Los datos del apto solo existen para APTO_FISICO: enviarlos con otro tipo es un pedido inválido (sin eco de valores). */
+  private static MetadatosApto sinMetadatos(MetadatosApto.Solicitado solicitado) {
+    if (!solicitado.vacio())
+      throw new ExcepcionNegocio(
+          HttpStatus.BAD_REQUEST,
+          "VALIDACION",
+          "Hay datos inválidos en la solicitud.",
+          java.util.List.of(
+              new com.banfieldpatin.backend.compartido.error.DetalleError(
+                  "apto", "Los datos del apto solo corresponden al apto físico.")));
+    return null;
   }
 
   /**
@@ -448,13 +523,15 @@ final class OperacionesCargaJdbc {
           autorizar(c, o.propietario());
           var u = c.usuario();
           if (o.predecesor() == null) {
-            comprobarPrimera(u.escuelaId(), o.propietario(), o.tipo());
+            comprobarPrimera(u.escuelaId(), o.propietario(), o.tipo(), o.temporada());
             // El id de Documento y la raíz de su serie son la identidad durable de la operación.
             jdbc.sql(
                     """
                     INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,tutor_id,temporada_id,tipo,nombre_original,
-                        storage_bucket,storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,version)
-                    VALUES(:id,:e,CAST(:d AS uuid),CAST(:tu AS uuid),CAST(:t AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:id,0)
+                        storage_bucket,storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,version,
+                        fecha_emision,medico_nombre,medico_matricula)
+                    VALUES(:id,:e,CAST(:d AS uuid),CAST(:tu AS uuid),CAST(:t AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:id,0,
+                        CAST(:fe AS date),CAST(:mn AS varchar),CAST(:mm AS varchar))
                     """)
                 .param("id", o.id())
                 .param("e", u.escuelaId())
@@ -467,6 +544,9 @@ final class OperacionesCargaJdbc {
                 .param("m", o.mime())
                 .param("n", o.bytes())
                 .param("u", u.id())
+                .param("fe", o.apto() == null ? null : o.apto().fechaEmision())
+                .param("mn", o.apto() == null ? null : o.apto().medicoNombre())
+                .param("mm", o.apto() == null ? null : o.apto().medicoMatricula())
                 .update();
             cambiar(o, "PUBLICADA", true);
             auditoria.registrar(
@@ -513,9 +593,11 @@ final class OperacionesCargaJdbc {
         != 1) throw ErrorCarga.conflicto();
     jdbc.sql(
             """
-            INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,tutor_id,tipo,nombre_original,storage_bucket,
-                storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,documento_anterior_id,version)
-            VALUES(:id,:e,CAST(:d AS uuid),CAST(:tu AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:serie,:p,0)
+            INSERT INTO gestion_patin.documento(id,escuela_id,deportista_id,tutor_id,temporada_id,tipo,nombre_original,storage_bucket,
+                storage_key,mime_type,tamanio_bytes,estado,vigente,cargado_por,serie_id,documento_anterior_id,version,
+                fecha_emision,medico_nombre,medico_matricula)
+            VALUES(:id,:e,CAST(:d AS uuid),CAST(:tu AS uuid),CAST(:t AS uuid),:tipo,'documento',:b,:k,:m,:n,'CARGADO',true,:u,:serie,:p,0,
+                CAST(:fe AS date),CAST(:mn AS varchar),CAST(:mm AS varchar))
             """)
         .param("id", o.id())
         .param("e", u.escuelaId())
@@ -529,6 +611,10 @@ final class OperacionesCargaJdbc {
         .param("u", u.id())
         .param("serie", anterior[2])
         .param("p", o.predecesor())
+        .param("t", o.temporada())
+        .param("fe", o.apto() == null ? null : o.apto().fechaEmision())
+        .param("mn", o.apto() == null ? null : o.apto().medicoNombre())
+        .param("mm", o.apto() == null ? null : o.apto().medicoMatricula())
         .update();
     cambiar(o, "PUBLICADA", true);
     auditoria.registrar(
@@ -610,7 +696,18 @@ final class OperacionesCargaJdbc {
     }
   }
 
-  private void comprobarPrimera(UUID escuela, Propietario prop, String tipo) {
+  private void comprobarPrimera(UUID escuela, Propietario prop, String tipo, UUID temporada) {
+    // Una sola serie vigente de apto por deportista y temporada (V17 lo exige también con un índice único parcial).
+    if (tipo.equals("APTO_FISICO")
+        && jdbc.sql(
+                "SELECT id FROM gestion_patin.documento WHERE escuela_id=:e AND deportista_id=:d AND"
+                    + " temporada_id=:t AND tipo='APTO_FISICO' AND vigente")
+            .param("e", escuela)
+            .param("d", prop.id())
+            .param("t", temporada)
+            .query(UUID.class)
+            .optional()
+            .isPresent()) throw ErrorCarga.conflicto();
     if (tipo.startsWith("DNI_")
         && jdbc.sql(
                 "SELECT id FROM gestion_patin.documento WHERE escuela_id=:e AND "
@@ -657,7 +754,8 @@ final class OperacionesCargaJdbc {
         o.mime(),
         o.bytes(),
         o.predecesor(),
-        o.tutor());
+        o.tutor(),
+        o.apto());
   }
 
   private static Operacion leer(ResultSet r, int n) throws SQLException {
@@ -674,7 +772,13 @@ final class OperacionesCargaJdbc {
         r.getString("mime_type"),
         r.getLong("tamanio_bytes"),
         r.getObject("predecesor_id", UUID.class),
-        r.getObject("tutor_id", UUID.class));
+        r.getObject("tutor_id", UUID.class),
+        r.getObject("fecha_emision", java.time.LocalDate.class) == null
+            ? null
+            : new MetadatosApto(
+                r.getObject("fecha_emision", java.time.LocalDate.class),
+                r.getString("medico_nombre"),
+                r.getString("medico_matricula")));
   }
 
   private DocumentoMetadatos metadatos(UUID id) {

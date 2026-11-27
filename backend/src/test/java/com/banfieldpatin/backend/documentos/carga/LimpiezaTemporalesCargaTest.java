@@ -188,7 +188,7 @@ class LimpiezaTemporalesCargaTest {
       var operaciones = mock(OperacionesCargaJdbc.class);
       var almacen = mock(AlmacenDocumentos.class);
       when(almacen.prepararDestino()).thenReturn(destino);
-      when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any()))
+      when(operaciones.reservar(any(), any(), any(), any(), any(), any(), any(), any()))
           .thenReturn(new OperacionesCargaJdbc.Reserva(op, null));
       when(operaciones.iniciar(any(), any())).thenReturn(op);
       when(operaciones.almacenada(any())).thenReturn(op);

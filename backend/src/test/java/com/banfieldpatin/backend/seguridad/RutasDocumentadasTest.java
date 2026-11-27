@@ -105,7 +105,7 @@ class RutasDocumentadasTest {
 	void laUnicaEscrituraFamiliarEsLaCargaDocumentalExplicita() throws Exception {
 		assertThat(rutasDeLaTabla().stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia")))
 				.containsExactlyInAnyOrder("GET /api/familia/mi-familia", "GET /api/familia/deportistas",
-						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/tutores/{id}/documentos", "GET /api/familia/deportistas/{deportistaId}/temporadas",
+						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/deportistas/{id}/temporadas/{temporadaId}/apto-fisico", "GET /api/familia/tutores/{id}/documentos", "GET /api/familia/deportistas/{deportistaId}/temporadas",
 						"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "GET /api/familia/deportistas/{deportistaId}/ficha", "GET /api/familia/deportistas/{deportistaId}/responsables",
 						"GET /api/familia/documentos/disponibilidad",
 						"POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");

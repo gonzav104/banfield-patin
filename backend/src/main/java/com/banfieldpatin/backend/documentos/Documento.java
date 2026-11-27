@@ -57,4 +57,8 @@ public class Documento {
 
     @Column(name = "motivo_observacion", length = 500)
     private String motivoObservacion;
+
+    /** Usuario que cargó esta versión (solo lectura): da la procedencia familiar de los datos del apto (U21). */
+    @Column(name = "cargado_por", insertable = false, updatable = false)
+    private UUID cargadoPor;
 }

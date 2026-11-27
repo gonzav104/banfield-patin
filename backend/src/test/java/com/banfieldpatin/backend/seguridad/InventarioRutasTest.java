@@ -53,6 +53,7 @@ class InventarioRutasTest {
 			"POST /api/admin/deportistas/{id}/activar",
 			"POST /api/admin/deportistas/{id}/desactivar",
 			"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+			"PUT /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/datos-apto",
 			// Revision de un DNI de un tutor (U19).
 			"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
 			// Vinculos (slice 5): lote de vinculacion, revocacion y cambio explicito de principal; sin DELETE ni PATCH.
@@ -143,6 +144,7 @@ class InventarioRutasTest {
 				"POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 				"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+				"PUT /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/datos-apto",
 				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
 				"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
 				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar",
@@ -194,6 +196,8 @@ class InventarioRutasTest {
 				.containsExactlyInAnyOrder("POST /api/admin/deportistas", "PUT /api/admin/deportistas/{id}",
 						"POST /api/admin/deportistas/{id}/activar", "POST /api/admin/deportistas/{id}/desactivar",
 						"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+						// Corrección administrativa de los datos de un apto físico (U21): reemplazo de datos, sin borrado ni PATCH.
+						"PUT /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/datos-apto",
 						// Responsables (C2-B): alta idempotente, tipo declarado y revocación individual; sin borrado.
 						"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores",
 						"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
@@ -212,7 +216,8 @@ class InventarioRutasTest {
 				"GET /api/admin/deportistas/{id}/checklist-documental",
 				// Descarga auditada de un documento (U16): lectura, sin escritura del documento.
 				"GET /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/archivo",
-				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision");
+				"POST /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/revision",
+				"PUT /api/admin/deportistas/{deportistaId}/documentos/{documentoId}/datos-apto");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -251,6 +256,8 @@ class InventarioRutasTest {
 						"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/") && r.contains("/temporadas") && r.contains("/deportistas")))
 				.containsExactlyInAnyOrder("GET /api/admin/deportistas/{deportistaId}/temporadas",
+						// Apto físico por temporada (U21): lectura calculada, sin escritura.
+						"GET /api/admin/deportistas/{id}/temporadas/{temporadaId}/apto-fisico",
 						"POST /api/admin/deportistas/{deportistaId}/temporadas",
 						"GET /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
 						"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}",
@@ -268,7 +275,7 @@ class InventarioRutasTest {
 		// Slice 6: la lista COMPLETA de rutas bajo /api/familia (de cualquier metodo). Agregar una (aunque sea GET) obliga a
 		// actualizar esta prueba, el contrato de docs/FAMILIAS-DEPORTISTAS.md y RutasDocumentadasTest de forma consciente.
 		assertThat(rutas(false).stream().filter(r -> r.contains(" /api/familia"))).containsExactlyInAnyOrder(
-				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/tutores/{id}/documentos",
+				"GET /api/familia/mi-familia", "GET /api/familia/deportistas", "GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/deportistas/{id}/temporadas/{temporadaId}/apto-fisico", "GET /api/familia/tutores/{id}/documentos",
 				// Datos deportivos anuales (temp-3): historial y detalle de un deportista propio.
 				"GET /api/familia/deportistas/{deportistaId}/temporadas",
 				"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}",

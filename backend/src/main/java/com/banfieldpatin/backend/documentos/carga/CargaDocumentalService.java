@@ -3,6 +3,7 @@ package com.banfieldpatin.backend.documentos.carga;
 import com.banfieldpatin.backend.compartido.error.ExcepcionNegocio;
 import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.documentos.*;
+import com.banfieldpatin.backend.documentos.apto.MetadatosApto;
 import com.banfieldpatin.backend.documentos.almacen.*;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -15,6 +16,8 @@ import org.springframework.web.multipart.MultipartFile;
  */
 public final class CargaDocumentalService {
   record Resultado(DocumentoMetadatos documento, boolean repetida) {}
+
+  private static final MetadatosApto.Solicitado SIN_APTO = new MetadatosApto.Solicitado(null, null, null);
 
   private final OperacionesCargaJdbc operaciones;
   private final PreparadorDocumento preparador;
@@ -81,9 +84,22 @@ public final class CargaDocumentalService {
       UUID idem,
       MultipartFile archivo,
       DatosSolicitud datos) {
+    return cargar(c, atleta, tipo, temporada, SIN_APTO, idem, archivo, datos);
+  }
+
+  /** Carga inicial con los datos del apto (U21): se validan al reservar, junto con el tipo y la temporada. */
+  Resultado cargar(
+      ContextoCarga c,
+      UUID atleta,
+      TipoDocumento tipo,
+      UUID temporada,
+      MetadatosApto.Solicitado apto,
+      UUID idem,
+      MultipartFile archivo,
+      DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, Propietario.deDeportista(atleta), tipo, temporada, null, idem, archivo, datos);
+      return procesar(c, Propietario.deDeportista(atleta), tipo, temporada, null, apto, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -97,9 +113,21 @@ public final class CargaDocumentalService {
       UUID idem,
       MultipartFile archivo,
       DatosSolicitud datos) {
+    return reemplazar(c, atleta, predecesor, SIN_APTO, idem, archivo, datos);
+  }
+
+  /** Reemplazo con los datos del apto de la nueva versión (U21): exigidos si el predecesor es un apto. */
+  Resultado reemplazar(
+      ContextoCarga c,
+      UUID atleta,
+      UUID predecesor,
+      MetadatosApto.Solicitado apto,
+      UUID idem,
+      MultipartFile archivo,
+      DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, Propietario.deDeportista(atleta), null, null, predecesor, idem, archivo, datos);
+      return procesar(c, Propietario.deDeportista(atleta), null, null, predecesor, apto, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -110,7 +138,7 @@ public final class CargaDocumentalService {
       ContextoCarga c, UUID tutor, TipoDocumento tipo, UUID idem, MultipartFile archivo, DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, Propietario.deTutor(tutor), tipo, null, null, idem, archivo, datos);
+      return procesar(c, Propietario.deTutor(tutor), tipo, null, null, SIN_APTO, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -121,7 +149,7 @@ public final class CargaDocumentalService {
       ContextoCarga c, UUID tutor, UUID predecesor, UUID idem, MultipartFile archivo, DatosSolicitud datos) {
     if (!cupos.tryAcquire()) throw ErrorCarga.ocupada();
     try {
-      return procesar(c, Propietario.deTutor(tutor), null, null, predecesor, idem, archivo, datos);
+      return procesar(c, Propietario.deTutor(tutor), null, null, predecesor, SIN_APTO, idem, archivo, datos);
     } finally {
       cupos.release();
     }
@@ -133,6 +161,7 @@ public final class CargaDocumentalService {
       TipoDocumento tipo,
       UUID temporada,
       UUID predecesor,
+      MetadatosApto.Solicitado apto,
       UUID idem,
       MultipartFile archivo,
       DatosSolicitud datos) {
@@ -149,11 +178,11 @@ public final class CargaDocumentalService {
             predecesor == null
                 ? (prop.esTutor()
                     ? operaciones.reservarTutor(c, prop.tutor(), tipo, idem, almacen.prepararDestino(), a)
-                    : operaciones.reservar(c, prop.deportista(), tipo, temporada, idem, almacen.prepararDestino(), a))
+                    : operaciones.reservar(c, prop.deportista(), tipo, temporada, apto, idem, almacen.prepararDestino(), a))
                 : (prop.esTutor()
                     ? operaciones.reservarReemplazoTutor(c, prop.tutor(), predecesor, idem, almacen.prepararDestino(), a)
                     : operaciones.reservarReemplazo(
-                        c, prop.deportista(), predecesor, idem, almacen.prepararDestino(), a));
+                        c, prop.deportista(), predecesor, apto, idem, almacen.prepararDestino(), a));
         if (reserva.publicada() != null) return new Resultado(reserva.publicada(), true);
         op = reserva.operacion();
         if (reserva.retomada()) DiagnosticoCarga.retomada(op.id(), op.estado());

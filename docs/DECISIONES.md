@@ -62,6 +62,8 @@ Fase: 3.
 
 Ventajas de A: menos esquema y menos escritura. Riesgo: no se puede reconstruir quién observó un apto y cuándo.
 Recomendación: **A** para el MVP, con auditoría de cambios de estado; revisar en Fase 10 si el uso real lo exige.
+
+**Implementado (U21):** el apto físico se guarda como documento versionado (`documento`, una serie vigente por deportista y temporada) con sus tres datos; el historial de **versiones** y la auditoría de revisión y de corrección dan la trazabilidad sin una tabla de historial de estados. `apto_fisico` queda reservada para la presentación federativa (U22). Ver `DOCUMENTOS.md`, «Apto físico anual (U21)».
 Fase: 4.
 
 ### O4 — Diseño del historial federativo

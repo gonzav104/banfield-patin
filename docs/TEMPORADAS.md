@@ -194,3 +194,7 @@ Cada temporada se muestra con **exactamente** `{temporadaId, anio, temporadaActi
 - **Temporada vigente en la ficha (`FE-04`).** La ficha mínima de FAMILIA (`GET /api/familia/deportistas/{deportistaId}/ficha`, ver [FAMILIAS-DEPORTISTAS.md](FAMILIAS-DEPORTISTAS.md)
   sección 6) incluye la fila deportiva de la temporada **activa** de la escuela, componiendo los mismos fragmentos de alcance y visibilidad que el historial más `t.activa = true`;
   es `null` (con `200`) si no hay temporada activa o el deportista no tiene fila en ella. No incluye licencia, empadronamiento ni aptos.
+
+## 9. Vigencia del apto físico por temporada (U21)
+
+El apto físico es anual y su vigencia es la del **año calendario de la temporada** (01/01–31/12), sin importar la fecha de emisión. La regla está **confirmada solo para 2026** (Reglamento Nacional 2026); para 2027 y cualquier otra temporada se aplica la misma fecha como **regla provisional**, marcada `confirmada: false` en la API, hasta verificarla contra el reglamento de esa temporada. La temporada se identifica por su `anio`; el vencimiento se calcula al leer (zona `America/Argentina/Buenos_Aires`) y no se persiste, de modo que ajustar una regla no deja fechas viejas guardadas.
