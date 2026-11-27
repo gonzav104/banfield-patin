@@ -121,10 +121,10 @@ class V16EscriturasVigenciasDbTest {
 
 	@Test
 	void v17LaAplicaElMigradorYElRuntimeOperaElAptoSinBorradoNiPermisosNuevos() {
-		flyway().load().migrate();
-		flyway().load().validate();
-		// Aplicada por el migrador y vigente: V17 es la última versión del esquema.
-		assertThat(flyway().load().info().current().getVersion().getVersion()).isEqualTo("17");
+		flyway().target("17").load().migrate();
+		flyway().target("17").load().validate();
+		// Aplicada por el migrador y vigente: esta prueba fija el esquema en V17 (V18 tiene su propia prueba con roles separados).
+		assertThat(flyway().target("17").load().info().current().getVersion().getVersion()).isEqualTo("17");
 		var c = casoBase();
 		var cliente = JdbcClient.create(runtime);
 		UUID temporada = new DatosDb(JdbcClient.create(admin)).temporada(c.escuela(), 2026, false);
