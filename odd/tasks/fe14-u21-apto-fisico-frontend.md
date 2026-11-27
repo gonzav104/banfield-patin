@@ -17,11 +17,11 @@ Runner: Vitest + Testing Library (`npm test`), FakeBackend, Playwright E2E real 
 - Temporadas: FAMILIA elige entre las del deportista (`GET /api/familia/deportistas/{id}/temporadas`); ADMIN entre las de la escuela (`GET /api/admin/temporadas`).
 
 ## Tasks
-- [ ] T1 · S1 S3 · inline · módulo `features/apto-fisico`: esquemas, validación de formulario, mensajes, API y hooks (sin persistencia del navegador) + Vitest
-- [ ] T2 · S1 S3 · inline · FAMILIA: sección en la ficha, estado/vigencia/avisos, `datosVisibles`, carga y reemplazo con idempotencia, banderas
-- [ ] T3 · S2 S3 · inline · ADMIN: sección en el detalle, revisión, descarga auditada, corrección con revisión optimista y advertencia, bandeja
-- [ ] T4 · S4 · inline · FakeBackend + pruebas de componentes (formularios, idempotencia y conflictos, accesibilidad/móvil, privacidad)
-- [ ] T5 · S4 · inline · E2E real (dos familias, revisión, corrección, observación, reemplazo, revocación, bandera apagada) + shards
+- [x] T1 · S1 S3 · inline · módulo `features/apto-fisico`: esquemas, validación de formulario, mensajes, API y hooks (sin persistencia del navegador) + Vitest
+- [x] T2 · S1 S3 · inline · FAMILIA: sección en la ficha, estado/vigencia/avisos, `datosVisibles`, carga y reemplazo con idempotencia, banderas
+- [x] T3 · S2 S3 · inline · ADMIN: sección en el detalle, revisión, descarga auditada, corrección con revisión optimista y advertencia, bandeja
+- [x] T4 · S4 · inline · FakeBackend + pruebas de componentes (formularios, idempotencia y conflictos, accesibilidad/móvil, privacidad)
+- [x] T5 · S4 · inline · E2E real (dos familias, revisión, corrección, observación, reemplazo, revocación, bandera apagada) + shards
 - [ ] T6 · S4 S5 · inline · docs, ODD, Engram, Gentle AI, commits, informe
 
 Route: todo inline (módulo único y dependiente; sin unidades paralelas independientes ⇒ sin Writer trigger).
@@ -32,3 +32,7 @@ Provisoria, **antes de U22**, sin implementar. Motivo (relevamiento del 2026-11-
 ## Log
 ### L1
 Pedido del usuario (2026-11-26/27): ver `S1`–`S6` (citas literales). Orden de trabajo: merge del PR #57 con merge commit (3e51372, árbol idéntico al candidato 754e745), CI posterior 8/8 verificada por SHA exacto, y luego este frontend.
+
+### L2 — avance 2026-11-27
+Módulo `features/apto-fisico`, secciones familiar y ADMIN, FakeBackend, E2E y reparto de shards (commits 26b1125, 33603b5, 1caf05d). Hallazgos: (1) el portal solo lista temporadas hasta la **activa** (`ta.anio >= t.anio`): sin temporada activa o para una temporada posterior a la activa la familia no puede cargar el apto; es una regla del backend ya vigente y se respeta (limitación registrada, no se cambia el backend en este PR); (2) `portal-ficha` fijaba la lista exacta de títulos y los requests de la ficha: se actualizó con el apto; (3) un escenario de `portal-ficha` borraba las cookies con la sección nueva todavía cargando: ahora espera su estado. El apto sale del listado genérico de documentos del detalle ADMIN para no duplicar controles.
+
