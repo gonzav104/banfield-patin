@@ -27,8 +27,8 @@ Runner: Maven (`./mvnw`, `-Pdb-tests` PostgreSQL 17 Testcontainers), Vitest + Fa
 ## Tasks
 - [x] T1 · S3 · inline · V18: pertenencia inmutable de `usuario` (familia, escuela, rol, id) y procedencia inmutable de `documento.cargado_por`; prueba con el login runtime real · commit be2fcc8 · RED (V18 vacía: 4 fallos) → GREEN 6/6
 - [x] T2 · S1 S2 · inline · Backend C0: V19 `sesiones_validas_desde`, revalidación por `iat`, listado y desactivar/reactivar, filtro `familiaId` de invitaciones, auditoría, bandera, pruebas · commit 4542320 · mutación: sin la comparación por `iat` fallan 2 pruebas (token viejo 200)
-- [~] T3 · S1 S2 S4 · inline · Frontend C0: sección «Cuentas de acceso» en el detalle de familia, Vitest/FakeBackend, E2E real
-- [ ] T4 · S5 · inline · docs, suites completas, Gentle AI, commits, Engram, informe
+- [x] T3 · S1 S2 S4 · inline · Frontend C0: sección «Cuentas de acceso» en el detalle de familia, Vitest/FakeBackend, E2E real · commit 1be1341 (+ df1123c)
+- [x] T4 · S5 · inline · docs, suites completas, Gentle AI, commits, Engram, informe · commits c8a7d7f, df1123c y este registro
 
 Route: todo inline (una cadena dependiente: V18 → backend → frontend; sin unidades paralelas independientes ⇒ sin Writer trigger).
 
@@ -41,3 +41,9 @@ Pedido del usuario (2026-11-27): aprobación del enfoque de U21-BIS y autorizaci
 - Rutas: `/api/admin/familias/{familiaId}/cuentas` (en lugar de `/usuarios` del diseño) para exigir familia y cuenta juntas. Se ampliaron a conciencia los inventarios de rutas, OpenAPI y la lista de migraciones.
 - `VerificadorSesionVigente` gana `vigente(..., Instant emitidoEn)`; la variante sin emisión queda para la revalidación dentro de la carga documental (ya autenticada al empezar la solicitud). Riesgo aceptado: si desactivación, reactivación y emisión del token viejo caen en el mismo segundo, ese token sobrevive (resolución de `iat`).
 - Suites backend sobre 4542320 (antes del frontend): normal 1536/1536, PostgreSQL 1074/1074. Frontend: typecheck y lint limpios; Vitest 76 archivos, 1701 pruebas (1 fallo esperado de `family-athletes` por los dos pedidos nuevos de la ficha; se amplió su lista permitida y pasa 25/25).
+
+### L3 — cierre local 2026-11-27
+- E2E real shard 1 sobre 1be1341: 143/143 (incluye `cuentas-familia.real.spec.ts`: la sesión abierta de la persona sin acceso muere, la del otro adulto sigue, el login queda bloqueado y devolver el acceso exige ingresar de nuevo).
+- Gentle AI sobre ff9f5f2..c8a7d7f (1.783 líneas, riesgo high por item 2), 4 lentes con consentimiento: **aprobada, 0 bloqueantes, acknowledged**. Aplicadas en df1123c: `vigenteSinComprobarEmision` (nombre explícito para la garantía más débil), permiso antes que bandera, aviso de invitaciones recortadas. No aplicadas: unificar la consulta JPQL de invitaciones (riesgo de tocar el listado existente; queda como mejora) y la ventana de un segundo del `iat` (riesgo aceptado y fijado por prueba).
+- Suites finales sobre df1123c: backend normal 1536/1536; Vitest 76 archivos 1702/1702; typecheck y lint limpios; PostgreSQL 1074 con 2 errores en `V5OperacionDbTest` (`CannotGetJdbcConnection`), que también falla aislada sobre el árbol de `main` 71e8c58 (otro método): deuda abierta de Docker/WSL2, no regresión. Sobre 4542320 la suite PostgreSQL había dado 1074/1074.
+- Pendiente: autorización de publicación (push + PR). Alcance futuro sin tocar: C1–C5, U22.
