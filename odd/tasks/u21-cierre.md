@@ -13,7 +13,8 @@ Unidad **integrada en `main`** el 2026-11-27, en dos PR sin squash ni reescritur
 
 ## Limitaciones conocidas
 - El portal lista temporadas solo hasta la activa: sin temporada activa, o para una posterior, la familia no puede cargar el apto.
-- Pruebas intermitentes de backend (UUID aleatorio + texto prohibido; sesión bloqueada elegida con `get(0)`): PR de pruebas independiente en curso.
+- Pruebas intermitentes de backend (UUID aleatorio + texto prohibido; sesión bloqueada elegida con `get(0)` y texto de sentencia anterior en `pg_stat_activity`): **resueltas** en el PR #59, integrado el 2026-11-27 (merge `71e8c58`, tres commits preservados, árbol idéntico al candidato `a717dbe`, CI posterior 8/8). Solo código de prueba.
+- **Deuda abierta — conectividad Docker/WSL2/Ryuk (Testcontainers):** en una de cuatro corridas completas locales de la suite PostgreSQL falló `Could not connect to Ryuk at localhost:<puerto>` y cayeron 791 pruebas antes de ejecutarse (en CI no se observó). `V5OperacionDbTest` también es inestable en local. Causa sin determinar; no se corrige dentro de U21 ni de U21-BIS.
 
 ## Próximas unidades
-**U21-BIS — Autoservicio y empadronamiento familiar** (diseño en `docs/U21-BIS-AUTOSERVICIO-FAMILIAR.md`, pendiente de aprobación; antes de U22). **U22** no se inicia.
+**U21-BIS — Autoservicio y empadronamiento familiar** (decisión funcional aprobada el 2026-11-27: alta de deportistas por solicitud familiar con verificación de ADMIN, sin creación directa; diseño completo en `docs/U21-BIS-AUTOSERVICIO-FAMILIAR.md`, pendiente de aprobación; antes de U22). **U22** no se inicia.
