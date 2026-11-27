@@ -60,6 +60,7 @@ class InventarioRutasTest {
 			"POST /api/admin/familias/{familiaId}/deportistas",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 			"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
+			"POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar", "POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/reactivar",
 			// Temporadas (temp-1): alta y activacion; sin PUT, DELETE ni PATCH.
 			"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar",
 			// Datos deportivos por temporada (temp-2): alta y reemplazo completo; sin DELETE ni PATCH.
@@ -152,6 +153,7 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
+			"POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar", "POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/reactivar",
 				"POST /api/admin/temporadas", "POST /api/admin/temporadas/{id}/activar",
 				"POST /api/admin/deportistas/{deportistaId}/temporadas",
 				"PUT /api/admin/deportistas/{deportistaId}/temporadas/{temporadaId}");
@@ -166,7 +168,9 @@ class InventarioRutasTest {
 				"POST /api/admin/familias/{id}/activar", "POST /api/admin/familias/{id}/desactivar",
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
-				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal");
+				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
+				// U21-BIS C0: quitar y devolver el acceso a una cuenta FAMILIA (no crea ni borra cuentas).
+				"POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar", "POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/reactivar");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 

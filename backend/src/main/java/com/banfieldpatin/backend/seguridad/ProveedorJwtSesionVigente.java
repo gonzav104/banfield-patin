@@ -1,5 +1,7 @@
 package com.banfieldpatin.backend.seguridad;
 
+import java.time.Instant;
+
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.AuthenticationServiceException;
@@ -45,8 +47,10 @@ public class ProveedorJwtSesionVigente implements AuthenticationProvider {
 		}
 		boolean vigente;
 		try {
+			// Sin iat el token se trata como el más antiguo posible: nunca sobrevive a una reactivación.
+			Instant emitido = token.getToken().getIssuedAt() == null ? Instant.EPOCH : token.getToken().getIssuedAt();
 			vigente = verificador.vigente(identidad.id(), identidad.escuelaId(), identidad.rol().name(),
-					identidad.familiaId());
+					identidad.familiaId(), emitido);
 		} catch (DataAccessException e) {
 			throw new AuthenticationServiceException("No se pudo verificar la vigencia de la sesion.", e);
 		}

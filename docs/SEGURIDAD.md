@@ -40,6 +40,8 @@ solo es vigente si:
 - su escuela está activa;
 - el `rol` y el `familia_id` del token coinciden con la fila del usuario (un token de ADMIN de quien hoy es FAMILIA, o con la familia de otro, se rechaza);
 - para un token de FAMILIA, la familia existe en esa escuela y está activa (desactivar una familia cierra la sesión de todos sus usuarios).
+- el token no es anterior a la última **reactivación** de la cuenta (`usuario.sesiones_validas_desde`, V19; el `iat` se compara con ese instante
+  truncado al segundo): reactivar una cuenta no revive las sesiones emitidas antes de desactivarla.
 
 | Resultado de la revalidación | Respuesta |
 |---|---|
@@ -336,12 +338,26 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   Hay que reiniciar el MFA de todos los ADMIN con el SQL anterior (sin el `WHERE`, para todos los de la escuela). No hay rotación de clave sin reenrolar.
 - Un secreto copiado a la fila de otro usuario no sirve para saltarse el MFA: el id del usuario es el AAD del cifrado, así que no descifra.
 
+### Gestión de cuentas familiares por ADMIN (U21-BIS C0)
+
+- `GET /api/admin/familias/{familiaId}/cuentas` lista las cuentas FAMILIA de esa familia (nombre, apellido, correo, si está activa, último
+  ingreso y alta; nunca contraseña, rol, datos de MFA ni de sesiones) e informa `gestionHabilitada`.
+- `POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar` y `/reactivar` (CSRF): idempotentes, expresan el estado final y se
+  aplican con un `UPDATE` condicional (dos ADMIN a la vez dejan un solo cambio auditado). Solo cuentas FAMILIA de una familia de la escuela
+  del ADMIN; la familia y la cuenta se exigen juntas: una cuenta de otra familia o escuela, un ADMIN o un id inexistente dan el mismo
+  `404 CUENTA_NO_ENCONTRADA` (familia ajena: `404 FAMILIA_NO_ENCONTRADA`).
+- **Sesiones ya iniciadas:** desactivar las corta desde la siguiente solicitud (revalidación) y reactivar no las revive (V19). Cada persona
+  de una familia tiene credenciales propias: desactivar a una no afecta a las demás.
+- Las escrituras están detrás de `CUENTAS_GESTION_HABILITADA` (`false` por defecto → `503 GESTION_CUENTAS_DESHABILITADA`).
+- `GET /api/admin/invitaciones?familiaId=…` filtra las invitaciones de una familia de la escuela (una familia ajena da una página vacía).
+- La pertenencia de una cuenta (familia, escuela, rol) no cambia (V18): no existe reasignación entre familias.
+
 ## 10. Auditoría
 
 Tabla `auditoria` (escritura por `JdbcClient`). Eventos: `LOGIN_EXITOSO`, `LOGIN_FALLIDO`, `LOGOUT`, `ADMIN_BOOTSTRAP`,
 `FAMILIA_CREADA`, `INVITACION_CREADA`, `INVITACION_REVOCADA`, `REGISTRO_POR_INVITACION`, `REGISTRO_FALLIDO` y los de MFA:
 `MFA_ENROLADO`, `MFA_CONFIRMADO`, `MFA_VERIFICADO`, `MFA_FALLO` (con `etapa` y `motivo`, nunca el código) y `MFA_REINICIADO` (actor = el ADMIN que reinicia,
-recurso = el ADMIN afectado). Un `LOGIN_EXITOSO` de ADMIN solo prueba la contraseña: la sesión completa queda marcada por `MFA_CONFIRMADO` o `MFA_VERIFICADO`.
+recurso = el ADMIN afectado). `USUARIO_DESACTIVADO` y `USUARIO_REACTIVADO` (actor = ADMIN, recurso = la cuenta, detalle = solo la familia). Un `LOGIN_EXITOSO` de ADMIN solo prueba la contraseña: la sesión completa queda marcada por `MFA_CONFIRMADO` o `MFA_VERIFICADO`.
 
 - Los eventos de éxito comparten la transacción del cambio de negocio; los de fallo usan una transacción propia y su error
   de escritura se ignora, de modo que una falla de auditoría no cambia la respuesta genérica.
@@ -368,6 +384,7 @@ contiene únicamente valores ficticios.
 | `FRONTEND_URL_BASE` | **sí en `prod`** (https); no en otros perfiles | Base para generar `enlaceRegistro` (`{base}/registro/invitacion#{token}`, sección 7). Vacía fuera de `prod` = sin enlace |
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
+| `CUENTAS_GESTION_HABILITADA` | no | `false` por defecto: desactivar/reactivar cuentas familiares desde el panel ADMIN (U21-BIS C0) |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
 
 ## 12. Pruebas y convención de pruebas con base de datos

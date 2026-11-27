@@ -3,6 +3,8 @@ package com.banfieldpatin.backend.seguridad;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -78,27 +80,54 @@ class ProveedorJwtSesionVigenteTest {
 	void vigenteDevuelveElTokenDelDelegadoYConsultaConLosReclamosDelJwt() {
 		JwtAuthenticationToken emitido = delegaEmite(autenticacion(
 				jwt(usuarioId.toString(), "FAMILIA", escuelaId.toString(), familiaId.toString()), "ROLE_FAMILIA"));
-		when(verificador.vigente(usuarioId, escuelaId, "FAMILIA", familiaId)).thenReturn(true);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("FAMILIA"), eq(familiaId), any(Instant.class))).thenReturn(true);
 
 		assertThat(proveedor.authenticate(entrada)).isSameAs(emitido);
 
-		verify(verificador).vigente(usuarioId, escuelaId, "FAMILIA", familiaId);
+		verify(verificador).vigente(eq(usuarioId), eq(escuelaId), eq("FAMILIA"), eq(familiaId), any(Instant.class));
+	}
+
+	@Test
+	void consultaConLaEmisionDelTokenParaQueUnaReactivacionNoReviva() {
+		Instant emision = Instant.parse("2026-01-01T10:00:00Z");
+		Jwt conEmision = Jwt.withTokenValue("token-opaco").header("alg", "HS256").subject(usuarioId.toString())
+				.issuedAt(emision).expiresAt(emision.plusSeconds(60)).claim(ServicioTokens.CLAIM_ROL, "ADMIN")
+				.claim(ServicioTokens.CLAIM_ESCUELA_ID, escuelaId.toString()).build();
+		delegaEmite(autenticacion(conEmision, "ROLE_ADMIN"));
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), eq(emision))).thenReturn(true);
+
+		proveedor.authenticate(entrada);
+
+		verify(verificador).vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), eq(emision));
+	}
+
+	@Test
+	void unTokenSinEmisionSeTrataComoElMasAntiguoPosible() {
+		Jwt sinEmision = Jwt.withTokenValue("token-opaco").header("alg", "HS256").subject(usuarioId.toString())
+				.expiresAt(Instant.now().plusSeconds(60)).claim(ServicioTokens.CLAIM_ROL, "ADMIN")
+				.claim(ServicioTokens.CLAIM_ESCUELA_ID, escuelaId.toString()).build();
+		delegaEmite(autenticacion(sinEmision, "ROLE_ADMIN"));
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), eq(Instant.EPOCH))).thenReturn(true);
+
+		proveedor.authenticate(entrada);
+
+		verify(verificador).vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), eq(Instant.EPOCH));
 	}
 
 	@Test
 	void adminSeConsultaConFamiliaNula() {
 		delegaEmite(autenticacion(jwt(usuarioId.toString(), "ADMIN", escuelaId.toString(), null), "ROLE_ADMIN"));
-		when(verificador.vigente(usuarioId, escuelaId, "ADMIN", null)).thenReturn(true);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class))).thenReturn(true);
 
 		assertThat(proveedor.authenticate(entrada)).isNotNull();
 
-		verify(verificador).vigente(usuarioId, escuelaId, "ADMIN", null);
+		verify(verificador).vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class));
 	}
 
 	@Test
 	void noVigenteLanzaSesionNoVigente() {
 		delegaEmite(autenticacion(jwt(usuarioId.toString(), "ADMIN", escuelaId.toString(), null), "ROLE_ADMIN"));
-		when(verificador.vigente(usuarioId, escuelaId, "ADMIN", null)).thenReturn(false);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class))).thenReturn(false);
 
 		assertThatThrownBy(() -> proveedor.authenticate(entrada)).isInstanceOf(SesionNoVigenteException.class);
 	}
@@ -107,7 +136,7 @@ class ProveedorJwtSesionVigenteTest {
 	void fallaDeLaBaseSeConvierteEnAuthenticationServiceExceptionYNoEnSesionNoVigente() {
 		delegaEmite(autenticacion(jwt(usuarioId.toString(), "ADMIN", escuelaId.toString(), null), "ROLE_ADMIN"));
 		var causa = new DataAccessResourceFailureException("base caida");
-		when(verificador.vigente(usuarioId, escuelaId, "ADMIN", null)).thenThrow(causa);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class))).thenThrow(causa);
 
 		assertThatThrownBy(() -> proveedor.authenticate(entrada))
 				.isInstanceOf(AuthenticationServiceException.class)
@@ -147,22 +176,22 @@ class ProveedorJwtSesionVigenteTest {
 	void unTokenConMfaPendienteTambienSeVerifica() {
 		delegaEmite(autenticacion(jwt(usuarioId.toString(), "ADMIN", escuelaId.toString(), null),
 				JwtConfig.AUTORIDAD_MFA_PENDIENTE));
-		when(verificador.vigente(usuarioId, escuelaId, "ADMIN", null)).thenReturn(false);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class))).thenReturn(false);
 
 		assertThatThrownBy(() -> proveedor.authenticate(entrada)).isInstanceOf(SesionNoVigenteException.class);
 
-		verify(verificador).vigente(usuarioId, escuelaId, "ADMIN", null);
+		verify(verificador).vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class));
 	}
 
 	@Test
 	void sinCacheDosAutenticacionesSonDosConsultas() {
 		delegaEmite(autenticacion(jwt(usuarioId.toString(), "ADMIN", escuelaId.toString(), null), "ROLE_ADMIN"));
-		when(verificador.vigente(usuarioId, escuelaId, "ADMIN", null)).thenReturn(true, false);
+		when(verificador.vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class))).thenReturn(true, false);
 
 		assertThat(proveedor.authenticate(entrada)).isNotNull();
 		assertThatThrownBy(() -> proveedor.authenticate(entrada)).isInstanceOf(SesionNoVigenteException.class);
 
-		verify(verificador, times(2)).vigente(usuarioId, escuelaId, "ADMIN", null);
+		verify(verificador, times(2)).vigente(eq(usuarioId), eq(escuelaId), eq("ADMIN"), isNull(), any(Instant.class));
 	}
 
 	@Test
@@ -171,7 +200,7 @@ class ProveedorJwtSesionVigenteTest {
 
 		assertThatThrownBy(() -> proveedor.authenticate(entrada)).isInstanceOf(SesionNoVigenteException.class);
 
-		verify(verificador, never()).vigente(any(), any(), any(), any());
+		verify(verificador, never()).vigente(any(), any(), any(), any(), any());
 	}
 
 	@Test

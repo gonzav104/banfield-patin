@@ -1,5 +1,6 @@
 package com.banfieldpatin.backend.seguridad;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -22,5 +23,16 @@ public interface VerificadorSesionVigente {
 	 * @param rol       claim {@code rol} ({@code ADMIN} o {@code FAMILIA})
 	 * @param familiaId claim {@code familia_id}; {@code null} para ADMIN
 	 */
-	boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId);
+	default boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId) {
+		return vigente(usuarioId, escuelaId, rol, familiaId, null);
+	}
+
+	/**
+	 * Igual que {@link #vigente(UUID, UUID, String, UUID)} y, además, rechaza un token emitido antes de la última
+	 * reactivación de la cuenta (reactivar no revive las sesiones anteriores a la desactivación).
+	 *
+	 * @param emitidoEn claim {@code iat}; {@code null} solo cuando no hay token a mano (revalidación dentro de una
+	 *                  operación ya autenticada al empezar la solicitud) y entonces no se compara la emisión
+	 */
+	boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId, Instant emitidoEn);
 }

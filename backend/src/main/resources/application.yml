@@ -94,6 +94,10 @@ banfield:
     apellido: ${BOOTSTRAP_ADMIN_APELLIDO:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
+  cuentas:
+    # U21-BIS C0: desactivar/reactivar cuentas familiares desde el panel ADMIN (apagado por defecto).
+    gestion-habilitada: ${CUENTAS_GESTION_HABILITADA:false}
+
   documentos:
     carga:
       habilitada: ${DOCUMENTOS_CARGA_HABILITADA:false}

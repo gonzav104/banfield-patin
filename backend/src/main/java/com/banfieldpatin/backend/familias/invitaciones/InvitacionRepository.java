@@ -45,6 +45,20 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
 	Page<Invitacion> listar(@Param("escuelaId") UUID escuelaId, @Param("estado") String estado,
 			@Param("ahora") Instant ahora, Pageable pageable);
 
+	/** Igual que {@link #listar} pero solo las invitaciones de una familia de la escuela (detalle de familia, U21-BIS C0). */
+	@Query("""
+			select i from Invitacion i
+			where i.escuelaId = :escuelaId and i.familiaId = :familiaId
+			  and (:estado = 'TODOS'
+			    or (:estado = 'USADA' and i.usadoEn is not null)
+			    or (:estado = 'REVOCADA' and i.usadoEn is null and i.revocadaEn is not null)
+			    or (:estado = 'EXPIRADA' and i.usadoEn is null and i.revocadaEn is null and i.expiraEn <= :ahora)
+			    or (:estado = 'PENDIENTE' and i.usadoEn is null and i.revocadaEn is null and i.expiraEn > :ahora))
+			order by i.creadoEn desc
+			""")
+	Page<Invitacion> listarDeFamilia(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId,
+			@Param("estado") String estado, @Param("ahora") Instant ahora, Pageable pageable);
+
 	String TODOS = "TODOS";
 
 	/** Revocacion condicional: solo afecta a una fila aun no usada ni revocada de la escuela indicada. */

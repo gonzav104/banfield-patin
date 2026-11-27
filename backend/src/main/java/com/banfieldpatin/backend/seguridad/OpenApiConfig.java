@@ -159,6 +159,12 @@ public class OpenApiConfig {
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
 			entry("POST /api/admin/deportistas/{id}/desactivar", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO",
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			// --- Cuentas de acceso de una familia (U21-BIS C0)
+			entry("GET /api/admin/familias/{familiaId}/cuentas", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
+			entry("POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar",
+					ruta(200, "404 FAMILIA_NO_ENCONTRADA o CUENTA_NO_ENCONTRADA", "503 GESTION_CUENTAS_DESHABILITADA")),
+			entry("POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/reactivar",
+					ruta(200, "404 FAMILIA_NO_ENCONTRADA o CUENTA_NO_ENCONTRADA", "503 GESTION_CUENTAS_DESHABILITADA")),
 			// --- Vinculos
 			entry("GET /api/admin/familias/{familiaId}/deportistas", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
 			entry("GET /api/admin/deportistas/{deportistaId}/familias", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO")),
