@@ -23,12 +23,17 @@ public interface VerificadorSesionVigente {
 	 * @param rol       claim {@code rol} ({@code ADMIN} o {@code FAMILIA})
 	 * @param familiaId claim {@code familia_id}; {@code null} para ADMIN
 	 */
-	default boolean vigente(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId) {
+	/**
+	 * Garantía MÁS DÉBIL que {@link #vigente(UUID, UUID, String, UUID, Instant)}: no compara la emisión del token con la
+	 * última reactivación (V19). Solo para revalidar DENTRO de una solicitud cuyo token ya pasó la comprobación completa
+	 * al entrar (por ejemplo, la carga documental antes de publicar); nunca como verificación de un token.
+	 */
+	default boolean vigenteSinComprobarEmision(UUID usuarioId, UUID escuelaId, String rol, UUID familiaId) {
 		return vigente(usuarioId, escuelaId, rol, familiaId, null);
 	}
 
 	/**
-	 * Igual que {@link #vigente(UUID, UUID, String, UUID)} y, además, rechaza un token emitido antes de la última
+	 * Revalidación completa de un token: usuario, escuela y familia activos, reclamos coherentes y, rechaza un token emitido antes de la última
 	 * reactivación de la cuenta (reactivar no revive las sesiones anteriores a la desactivación).
 	 *
 	 * @param emitidoEn claim {@code iat}; {@code null} solo cuando no hay token a mano (revalidación dentro de una

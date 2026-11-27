@@ -23,7 +23,7 @@ afterEach(() => {
 
 const accountPosts = () => backend.requests.filter((r) => r.method === 'post' && /\/cuentas\/[^/]+\/(desactivar|reactivar)$/.test(r.url));
 
-async function openFamily(options: { enabled?: boolean } = {}) {
+async function openFamily(options: { enabled?: boolean; extraPending?: number } = {}) {
   const family = backend.addFamily('Gómez');
   backend.accountsManagement.enabled = options.enabled ?? true;
   backend.addUser({ id: 'u-madre', nombre: 'Laura', apellido: 'Gómez', email: 'laura@example.test', password: 'x', rol: 'FAMILIA', familiaId: family.id, ultimoAccesoEn: '2026-11-20T10:00:00Z' });
@@ -31,6 +31,7 @@ async function openFamily(options: { enabled?: boolean } = {}) {
   backend.addUser({ id: 'u-ajena', nombre: 'Otra', apellido: 'Persona', email: 'otra@example.test', password: 'x', rol: 'FAMILIA', familiaId: 'familia-1' });
   backend.seedInvitation({ status: 'PENDIENTE', family: 'Gómez', email: 'abuela@example.test' });
   backend.seedInvitation({ status: 'USADA', family: 'Gómez', email: 'usada@example.test' });
+  for (let i = 0; i < (options.extraPending ?? 0); i += 1) backend.seedInvitation({ status: 'PENDIENTE', family: 'Gómez', email: `extra${i}@example.test` });
   backend.signIn('marcos@example.com');
   renderApp(`/admin/familias/${family.id}`);
   const list = await screen.findByRole('list', { name: 'Cuentas de acceso' });
@@ -52,6 +53,12 @@ describe('family access accounts (mock backend)', () => {
     expect(within(invitations).getByText('abuela@example.test')).toBeInTheDocument();
     expect(within(invitations).queryByText('usada@example.test')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Invitar a una persona' })).toHaveAttribute('href', '/admin/invitaciones');
+  });
+
+  it('says when the family has more unused invitations than the ones shown', async () => {
+    await openFamily({ extraPending: 20 });
+    expect(within(screen.getByRole('list', { name: 'Invitaciones sin usar' })).getAllByRole('listitem')).toHaveLength(20);
+    expect(screen.getByText(/Se muestran las 20 más recientes de 21/)).toBeInTheDocument();
   });
 
   it('removes access after an explicit confirmation that explains the effect, with CSRF, and reports it', async () => {

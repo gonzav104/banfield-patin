@@ -23,8 +23,11 @@ export async function changeAccountStatus(input: { familyId: string; accountId: 
   return parse(familyAccountSchema, await apiWrite('post', path));
 }
 
-/** Pending invitations of ONE family (GET /api/admin/invitaciones?familiaId=…&estado=PENDIENTE). */
+/** How many unused invitations the family detail shows; the section says so when there are more (totalElementos). */
+export const PENDING_INVITATIONS_SHOWN = 20;
+
+/** Pending invitations of ONE family, most recent first (GET /api/admin/invitaciones?familiaId=…&estado=PENDIENTE). */
 export async function listPendingFamilyInvitations(familyId: string): Promise<InvitationPage> {
-  const query = new URLSearchParams({ familiaId: familyId, estado: 'PENDIENTE', page: '0', size: '20' });
+  const query = new URLSearchParams({ familiaId: familyId, estado: 'PENDIENTE', page: '0', size: String(PENDING_INVITATIONS_SHOWN) });
   return parse(invitationPageSchema, await apiGet(`/admin/invitaciones?${query.toString()}`));
 }

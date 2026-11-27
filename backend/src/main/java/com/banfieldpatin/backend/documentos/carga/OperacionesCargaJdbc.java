@@ -167,7 +167,7 @@ final class OperacionesCargaJdbc {
             .query(UUID.class)
             .optional()
             .isEmpty()) throw TutorAdminService.tutorNoEncontrado();
-    if (!sesiones.vigente(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
+    if (!sesiones.vigenteSinComprobarEmision(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
       throw new ExcepcionNegocio(
           HttpStatus.UNAUTHORIZED, "SESION_NO_VIGENTE", "La sesión ya no está vigente.");
     vigente(c);
@@ -189,7 +189,7 @@ final class OperacionesCargaJdbc {
             .isEmpty()
         || vinculos.deportistaEnAlcance(u.familiaId(), u.escuelaId(), atleta).isEmpty())
       throw DeportistaAdminService.deportistaNoEncontrado();
-    if (!sesiones.vigente(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
+    if (!sesiones.vigenteSinComprobarEmision(u.id(), u.escuelaId(), u.rol().name(), u.familiaId()))
       throw new ExcepcionNegocio(
           HttpStatus.UNAUTHORIZED, "SESION_NO_VIGENTE", "La sesión ya no está vigente.");
     vigente(c);

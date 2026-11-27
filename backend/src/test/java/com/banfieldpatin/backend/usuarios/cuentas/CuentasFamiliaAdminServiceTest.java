@@ -51,8 +51,12 @@ class CuentasFamiliaAdminServiceTest {
 		assertThatThrownBy(() -> servicio(true).listar(familia, UUID.randomUUID()))
 				.isInstanceOfSatisfying(ExcepcionNegocio.class,
 						e -> org.assertj.core.api.Assertions.assertThat(e.getEstado().value()).isEqualTo(403));
-		assertThatThrownBy(() -> servicio(true).desactivar(familia, UUID.randomUUID(), UUID.randomUUID(), solicitud))
-				.isInstanceOf(ExcepcionNegocio.class);
+		// También con la gestión apagada: primero el permiso (403), después la bandera.
+		for (boolean habilitada : new boolean[] { true, false }) {
+			assertThatThrownBy(() -> servicio(habilitada).desactivar(familia, UUID.randomUUID(), UUID.randomUUID(), solicitud))
+					.isInstanceOfSatisfying(ExcepcionNegocio.class,
+							e -> org.assertj.core.api.Assertions.assertThat(e.getEstado().value()).isEqualTo(403));
+		}
 		verifyNoInteractions(jdbc, auditoria);
 	}
 }

@@ -205,7 +205,7 @@ class CuentasFamiliaHttpDbTest extends BaseDbTest {
 		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1, Instant.parse("2026-01-01T10:00:00Z"))).isTrue();
 		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1, Instant.parse("2026-01-01T10:00:01Z"))).isTrue();
 		// Sin iat a mano (revalidación dentro de una operación ya autenticada) no se compara la emisión.
-		assertThat(verificador.vigente(madre, escuelaA, "FAMILIA", fa1)).isTrue();
+		assertThat(verificador.vigenteSinComprobarEmision(madre, escuelaA, "FAMILIA", fa1)).isTrue();
 		// La cuenta nunca reactivada no tiene restricción adicional.
 		assertThat(verificador.vigente(padre, escuelaA, "FAMILIA", fa1, Instant.EPOCH)).isTrue();
 	}

@@ -149,6 +149,11 @@ export function FamilyAccountsSection({ familyId }: { familyId: string }) {
               </li>
             ))}
           </ul>
+          {(invitations.data?.totalElementos ?? 0) > pending.length ? (
+            <p className="text-sm text-muted">
+              Se muestran las {pending.length} más recientes de {invitations.data?.totalElementos}. <Link to="/admin/invitaciones" className="font-semibold text-brand-700 underline underline-offset-4">Ver todas</Link>
+            </p>
+          ) : null}
         </div>
       ) : null}
       {open ? (

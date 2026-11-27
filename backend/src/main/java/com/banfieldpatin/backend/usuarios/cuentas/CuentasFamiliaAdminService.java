@@ -91,11 +91,11 @@ public class CuentasFamiliaAdminService {
 
 	private CuentaFamiliar cambiar(UsuarioAutenticado admin, UUID familiaId, UUID cuentaId, boolean activa,
 			DatosSolicitud solicitud) {
+		exigirAdmin(admin);
 		if (!propiedades.gestionHabilitada()) {
 			throw new ExcepcionNegocio(HttpStatus.SERVICE_UNAVAILABLE, "GESTION_CUENTAS_DESHABILITADA",
 					"La gestión de cuentas no está habilitada.");
 		}
-		exigirAdmin(admin);
 		exigirFamilia(admin, familiaId);
 		// Reactivar fija el corte de sesiones: un token emitido antes ya no vale (V19). Desactivar no lo necesita.
 		String asignacion = activa ? "activo = true, sesiones_validas_desde = :ahora" : "activo = false";
