@@ -159,6 +159,14 @@ public class OpenApiConfig {
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
 			entry("POST /api/admin/deportistas/{id}/desactivar", ruta(200, "404 DEPORTISTA_NO_ENCONTRADO",
 					"409 EDICION_DESACTUALIZADA o CONFLICTO_CONCURRENCIA")),
+			// --- Perfil propio y vínculo cuenta ↔ tutor (U21-BIS C1)
+			entry("GET /api/familia/mi-perfil", ruta(200)),
+			entry("POST /api/familia/mi-perfil", ruta(201, "409 PERFIL_YA_EXISTE", "404 PERFIL_NO_ENCONTRADO",
+					"503 AUTOSERVICIO_PERFIL_DESHABILITADO")),
+			entry("PUT /api/familia/mi-perfil", ruta(200, "404 PERFIL_NO_ENCONTRADO",
+					"409 EDICION_DESACTUALIZADA o IDENTIDAD_VERIFICADA", "503 AUTOSERVICIO_PERFIL_DESHABILITADO")),
+			entry("POST /api/familia/mi-perfil/reclamar-tutor", ruta(200, "404 PERFIL_NO_ENCONTRADO",
+					"409 PERSONA_NO_DISPONIBLE", "503 AUTOSERVICIO_PERFIL_DESHABILITADO")),
 			// --- Cuentas de acceso de una familia (U21-BIS C0)
 			entry("GET /api/admin/familias/{familiaId}/cuentas", ruta(200, "404 FAMILIA_NO_ENCONTRADA")),
 			entry("POST /api/admin/familias/{familiaId}/cuentas/{cuentaId}/desactivar",

@@ -31,6 +31,10 @@ public enum AccionAuditoria {
 	FAMILIA_ACTUALIZADA,
 	FAMILIA_ACTIVADA,
 	FAMILIA_DESACTIVADA,
+	/** U21-BIS C1: la persona declaró su perfil / lo actualizó / dijo «soy este tutor» (declaración, no acreditación). */
+	PERFIL_DECLARADO,
+	PERFIL_ACTUALIZADO,
+	TUTOR_RECLAMADO,
 	TUTOR_CREADO,
 	TUTOR_ACTUALIZADO,
 	TUTOR_ACTIVADO,

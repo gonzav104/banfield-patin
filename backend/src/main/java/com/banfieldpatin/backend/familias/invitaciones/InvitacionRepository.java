@@ -82,4 +82,19 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
 			where i.id = :id and i.usadoEn is null and i.revocadaEn is null and i.expiraEn > :ahora
 			""")
 	int marcarUsada(@Param("id") UUID id, @Param("usuarioId") UUID usuarioId, @Param("ahora") Instant ahora);
+
+	/**
+	 * Vincula la cuenta recién registrada al tutor de la invitación (U21-BIS C1), solo si ese tutor sigue activo y sin cuenta:
+	 * si otra persona lo reclamó mientras tanto no cambia nada (0) y el registro continúa sin vínculo. La cuenta nace VERIFICADA
+	 * porque ADMIN invitó a esa persona; {@code declarado_por} es ADMIN. No concede ningún permiso.
+	 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query(value = """
+			UPDATE gestion_patin.tutor t SET usuario_id = :usuarioId, vinculo_cuenta = 'VERIFICADO', declarado_por = i.creada_por,
+			  version = t.version + 1
+			FROM gestion_patin.invitacion i
+			WHERE i.id = :invitacionId AND t.id = i.tutor_id AND t.escuela_id = i.escuela_id AND t.familia_id = i.familia_id
+			  AND t.usuario_id IS NULL AND t.activo
+			""", nativeQuery = true)
+	int vincularTutor(@Param("invitacionId") UUID invitacionId, @Param("usuarioId") UUID usuarioId);
 }

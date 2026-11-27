@@ -37,6 +37,10 @@ public class Invitacion {
 	@Column(name = "deportista_id", updatable = false)
 	private UUID deportistaId;
 
+	/** Tutor de la familia al que ADMIN invita (V21): la cuenta que se registre nace vinculada y VERIFICADA a esa persona. */
+	@Column(name = "tutor_id", updatable = false)
+	private UUID tutorId;
+
 	@Column(name = "token_hash", nullable = false, updatable = false, length = 64)
 	private String tokenHash;
 
@@ -70,7 +74,13 @@ public class Invitacion {
 
 	public static Invitacion crear(UUID escuelaId, UUID familiaId, String tokenHash, String emailSugerido,
 			Instant creadoEn, Instant expiraEn, UUID creadaPor) {
+		return crear(escuelaId, familiaId, null, tokenHash, emailSugerido, creadoEn, expiraEn, creadaPor);
+	}
+
+	public static Invitacion crear(UUID escuelaId, UUID familiaId, UUID tutorId, String tokenHash, String emailSugerido,
+			Instant creadoEn, Instant expiraEn, UUID creadaPor) {
 		Invitacion i = new Invitacion();
+		i.tutorId = tutorId;
 		i.escuelaId = escuelaId;
 		i.familiaId = familiaId;
 		i.tokenHash = tokenHash;

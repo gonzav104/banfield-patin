@@ -60,6 +60,9 @@ class InvitacionAdminServiceTest {
 	private AuditoriaService auditoria;
 	private InvitacionAdminService servicio;
 
+	private final com.banfieldpatin.backend.familias.tutores.TutorRepository tutores =
+			org.mockito.Mockito.mock(com.banfieldpatin.backend.familias.tutores.TutorRepository.class);
+
 	@BeforeEach
 	void preparar() {
 		invitaciones = mock(InvitacionRepository.class);
@@ -80,7 +83,7 @@ class InvitacionAdminServiceTest {
 	}
 
 	private InvitacionAdminService nuevoServicio(InvitacionesPropiedades propiedades, String urlBase) {
-		return new InvitacionAdminService(invitaciones, familias, auditoria, new GeneradorTokenInvitacion(),
+		return new InvitacionAdminService(invitaciones, familias, tutores, auditoria, new GeneradorTokenInvitacion(),
 				propiedades, Clock.fixed(AHORA, ZoneOffset.UTC), urlBase);
 	}
 

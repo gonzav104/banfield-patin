@@ -26,6 +26,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.familias.dto.FamiliaResumen;
 import com.banfieldpatin.backend.familias.invitaciones.dto.CrearInvitacionSolicitud;
 import com.banfieldpatin.backend.familias.invitaciones.dto.InvitacionCreadaRespuesta;
@@ -43,17 +44,19 @@ public class InvitacionAdminService {
 
 	private final InvitacionRepository invitaciones;
 	private final FamiliaRepository familias;
+	private final TutorRepository tutores;
 	private final AuditoriaService auditoria;
 	private final GeneradorTokenInvitacion generador;
 	private final InvitacionesPropiedades propiedades;
 	private final Clock reloj;
 	private final String urlBaseFrontend;
 
-	public InvitacionAdminService(InvitacionRepository invitaciones, FamiliaRepository familias,
+	public InvitacionAdminService(InvitacionRepository invitaciones, FamiliaRepository familias, TutorRepository tutores,
 			AuditoriaService auditoria, GeneradorTokenInvitacion generador, InvitacionesPropiedades propiedades,
 			Clock reloj, @Value("${banfield.frontend.url-base:}") String urlBaseFrontend) {
 		this.invitaciones = invitaciones;
 		this.familias = familias;
+		this.tutores = tutores;
 		this.auditoria = auditoria;
 		this.generador = generador;
 		this.propiedades = propiedades;
@@ -97,9 +100,24 @@ public class InvitacionAdminService {
 					.orElseThrow(InvitacionAdminService::familiaNoEncontrada);
 		}
 
+		if (solicitud.tutorId() != null) {
+			if (familiaCreada) {
+				throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "VALIDACION",
+						"Solo se puede invitar a un tutor de una familia existente.");
+			}
+			// Otra familia o escuela, inexistente, inactivo o ya con cuenta: mismo 409, sin revelar cuál.
+			boolean disponible = tutores.findByIdAndEscuelaId(solicitud.tutorId(), admin.escuelaId())
+					.filter(t -> t.getFamiliaId().equals(familia.getId()) && t.isActivo() && t.getUsuarioId() == null)
+					.isPresent();
+			if (!disponible) {
+				throw new ExcepcionNegocio(HttpStatus.CONFLICT, "TUTOR_NO_DISPONIBLE",
+						"Esa persona no está disponible para invitarla: revisá que sea de la familia, esté activa y no tenga cuenta.");
+			}
+		}
+
 		String token = generador.generar();
 		String emailSugerido = normalizarEmail(solicitud.emailSugerido());
-		Invitacion invitacion = invitaciones.save(Invitacion.crear(admin.escuelaId(), familia.getId(),
+		Invitacion invitacion = invitaciones.save(Invitacion.crear(admin.escuelaId(), familia.getId(), solicitud.tutorId(),
 				GeneradorTokenInvitacion.sha256Hex(token), emailSugerido, ahora, ahora.plus(vigencia), admin.id()));
 
 		// El detalle nunca incluye el token ni su hash.
@@ -108,6 +126,7 @@ public class InvitacionAdminService {
 		detalle.put("familiaCreada", familiaCreada);
 		detalle.put("expiraEn", invitacion.getExpiraEn().toString());
 		detalle.put("conEmailSugerido", emailSugerido != null);
+		detalle.put("conTutor", solicitud.tutorId() != null);
 		auditoria.registrar(new EventoAuditoria(admin.escuelaId(), admin.id(), AccionAuditoria.INVITACION_CREADA,
 				"INVITACION", invitacion.getId(), detalle, datos));
 
