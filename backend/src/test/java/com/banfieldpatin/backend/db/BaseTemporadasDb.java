@@ -135,10 +135,14 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 		private final CountDownLatch hizo = new CountDownLatch(1);
 		private final CountDownLatch confirmar = new CountDownLatch(1);
 		private final Future<Object> futuro;
+		/** Proceso de PostgreSQL de ESTA transaccion: es lo que permite saber, sin ambiguedad, quien queda bloqueado por ella. */
+		private volatile long pid;
 
 		Retencion(Supplier<Object> operacion) throws Exception {
 			futuro = hilos.submit(() -> transaccion.execute(estado -> {
 				Object resultado = operacion.get();
+				// Misma conexion que la operacion (esta transaccion): su pid es el que figura en pg_blocking_pids de quien espere.
+				pid = jdbc.sql("SELECT pg_backend_pid()").query(Long.class).single();
 				hizo.countDown();
 				esperar(confirmar);
 				return resultado;
@@ -148,6 +152,10 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 					futuro.get(); // propaga el fallo
 				}
 			}
+		}
+
+		long pid() {
+			return pid;
 		}
 
 		/** Confirma y devuelve el resultado de la operacion. */
@@ -183,24 +191,35 @@ abstract class BaseTemporadasDb extends BaseDbTest {
 		}
 	}
 
-	/** Espera (hasta 10 s) a que una sesion de esta base este esperando un bloqueo y devuelve la sentencia que espera. */
-	String sentenciaEsperandoUnBloqueo() throws InterruptedException {
+	/**
+	 * Espera (hasta 10 s) a que PostgreSQL declare una sesion bloqueada POR la transaccion retenida {@code a}
+	 * ({@code pg_blocking_pids}) y devuelve la sentencia que esa sesion espera. Identifica a la sesion participante por su relacion
+	 * con A, nunca por «la primera que espere algun bloqueo» en una base que comparten todas las pruebas y cuyo contexto sigue
+	 * vivo: otra sesion esperando otra cosa no la confunde. Si hay mas de una bloqueada por A, falla con el detalle en lugar de
+	 * elegir una.
+	 */
+	String sentenciaBloqueadaPor(Retencion a) throws InterruptedException {
+		List<java.util.Map<String, Object>> bloqueadas = List.of();
 		for (int i = 0; i < 100; i++) {
-			List<String> esperando = jdbc.sql("""
-					SELECT query FROM pg_stat_activity
-					WHERE datname = current_database() AND wait_event_type = 'Lock'
-					""").query(String.class).list();
-			if (!esperando.isEmpty()) {
-				return esperando.get(0);
+			bloqueadas = jdbc.sql("""
+					SELECT pid, state, wait_event_type, wait_event, query FROM pg_stat_activity
+					WHERE datname = current_database() AND :pid = ANY(pg_blocking_pids(pid))
+					""").param("pid", a.pid()).query().listOfRows();
+			if (!bloqueadas.isEmpty()) {
+				break;
 			}
 			Thread.sleep(100);
 		}
-		throw new IllegalStateException("ninguna sesion quedo esperando un bloqueo");
+		if (bloqueadas.size() != 1) {
+			throw new IllegalStateException("se esperaba exactamente una sesion bloqueada por la transaccion retenida (pid "
+					+ a.pid() + ") y hay " + bloqueadas.size() + ": " + bloqueadas);
+		}
+		return (String) bloqueadas.get(0).get("query");
 	}
 
 	/** B (en otro hilo) queda bloqueada de verdad detras de la retencion de A; devuelve la sentencia que espera. */
-	String assertBloqueada(Future<Object> b) throws InterruptedException {
-		String sentencia = sentenciaEsperandoUnBloqueo();
+	String assertBloqueada(Retencion a, Future<Object> b) throws InterruptedException {
+		String sentencia = sentenciaBloqueadaPor(a);
 		assertThat(b.isDone()).as("B debe seguir bloqueada mientras A no confirma").isFalse();
 		return sentencia;
 	}

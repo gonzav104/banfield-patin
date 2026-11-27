@@ -91,7 +91,7 @@ class TemporadasIntencionDbTest extends BaseTemporadasDb {
 		Retencion primera = new Retencion(() -> servicio.activar(admin, b, a, DATOS));
 		Future<Object> segunda = enOtroHilo(() -> servicio.activar(admin, c, a, DATOS));
 		try {
-			assertBloqueada(segunda);
+			assertBloqueada(primera, segunda);
 		} finally {
 			primera.close();
 		}

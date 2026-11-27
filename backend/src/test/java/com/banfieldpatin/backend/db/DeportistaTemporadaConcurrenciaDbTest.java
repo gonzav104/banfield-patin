@@ -113,7 +113,7 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		Retencion a = new Retencion(() -> alta(d, t, null));
 		Future<Object> b = enOtroHilo(() -> alta(d, t, null));
 		try {
-			assertBloqueada(b);
+			assertBloqueada(a, b);
 		} finally {
 			a.close();
 		}
@@ -133,7 +133,7 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		Retencion a = new Retencion(() -> alta(d1, t, "007"));
 		Future<Object> b = enOtroHilo(() -> alta(d2, t, "007"));
 		try {
-			assertBloqueada(b);
+			assertBloqueada(a, b);
 		} finally {
 			a.close();
 		}
@@ -183,7 +183,7 @@ class DeportistaTemporadaConcurrenciaDbTest extends BaseTemporadasDb {
 		Future<Object> b = enOtroHilo(() -> dts.actualizar(admin, d, t, tambienDesdeLaCero, DATOS));
 		String sentencia;
 		try {
-			sentencia = assertBloqueada(b);
+			sentencia = assertBloqueada(a, b);
 		} finally {
 			a.close();
 		}
