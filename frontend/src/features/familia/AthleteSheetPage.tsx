@@ -11,6 +11,7 @@ import { useAthleteFichaState } from './ficha-state';
 import { identityKey, type FamilyIdentity } from './identity';
 import { SCHOOL_VS_SPORT_NOTE, SHEET_LOADING } from './messages';
 import { Row, SeasonCard } from './SeasonCard';
+import { FamilyAptoSection } from '@/features/apto-fisico/FamilyAptoSection';
 import { StatusBadge } from './StatusBadge';
 
 function AthleteSheet({ identity, athleteId }: { identity: FamilyIdentity | null; athleteId: string | undefined }) {
@@ -54,6 +55,7 @@ function AthleteSheet({ identity, athleteId }: { identity: FamilyIdentity | null
           {identity && athleteId ? <ResponsablesSection identity={identity} athleteId={athleteId} /> : null}
           {identity && athleteId ? <FamilyDocumentChecklist identity={identity} athleteId={athleteId} /> : null}
           {identity && athleteId ? <DocumentsSection identity={identity} athleteId={athleteId} /> : null}
+          {identity && athleteId ? <FamilyAptoSection identity={identity} athleteId={athleteId} /> : null}
         </>
       ) : (
         <>
