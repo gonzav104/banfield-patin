@@ -403,9 +403,52 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
 - **Identidad cargada por el club:** un tutor con datos `VERIFICADO` no cambia su nombre, apellido ni DNI desde el portal, tampoco después de
   reclamarlo. Cambiar la identidad de un perfil todavía no verificado no toca los documentos del tutor (la aprobación de un documento es sobre
   la imagen, no sobre el número) y queda auditado con los **nombres** de los campos de identidad cambiados, de modo que ADMIN puede revisarlo.
-  Limitación conocida: si una identidad cambia después de aprobar un DNI, el documento sigue aprobado y la revisión es administrativa.
+  Desde C2 la identidad con un DNI vigente `APROBADO` también queda respaldada (ver la sección siguiente): la limitación de C1 («si una identidad
+  cambia después de aprobar un DNI, el documento sigue aprobado») ya no puede producirse desde el portal.
 - Bandera `AUTOSERVICIO_PERFIL_HABILITADO` (`false` por defecto): apagada, se puede consultar y las escrituras responden `503
   AUTOSERVICIO_PERFIL_DESHABILITADO`. Auditoría: `PERFIL_DECLARADO`, `PERFIL_ACTUALIZADO`, `TUTOR_RECLAMADO` (ids y nombres de campo, nunca valores).
+
+### Otros adultos de la familia y verificación administrativa (U21-BIS C2)
+
+- **Rutas:** `GET/POST /api/familia/tutores` y `PUT /api/familia/tutores/{id}` (FAMILIA); `GET /api/admin/tutores/por-verificar`,
+  `POST /api/admin/tutores/{id}/verificacion` y `POST /api/admin/tutores/verificacion-lote` (ADMIN con MFA). Escuela, familia y cuenta salen del
+  token; cuerpos cerrados (`400` sin eco); respuestas familiares `no-store`; la familia nunca recibe el DNI completo.
+- **Declarar no autoriza:** cargar o editar un adulto no crea cuentas, vínculos (`familia_deportista`), responsabilidades (`tutor_deportista`) ni
+  roles. Verificar tampoco: es una marca sobre los datos.
+- **Tres planos separados:** identidad **declarada** (`tutor.verificacion = DECLARADO`, lo cargó la familia), identidad **verificada**
+  (`VERIFICADO`, solo ADMIN, con la revisión que vio) y **asociación con una cuenta** (`usuario_id` + `vinculo_cuenta`, C1). Ninguno implica a otro.
+- **Alcance y privacidad:** solo adultos ACTIVOS de la propia familia; otro id (otra familia o escuela, inactivo, inexistente) es el mismo
+  `404 TUTOR_NO_ENCONTRADO`. Los duplicados se buscan **solo en la propia familia** (mismo DNI, o mismo nombre y apellido cuando falta un DNI;
+  el correo no cuenta porque una familia suele compartirlo) y el `409 TUTOR_DUPLICADO` no dice cuál; nunca se consulta otra familia, así que
+  no hay oráculo de DNI. Solo ADMIN ve en la bandeja cuántos adultos de **otras** familias tienen el mismo DNI.
+- **Qué edita la familia:** adultos sin cuenta y su propio perfil; un adulto con cuenta propia actualiza sus datos él mismo
+  (`409 TUTOR_CON_CUENTA`). El contacto siempre; la identidad solo si no está **respaldada**.
+- **Salvaguarda de identidad:** la identidad está respaldada si el tutor está `VERIFICADO` **o** tiene un DNI (`DNI_TUTOR_FRENTE`/`DORSO`)
+  vigente `APROBADO`. La familia no puede cambiarla por ningún camino (`409 IDENTIDAD_VERIFICADA` / `409 IDENTIDAD_CON_DNI_APROBADO`, también
+  en «Mis datos» de C1); la corrección pasa por el club. Los documentos vigentes del tutor se leen `FOR SHARE`, de modo que una aprobación
+  concurrente se serializa con la edición (probado con `pg_blocking_pids`). El historial documental no se modifica. **Aprobar la imagen de un
+  DNI no verifica la identidad de su titular:** para U22, «identidad verificada» es exclusivamente `tutor.verificacion = VERIFICADO`.
+- **Carga documental de adultos declarados:** sigue las reglas vigentes (U19): la familia gestiona los DNI de los tutores activos de su familia,
+  declarados incluidos; cargarlos no los verifica.
+- **Tope (provisorio):** `AUTOSERVICIO_TOPE_TUTORES_POR_FAMILIA` = 10 adultos ACTIVOS con origen FAMILIA por familia, contando el perfil propio
+  de C1 (ningún camino de escritura familiar lo elude). Es transaccional: las altas de una familia se serializan con un bloqueo consultivo
+  (`pg_advisory_xact_lock`) tomado después de la familia `FOR SHARE`, que no bloquea logins ni cargas documentales. No limita la composición
+  familiar: los adultos que carga el club no cuentan, y ADMIN puede dar de baja los que sobran. **El valor debe validarse con el club antes de
+  producción.** Los topes de solicitudes de deportistas se definen en C3.
+- **Concurrencia:** orden de bloqueos familia `FOR SHARE` → bloqueo consultivo (solo altas y ediciones familiares) → tutor `FOR NO KEY UPDATE`
+  → documentos `FOR SHARE`, el mismo orden tutor → documento que la carga documental; la verificación de ADMIN no toma el bloqueo consultivo.
+  Edición con `versionEsperada` (`409 EDICION_DESACTUALIZADA`); alta repetible con `Idempotency-Key` (misma clave y datos: el original; otros
+  datos: `409 IDEMPOTENCY_KEY_REUTILIZADA`).
+- **Verificación:** `VERIFICAR` u `OBSERVAR` (motivo obligatorio, ≤ 500, visible para la familia) con la revisión vista; pedir el estado que ya
+  tiene no cambia nada (doble clic). Un `OBSERVADO` corregido por la familia vuelve a `DECLARADO` y a la bandeja. **Lote:** solo `VERIFICAR`
+  y solo desde `DECLARADO`, hasta 50 tutores distintos, cada uno en su propia transacción con su revisión y su resultado
+  (`VERIFICADO`, `YA_VERIFICADO`, `EDICION_DESACTUALIZADA`, `TUTOR_NO_ENCONTRADO`, `ESTADO_INCOMPATIBLE`, `FAMILIA_INACTIVA`, `OCUPADO`).
+- **Auditoría:** `TUTOR_DECLARADO`, `TUTOR_ACTUALIZADO_POR_FAMILIA` (nombres de campos), `TUTOR_VERIFICADO` y `TUTOR_OBSERVADO` (familia,
+  estado anterior, `lote`); nunca valores personales ni el motivo.
+- **V22 (aditiva):** `verificado_por`/`verificado_en`, `motivo_observacion`, `idempotencia`/`huella_alta`, con CHECK que atan cada estado a
+  sus columnas e índice único de la clave por cuenta. Sin concesiones nuevas (permisos por tabla).
+- Bandera `AUTOSERVICIO_TUTORES_HABILITADO` (`false` por defecto): apagada, la familia consulta y las escrituras responden
+  `503 AUTOSERVICIO_TUTORES_DESHABILITADO`. La bandeja de ADMIN no depende de la bandera (no es superficie familiar).
 
 ## 10. Auditoría
 
@@ -440,6 +483,8 @@ contiene únicamente valores ficticios.
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
 | `AUTOSERVICIO_PERFIL_HABILITADO` | no | `false` por defecto: la familia declara su perfil de tutor y reclama a una persona de su familia (U21-BIS C1) |
+| `AUTOSERVICIO_TUTORES_HABILITADO` | no | `false` por defecto: la familia carga y edita a otros adultos de su familia (U21-BIS C2) |
+| `AUTOSERVICIO_TOPE_TUTORES_POR_FAMILIA` | no | `10` (entre 1 y 100): adultos activos que una familia puede cargar sola, perfil propio incluido. Provisorio: validar con el club antes de producción |
 | `CUENTAS_GESTION_HABILITADA` | no | `false` por defecto: desactivar/reactivar cuentas familiares desde el panel ADMIN (U21-BIS C0) |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
 

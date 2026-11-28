@@ -92,7 +92,8 @@ class LockTimeoutVinculosTest {
 				}
 			}
 		}
+		// U21-BIS C2: las reglas compartidas del autoservicio de adultos (bloqueo consultivo de la familia) y la verificación.
 		assertThat(usuarios).containsExactlyInAnyOrder("VinculoAdminService", "CierreVigenciasTutor", "TutorAdminService",
-				"ResponsablesAdminService");
+				"ResponsablesAdminService", "ReglasAutoservicioTutores", "VerificacionTutoresService");
 	}
 }

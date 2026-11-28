@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InventarioRutasTest {
 
 	/** Rutas mutantes esperadas, con el formato "METODO /ruta". */
-	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/tutores", "PUT /api/familia/tutores/{id}", "POST /api/admin/tutores/{id}/verificacion", "POST /api/admin/tutores/verificacion-lote", "POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 			"POST /api/auth/login",
 			"POST /api/auth/admin/login",
 			"POST /api/auth/logout",
@@ -150,6 +150,8 @@ class InventarioRutasTest {
 				"PUT /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}",
 				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores/{vigenciaId}/revocar",
 				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
+				// U21-BIS C2: verificar u observar los datos declarados de un tutor (uno o en lote); no crea cuentas ni permisos.
+				"POST /api/admin/tutores/{id}/verificacion", "POST /api/admin/tutores/verificacion-lote",
 				"POST /api/admin/familias/{familiaId}/deportistas",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/revocar",
 				"POST /api/admin/familias/{familiaId}/deportistas/{deportistaId}/principal",
@@ -184,11 +186,17 @@ class InventarioRutasTest {
 				// Carga y reemplazo familiar de los DNI de un tutor (U19): no crean, borran ni cambian al tutor.
 				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 				// Revision administrativa de un DNI de un tutor (U19): no crea, borra ni cambia al tutor.
-				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision");
+				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision",
+				// U21-BIS C2: la familia carga y edita a otros adultos de SU familia (sin cuenta, sin permisos, sin vínculos) y
+				// ADMIN verifica u observa lo declarado. Ninguna borra ni cambia la familia de un tutor.
+				"POST /api/familia/tutores", "PUT /api/familia/tutores/{id}",
+				"POST /api/admin/tutores/{id}/verificacion", "POST /api/admin/tutores/verificacion-lote");
 		assertThat(rutas(false).stream().filter(r -> r.contains("/api/admin/tutores"))).containsExactlyInAnyOrder(
 				"GET /api/admin/tutores/{id}", "PUT /api/admin/tutores/{id}", "GET /api/admin/tutores/{id}/documentos",
 				"POST /api/admin/tutores/{id}/activar", "POST /api/admin/tutores/{id}/desactivar",
-				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision", "GET /api/admin/tutores/{tutorId}/documentos/{documentoId}/archivo");
+				"POST /api/admin/tutores/{tutorId}/documentos/{documentoId}/revision", "GET /api/admin/tutores/{tutorId}/documentos/{documentoId}/archivo",
+				"GET /api/admin/tutores/por-verificar", "POST /api/admin/tutores/{id}/verificacion",
+				"POST /api/admin/tutores/verificacion-lote");
 		assertThat(mutantes).noneMatch(r -> r.startsWith("DELETE ") || r.startsWith("PATCH "));
 	}
 
@@ -269,12 +277,14 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void lasUnicasRutasMutantesFamiliaresSonLaCargaAutorizadaYElPerfilPropio() throws Exception {
+	void lasUnicasRutasMutantesFamiliaresSonLaCargaAutorizadaElPerfilPropioYLosAdultosDeclarados() throws Exception {
 		// La carga documental es la única excepción explícita al portal de lectura.
 		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 				// U21-BIS C1: la familia declara su PROPIO perfil de tutor y reclama a una persona de su familia (declaración: no
 				// crea cuentas, no concede permisos, no toca vínculos ni responsabilidades).
-				"POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor");
+				"POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor",
+				// U21-BIS C2: la familia carga y edita a otros adultos de su familia (declaración: sin cuenta ni permisos).
+				"POST /api/familia/tutores", "PUT /api/familia/tutores/{id}");
 	}
 
 	@Test
@@ -296,6 +306,8 @@ class InventarioRutasTest {
 				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 				// Perfil propio y reclamo de una persona de la familia (U21-BIS C1).
 				"GET /api/familia/mi-perfil", "POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil",
-				"POST /api/familia/mi-perfil/reclamar-tutor");
+				"POST /api/familia/mi-perfil/reclamar-tutor",
+				// Otros adultos de la familia (U21-BIS C2).
+				"GET /api/familia/tutores", "POST /api/familia/tutores", "PUT /api/familia/tutores/{id}");
 	}
 }

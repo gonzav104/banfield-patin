@@ -30,7 +30,6 @@ import com.banfieldpatin.backend.seguridad.UsuarioAutenticado;
 import com.banfieldpatin.backend.usuarios.Rol;
 
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.LockModeType;
 
 /**
  * Perfil propio de una cuenta FAMILIA y vínculo declarativo cuenta ↔ tutor (U21-BIS C1).
@@ -58,14 +57,16 @@ public class PerfilPropioService {
 	private final EntityManager em;
 	private final AuditoriaService auditoria;
 	private final AutoservicioPropiedades propiedades;
+	private final ReglasAutoservicioTutores reglas;
 
 	public PerfilPropioService(TutorRepository tutores, JdbcClient jdbc, EntityManager em, AuditoriaService auditoria,
-			AutoservicioPropiedades propiedades) {
+			AutoservicioPropiedades propiedades, ReglasAutoservicioTutores reglas) {
 		this.tutores = tutores;
 		this.jdbc = jdbc;
 		this.em = em;
 		this.auditoria = auditoria;
 		this.propiedades = propiedades;
+		this.reglas = reglas;
 	}
 
 	public static ExcepcionNegocio deshabilitado() {
@@ -101,7 +102,8 @@ public class PerfilPropioService {
 		exigirFamilia(u);
 		Tutor propio = tutores.deCuenta(u.escuelaId(), u.familiaId(), u.id()).orElse(null);
 		if (propio != null) {
-			return new PerfilRespuesta(propiedades.perfilHabilitado(), datos(propio), List.of());
+			boolean dniAprobado = !reglas.conDniAprobado(u.escuelaId(), List.of(propio.getId())).isEmpty();
+			return new PerfilRespuesta(propiedades.perfilHabilitado(), datos(propio, dniAprobado), List.of());
 		}
 		List<PersonaDeLaFamilia> sinCuenta = tutores.sinCuentaDeLaFamilia(u.escuelaId(), u.familiaId()).stream()
 				.map(t -> new PersonaDeLaFamilia(t.getId(), t.getNombre(), t.getApellido(), t.getParentesco(),
@@ -115,13 +117,18 @@ public class PerfilPropioService {
 		exigirHabilitado();
 		exigirFamilia(u);
 		bloquearFamiliaActiva(u);
+		// El perfil propio también es un adulto cargado por la familia: mismo tope y mismos duplicados que «Otros adultos» (C2).
+		reglas.serializarAltasDeLaFamilia(u.escuelaId(), u.familiaId());
 		if (tutores.deCuenta(u.escuelaId(), u.familiaId(), u.id()).isPresent()) {
 			throw perfilYaExiste();
 		}
+		String dni = DocumentoIdentidad.normalizarDni(s.dni());
+		reglas.exigirLugar(u.escuelaId(), u.familiaId());
+		reglas.exigirSinDuplicado(u.escuelaId(), u.familiaId(), null, s.nombre(), s.apellido(), dni);
 		Tutor nuevo;
 		try {
 			nuevo = tutores.saveAndFlush(Tutor.crearPerfilPropio(u.escuelaId(), u.familiaId(), u.id(), s.nombre(),
-					s.apellido(), DocumentoIdentidad.normalizarDni(s.dni()), s.telefono(), s.email(), s.parentesco()));
+					s.apellido(), dni, s.telefono(), s.email(), s.parentesco()));
 		} catch (DataIntegrityViolationException e) {
 			// Dos pedidos simultáneos de la misma cuenta: el índice único (uq_tutor_usuario) deja uno solo. Cualquier otra
 			// violación (un CHECK, una FK) no es «ya tenés tus datos»: se relanza para no esconder un defecto.
@@ -131,7 +138,7 @@ public class PerfilPropioService {
 			throw perfilYaExiste();
 		}
 		registrar(u, AccionAuditoria.PERFIL_DECLARADO, nuevo, Map.of("familiaId", u.familiaId().toString()), datos);
-		return new PerfilRespuesta(true, datos(nuevo), List.of());
+		return new PerfilRespuesta(true, datos(nuevo, false), List.of());
 	}
 
 	@Transactional
@@ -139,27 +146,26 @@ public class PerfilPropioService {
 		exigirHabilitado();
 		exigirFamilia(u);
 		bloquearFamiliaActiva(u);
+		reglas.serializarAltasDeLaFamilia(u.escuelaId(), u.familiaId());
 		Tutor tutor = tutores.deCuenta(u.escuelaId(), u.familiaId(), u.id()).orElseThrow(PerfilPropioService::perfilNoEncontrado);
+		// Orden tutor → documentos (el de la carga documental); se relee bajo el bloqueo.
+		if (!reglas.bloquearTutorDeLaFamilia(u.escuelaId(), u.familiaId(), tutor.getId())) {
+			throw perfilNoEncontrado();
+		}
+		em.refresh(tutor);
 		if (tutor.getVersion() != s.versionEsperada()) {
 			throw edicionDesactualizada();
 		}
-		em.lock(tutor, LockModeType.OPTIMISTIC);
 		// El DNI nunca viaja completo hacia la familia, así que no puede reenviarlo: sin DNI en el pedido se conserva el cargado.
-		// Cambiarlo es mandar uno nuevo (permitido solo mientras la identidad no esté verificada); borrarlo no es posible desde acá.
-		String dni = s.dni() == null ? tutor.getDni() : DocumentoIdentidad.normalizarDni(s.dni());
-		boolean cambiaIdentidad = !java.util.Objects.equals(tutor.getNombre(), s.nombre())
-				|| !java.util.Objects.equals(tutor.getApellido(), s.apellido())
-				|| !java.util.Objects.equals(tutor.getDni(), dni);
-		if (cambiaIdentidad && tutor.identidadVerificada()) {
-			throw identidadVerificada();
-		}
-		List<String> cambios = tutor.actualizar(s.nombre(), s.apellido(), dni, s.telefono(), s.email(), s.parentesco());
+		// La identidad respaldada (VERIFICADA o con un DNI APROBADO) no se cambia desde acá: ver ReglasAutoservicioTutores.
+		List<String> cambios = reglas.editarPorFamilia(tutor, s.nombre(), s.apellido(), s.dni(), s.telefono(), s.email(),
+				s.parentesco());
 		if (!cambios.isEmpty()) {
 			tutores.saveAndFlush(tutor);
 			registrar(u, AccionAuditoria.PERFIL_ACTUALIZADO, tutor,
 					Map.of("familiaId", u.familiaId().toString(), "camposModificados", cambios), datos);
 		}
-		return new PerfilRespuesta(true, datos(tutor), List.of());
+		return new PerfilRespuesta(true, datos(tutor, reglas.tieneDniAprobado(tutor)), List.of());
 	}
 
 	/**
@@ -188,7 +194,7 @@ public class PerfilPropioService {
 		em.clear();
 		Tutor tutor = tutores.deCuenta(u.escuelaId(), u.familiaId(), u.id()).orElseThrow(PerfilPropioService::personaNoDisponible);
 		registrar(u, AccionAuditoria.TUTOR_RECLAMADO, tutor, Map.of("familiaId", u.familiaId().toString()), datos);
-		return new PerfilRespuesta(true, datos(tutor), List.of());
+		return new PerfilRespuesta(true, datos(tutor, reglas.tieneDniAprobado(tutor)), List.of());
 	}
 
 	/** Índice único de V1 ({@code uq_tutor_usuario}): una cuenta tiene a lo sumo un tutor. */
@@ -208,10 +214,11 @@ public class PerfilPropioService {
 		return false;
 	}
 
-	private PerfilDatos datos(Tutor t) {
+	/** {@code identidadEditable}: ni VERIFICADA ni con un DNI vigente APROBADO (la misma regla que aplica la edición). */
+	private PerfilDatos datos(Tutor t, boolean dniAprobado) {
 		return new PerfilDatos(t.getId(), t.getNombre(), t.getApellido(), EnmascaradoDni.de(t.getDni()),
-				t.getTelefono(), t.getEmail(), t.getParentesco(), t.getVerificacion(), t.cuentaConfirmada(), !t.identidadVerificada(),
-				Long.toString(t.getVersion()));
+				t.getTelefono(), t.getEmail(), t.getParentesco(), t.getVerificacion(), t.cuentaConfirmada(),
+				!t.identidadVerificada() && !dniAprobado, Long.toString(t.getVersion()), t.getMotivoObservacion());
 	}
 
 	private void exigirHabilitado() {
@@ -226,11 +233,9 @@ public class PerfilPropioService {
 		}
 	}
 
-	/** Familia activa tomada FOR SHARE (mismo bloqueo que la edición administrativa de tutores); inactiva = 404 neutro. */
+	/** Familia activa tomada FOR SHARE (ver {@link ReglasAutoservicioTutores#bloquearFamiliaActiva}); inactiva = 404 neutro. */
 	private void bloquearFamiliaActiva(UsuarioAutenticado u) {
-		boolean activa = !em.createNativeQuery("SELECT id FROM gestion_patin.familia WHERE id = :f AND escuela_id = :e AND activa FOR SHARE")
-				.setParameter("f", u.familiaId()).setParameter("e", u.escuelaId()).getResultList().isEmpty();
-		if (!activa) {
+		if (!reglas.bloquearFamiliaActiva(u.escuelaId(), u.familiaId())) {
 			throw perfilNoEncontrado();
 		}
 	}

@@ -97,6 +97,10 @@ banfield:
   autoservicio:
     # U21-BIS C1: la familia declara su perfil de tutor y reclama a la persona que ya figura en su familia (apagado por defecto).
     perfil-habilitado: ${AUTOSERVICIO_PERFIL_HABILITADO:false}
+    # U21-BIS C2: la familia carga y edita a otros adultos (apagado por defecto).
+    tutores-habilitado: ${AUTOSERVICIO_TUTORES_HABILITADO:false}
+    # Adultos activos que una familia puede cargar sola (perfil propio incluido). Provisorio: validar con el club antes de producción.
+    tope-tutores-por-familia: ${AUTOSERVICIO_TOPE_TUTORES_POR_FAMILIA:10}
 
   cuentas:
     # U21-BIS C0: desactivar/reactivar cuentas familiares desde el panel ADMIN (apagado por defecto).

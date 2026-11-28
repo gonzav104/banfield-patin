@@ -23,9 +23,12 @@ class ContratoDniTest {
 	private static final Set<String> CON_DNI_COMPLETO = Set.of("DeportistaDetalle", "DeportistaSolicitud", "DeportistaActualizacion", "TutorRespuesta",
 			"TutorActualizacion", "TutorSolicitud", "DeportistaDeFamiliaDetalle",
 			// U21-BIS C1: solo ENTRAN (el DNI que la persona escribe en su propio perfil); nunca salen completos.
-			"PerfilSolicitud", "PerfilActualizacion");
+			"PerfilSolicitud", "PerfilActualizacion",
+			// U21-BIS C2: el alta y la edición de otro adulto (ENTRAN; a la familia nunca salen completos) y la bandeja de
+			// verificación de ADMIN (como la ficha del tutor, para verificar sin volver a tipear).
+			"AdultoAlta", "AdultoActualizacion", "TutorPorVerificar");
 	/** Records que llevan el DNI enmascarado (listados y tutores anidados). */
-	private static final Set<String> CON_DNI_ENMASCARADO = Set.of("DeportistaResumen", "TutorResumen", "PerfilDatos");
+	private static final Set<String> CON_DNI_ENMASCARADO = Set.of("DeportistaResumen", "TutorResumen", "PerfilDatos", "AdultoDeFamilia");
 
 	private static Set<Class<?>> dtos() throws ClassNotFoundException {
 		ClassPathScanningCandidateComponentProvider escaner = new ClassPathScanningCandidateComponentProvider(false);

@@ -28,7 +28,7 @@ import com.banfieldpatin.backend.usuarios.Rol;
 
 import jakarta.servlet.http.Cookie;
 
-/** Con la bandera apagada (valor por defecto) la familia solo puede consultar: nada se escribe y no se lee nada antes de rechazar. */
+/** Con las banderas apagadas (valor por defecto) la familia solo puede consultar: nada se escribe y no se lee nada antes de rechazar. */
 @Tag("db")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
 		"spring.datasource.hikari.maximum-pool-size=3", "spring.datasource.hikari.minimum-idle=1" })
@@ -78,6 +78,24 @@ class PerfilPropioDeshabilitadoHttpDbTest extends BaseDbTest {
 		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.tutor WHERE escuela_id = :e AND usuario_id IS NOT NULL").param("e", escuela)
 				.query(Long.class).single()).isZero();
 		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.auditoria WHERE escuela_id = :e AND accion IN ('PERFIL_DECLARADO','PERFIL_ACTUALIZADO','TUTOR_RECLAMADO')")
+				.param("e", escuela).query(Long.class).single()).isZero();
+	}
+
+	/** U21-BIS C2 con su bandera apagada (por defecto): los adultos se consultan, cargar y editar da 503 sin escribir nada. */
+	@Test
+	void losAdultosDeLaFamiliaSeConsultanPeroCargarYEditarDa503SinTocarNada() throws Exception {
+		UUID libre = jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE escuela_id = :e").param("e", escuela).query(UUID.class).single();
+		mvc.perform(get("/api/familia/tutores").cookie(sesion())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.habilitado").value(false)).andExpect(jsonPath("$.adultos.length()").value(1));
+		mvc.perform(escribir(post("/api/familia/tutores"), CUERPO).header("Idempotency-Key", UUID.randomUUID().toString()))
+				.andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.codigo").value("AUTOSERVICIO_TUTORES_DESHABILITADO"));
+		mvc.perform(escribir(put("/api/familia/tutores/" + libre), CUERPO.replace("}", ",\"versionEsperada\":\"0\"}")))
+				.andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.codigo").value("AUTOSERVICIO_TUTORES_DESHABILITADO"));
+		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.tutor WHERE escuela_id = :e").param("e", escuela).query(Long.class)
+				.single()).isEqualTo(1);
+		assertThat(jdbc.sql("SELECT nombre FROM gestion_patin.tutor WHERE id = :t").param("t", libre).query(String.class).single())
+				.isEqualTo("Persona");
+		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.auditoria WHERE escuela_id = :e AND accion IN ('TUTOR_DECLARADO','TUTOR_ACTUALIZADO_POR_FAMILIA')")
 				.param("e", escuela).query(Long.class).single()).isZero();
 	}
 

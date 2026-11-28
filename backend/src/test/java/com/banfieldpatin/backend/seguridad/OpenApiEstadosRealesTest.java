@@ -65,7 +65,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	@Test
 	void postTutoresResponde201ConLocation() throws Exception {
 		when(tutorAdminService.crear(any(), any(), any(), any())).thenReturn(
-				new TutorRespuesta(ID, ID, "Ana", "Prueba", null, null, null, null, true, "0"));
+				new TutorRespuesta(ID, ID, "Ana", "Prueba", null, null, null, null, true, "0", "VERIFICADO", null, "ADMIN"));
 
 		mvc.perform(conCsrf(json(post("/api/admin/familias/" + ID + "/tutores"), "{\"nombre\":\"Ana\",\"apellido\":\"Prueba\",\"versionFamiliaEsperada\":\"0\"}"),
 				sesion(Rol.ADMIN))).andExpect(status().isCreated())
@@ -123,6 +123,17 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 	}
 
 	@Test
+	void postAdultoDeLaFamiliaResponde201SinLocation() throws Exception {
+		when(adultosFamiliaService.crear(any(), any(), any(), any())).thenReturn(
+				new com.banfieldpatin.backend.familias.adultos.dto.AdultoDeFamilia(ID, "Ana", "Prueba", null, null, null, null,
+						"DECLARADO", null, false, false, false, true, true, "0"));
+
+		mvc.perform(conCsrf(json(post("/api/familia/tutores"), "{\"nombre\":\"Ana\",\"apellido\":\"Prueba\"}"),
+				sesion(Rol.FAMILIA)).header("Idempotency-Key", java.util.UUID.randomUUID().toString()))
+				.andExpect(status().isCreated()).andExpect(header().doesNotExist("Location"));
+	}
+
+	@Test
 	void postLogoutResponde204() throws Exception {
 		mvc.perform(conCsrf(post("/api/auth/logout"), sesion(Rol.ADMIN))).andExpect(status().isNoContent());
 	}
@@ -140,7 +151,7 @@ class OpenApiEstadosRealesTest extends BaseOpenApiWebMvc {
 				"POST /api/admin/familias/{familiaId}/tutores", "POST /api/admin/deportistas", "POST /api/admin/invitaciones",
 				"POST /api/auth/registro/invitacion", "POST /api/admin/temporadas",
 				"POST /api/admin/deportistas/{deportistaId}/temporadas",
-				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores");
+				"POST /api/admin/deportistas/{deportistaId}/vinculos-tutores", "POST /api/familia/tutores");
 		assertThat(OpenApiRutasTest.SIN_CONTENIDO).containsExactlyInAnyOrder("POST /api/auth/logout",
 				"POST /api/admin/usuarios/{id}/mfa/reiniciar");
 		assertThat(OpenApiConfig.RUTAS.entrySet().stream().filter(e -> e.getValue().exito() == 201).map(java.util.Map.Entry::getKey))

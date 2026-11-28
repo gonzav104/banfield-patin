@@ -2680,6 +2680,30 @@ class CargaDocumentalHttpDbTest {
     assertThat(POSTS.get()).isEqualTo(2);
   }
 
+  /**
+   * U21-BIS C2: un adulto que la familia DECLARÓ (sin cuenta, sin verificar) sigue las reglas vigentes de la carga: su familia
+   * puede cargar su DNI como el de cualquier tutor activo propio, y cargarlo no verifica su identidad. Uno declarado por otra
+   * familia es el mismo 404.
+   */
+  @Test
+  void unAdultoDeclaradoPorLaFamiliaSigueLasReglasVigentesDeLaCargaYNoQuedaVerificado() throws Exception {
+    UUID declarado = nuevoTutor(familia);
+    jdbc.sql("UPDATE gestion_patin.tutor SET origen = 'FAMILIA', verificacion = 'DECLARADO', declarado_por = :u WHERE id = :t")
+        .param("u", usuario).param("t", declarado).update();
+    var r = cargarTutor(declarado, "DNI_TUTOR_FRENTE", UUID.randomUUID(), png());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(201);
+    assertThat(fila(idDe(r))).containsEntry("tutor_id", declarado).containsEntry("estado", "CARGADO");
+    assertThat(jdbc.sql("SELECT verificacion FROM gestion_patin.tutor WHERE id = :t").param("t", declarado)
+        .query(String.class).single()).as("cargar un DNI no verifica la identidad").isEqualTo("DECLARADO");
+
+    UUID ajeno = nuevoTutor(new DatosDb(jdbc).familia(escuela, "Otra familia declarante", true));
+    jdbc.sql("UPDATE gestion_patin.tutor SET origen = 'FAMILIA', verificacion = 'DECLARADO' WHERE id = :t")
+        .param("t", ajeno).update();
+    var ajena = cargarTutor(ajeno, "DNI_TUTOR_FRENTE", UUID.randomUUID(), png());
+    assertThat(ajena.statusCode()).as(ajena.body()).isEqualTo(404);
+    assertThat(ajena.body()).contains("TUTOR_NO_ENCONTRADO");
+  }
+
   @Test
   void laRutaDeTutorSoloAdmiteLosDniDelTutorYNoLaTemporada() throws Exception {
     UUID tutor = tutorPropio();
