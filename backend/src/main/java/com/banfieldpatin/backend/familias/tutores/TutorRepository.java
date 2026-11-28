@@ -71,4 +71,12 @@ public interface TutorRepository extends JpaRepository<Tutor, UUID> {
 			order by lower(t.apellido), lower(t.nombre), t.id
 			""")
 	List<Tutor> sinCuentaDeLaFamilia(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId);
+
+	/** El alta familiar ya procesada con esa clave por esa cuenta (índice único de V22), en cualquier estado. */
+	@Query("""
+			select t from Tutor t
+			where t.escuelaId = :escuelaId and t.declaradoPor = :declarante and t.idempotencia = :idempotencia
+			""")
+	Optional<Tutor> altaPorIdempotencia(@Param("escuelaId") UUID escuelaId, @Param("declarante") UUID declarante,
+			@Param("idempotencia") UUID idempotencia);
 }

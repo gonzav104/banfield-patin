@@ -63,6 +63,10 @@ export const tutorDetailSchema = z.object({
   parentesco: z.string().nullable().optional(),
   activo: z.boolean(),
   version: z.string().regex(/^[0-9]{1,19}$/),
+  /** U21-BIS C2: state of the declared data (DECLARADO / VERIFICADO / OBSERVADO), the reason of an observation and who loaded it. */
+  verificacion: z.string().nullable().optional(),
+  motivoObservacion: z.string().nullable().optional(),
+  origen: z.string().nullable().optional(),
 });
 export type TutorDetail = z.infer<typeof tutorDetailSchema>;
 

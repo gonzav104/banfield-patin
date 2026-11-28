@@ -6,14 +6,17 @@ import com.banfieldpatin.backend.familias.tutores.Tutor;
 
 /**
  * Tutor tal como lo ve un ADMIN. Sin usuarioId ni escuelaId. {@code version} es la revision de escritura del tutor
- * (cadena decimal): la que se devuelve como {@code versionEsperada} al editarlo.
+ * (cadena decimal): la que se devuelve como {@code versionEsperada} al editarlo. {@code verificacion} (DECLARADO,
+ * VERIFICADO u OBSERVADO con {@code motivoObservacion}) y {@code origen} (ADMIN o FAMILIA) son de U21-BIS C2.
  */
 public record TutorRespuesta(UUID id, UUID familiaId, String nombre, String apellido, String dni, String telefono,
-		String email, String parentesco, boolean activo, String version) {
+		String email, String parentesco, boolean activo, String version, String verificacion, String motivoObservacion,
+		String origen) {
 
 	public static TutorRespuesta de(Tutor t) {
 		return new TutorRespuesta(t.getId(), t.getFamiliaId(), t.getNombre(), t.getApellido(), t.getDni(),
-				t.getTelefono(), t.getEmail(), t.getParentesco(), t.isActivo(), Long.toString(t.getVersion()));
+				t.getTelefono(), t.getEmail(), t.getParentesco(), t.isActivo(), Long.toString(t.getVersion()),
+				t.getVerificacion(), t.getMotivoObservacion(), t.getOrigen());
 	}
 
 	/** Los datos personales no se imprimen nunca (logs, excepciones). */

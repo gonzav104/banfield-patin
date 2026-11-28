@@ -102,14 +102,16 @@ class RutasDocumentadasTest {
 	}
 
 	@Test
-	void lasUnicasEscriturasFamiliaresSonLaCargaDocumentalYElPerfilPropio() throws Exception {
+	void lasUnicasEscriturasFamiliaresSonLaCargaDocumentalElPerfilPropioYLosAdultosDeclarados() throws Exception {
 		assertThat(rutasDeLaTabla().stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia")))
 				.containsExactlyInAnyOrder("GET /api/familia/mi-perfil", "POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil",
 						"POST /api/familia/mi-perfil/reclamar-tutor", "GET /api/familia/mi-familia", "GET /api/familia/deportistas",
 						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/deportistas/{id}/temporadas/{temporadaId}/apto-fisico", "GET /api/familia/tutores/{id}/documentos", "GET /api/familia/deportistas/{deportistaId}/temporadas",
 						"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "GET /api/familia/deportistas/{deportistaId}/ficha", "GET /api/familia/deportistas/{deportistaId}/responsables",
 						"GET /api/familia/documentos/disponibilidad",
-						"POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
+						"POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+						// U21-BIS C2: otros adultos de la propia familia (declaración, sin cuenta ni permisos).
+						"GET /api/familia/tutores", "POST /api/familia/tutores", "PUT /api/familia/tutores/{id}");
 	}
 
 	@Test

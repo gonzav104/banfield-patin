@@ -22,6 +22,8 @@
 #               quitar/devolver el acceso a una cuenta familiar), que en produccion queda apagada.
 #   E2E_PERFIL_FAMILIAR (true por defecto SOLO en esta base descartable de E2E): enciende AUTOSERVICIO_PERFIL_HABILITADO (U21-BIS C1,
 #               «Mis datos» de la familia); false lo prueba apagado, como en produccion: lo usa el shard 3.
+#   E2E_ADULTOS_FAMILIA (true por defecto SOLO en esta base descartable de E2E): enciende AUTOSERVICIO_TUTORES_HABILITADO (U21-BIS C2,
+#               «Otros adultos» de la familia); false lo prueba apagado, como en produccion: lo usa el shard 3.
 #   E2E_SHARD   (numero de shard, segun frontend/e2e/shards.json). Sin ella corre la suite COMPLETA, como siempre. Con ella corre solo
 #               los archivos de ese shard, en una base, un backend y unas credenciales propios: los shards de CI son runners distintos
 #               y cada uno tiene su administrador. Dos shards no pueden correr a la vez en la misma maquina (mismos puertos 8080/5173).
@@ -148,6 +150,7 @@ setsid env \
   BANFIELD_RESPONSABLES_ALTA_HABILITADA="${E2E_ALTA_RESPONSABLES:-true}" \
   CUENTAS_GESTION_HABILITADA="${E2E_GESTION_CUENTAS:-true}" \
   AUTOSERVICIO_PERFIL_HABILITADO="${E2E_PERFIL_FAMILIAR:-true}" \
+  AUTOSERVICIO_TUTORES_HABILITADO="${E2E_ADULTOS_FAMILIA:-true}" \
   SUPABASE_URL="http://127.0.0.1:${STORAGE_PORT}" SUPABASE_BUCKET_DOCUMENTOS="$STORAGE_BUCKET" \
   SUPABASE_SERVICE_ROLE_KEY="$STORAGE_CREDENTIAL" \
   BANFIELD_DOCUMENTOS_CARGA_SCANNERHOST=127.0.0.1 BANFIELD_DOCUMENTOS_CARGA_SCANNERPUERTO="$CLAMD_PORT" \

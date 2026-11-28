@@ -79,7 +79,9 @@ import tools.jackson.databind.json.JsonMapper;
 		com.banfieldpatin.backend.documentos.revision.RevisionDocumentoController.class,
 		com.banfieldpatin.backend.documentos.apto.CorreccionAptoController.class,
 		com.banfieldpatin.backend.usuarios.cuentas.CuentasFamiliaAdminController.class,
-		com.banfieldpatin.backend.familias.perfil.PerfilPropioController.class })
+		com.banfieldpatin.backend.familias.perfil.PerfilPropioController.class,
+		com.banfieldpatin.backend.familias.adultos.AdultosFamiliaController.class,
+		com.banfieldpatin.backend.familias.tutores.verificacion.VerificacionTutoresController.class })
 @Import({ SeguridadConfig.class, JwtConfig.class, CookieSesion.class, CookieBearerTokenResolver.class,
 		PuntoEntradaJson.class, ManejadorAccesoDenegadoJson.class, ManejadorGlobalErrores.class, ServicioTokens.class,
 		RelojConfig.class, SesionVigenteDePrueba.class, OpenApiConfig.class, BaseOpenApiWebMvc.AutoconfiguracionSpringdoc.class })
@@ -169,6 +171,10 @@ abstract class BaseOpenApiWebMvc {
 	protected com.banfieldpatin.backend.usuarios.cuentas.CuentasFamiliaAdminService cuentasFamiliaAdminService;
 	@MockitoBean
 	protected com.banfieldpatin.backend.familias.perfil.PerfilPropioService perfilPropioService;
+	@MockitoBean
+	protected com.banfieldpatin.backend.familias.adultos.AdultosFamiliaService adultosFamiliaService;
+	@MockitoBean
+	protected com.banfieldpatin.backend.familias.tutores.verificacion.VerificacionTutoresService verificacionTutoresService;
 
 	protected Cookie sesion(Rol rol) {
 		UUID familia = rol == Rol.FAMILIA ? UUID.randomUUID() : null;

@@ -320,27 +320,70 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 				.isEqualTo("Laura Gomez");
 	}
 
-	/** Cambiar la identidad de un perfil todavía no verificado no toca los documentos del tutor (ni su estado ni su vigencia). */
+	/**
+	 * U21-BIS C2 (salvaguarda): con un DNI APROBADO la identidad queda respaldada y la familia no la cambia (la imagen aprobada
+	 * es la de esa persona); el contacto sí. Con el DNI todavía en revisión, cambiar la identidad de un perfil no verificado
+	 * se permite y no toca los documentos (ni estado, ni vigencia, ni versión).
+	 */
 	@Test
-	void cambiarLaIdentidadDeUnPerfilNoVerificadoNoAlteraLosDocumentosDelTutor() throws Exception {
+	void conUnDniAprobadoLaIdentidadNoCambiaYConUnoEnRevisionSiSinTocarLosDocumentos() throws Exception {
 		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isOk());
 		UUID tutor = jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(UUID.class).single();
 		UUID documento = jdbc.sql("""
 				INSERT INTO gestion_patin.documento(escuela_id, tutor_id, tipo, nombre_original, storage_key, mime_type, tamanio_bytes, cargado_por)
 				VALUES (:e, :t, 'DNI_TUTOR_FRENTE', 'sintetico.png', :k, 'image/png', 10, :u) RETURNING id
 				""").param("e", escuela).param("t", tutor).param("k", UUID.randomUUID().toString()).param("u", madre).query(UUID.class).single();
-		jdbc.sql("UPDATE gestion_patin.documento SET estado = 'APROBADO', version = version + 1 WHERE id = :d").param("d", documento).update();
-		Map<String, Object> antes = jdbc.sql("SELECT estado, vigente, version, tutor_id FROM gestion_patin.documento WHERE id = :d").param("d", documento)
-				.query().singleRow();
+		String identidadNueva = CUERPO.replace("Laura", "Laurita").replace("30.111.222", "30.999.888");
 
-		String cambio = CUERPO.replace("Laura", "Laurita").replace("30.111.222", "30.999.888").replace("}", ",\"versionEsperada\":\"" + versionDelPerfilDe(madre) + "\"}");
-		mvc.perform(escribir(put(RUTA), cambio, madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.nombre").value("Laurita"));
-
-		assertThat(jdbc.sql("SELECT estado, vigente, version, tutor_id FROM gestion_patin.documento WHERE id = :d").param("d", documento).query().singleRow())
-				.isEqualTo(antes);
-		// El cambio queda auditado con los NOMBRES de los campos de identidad, para que ADMIN lo vea (nunca los valores).
+		// En revisión (CARGADO): la identidad todavía se corrige y el documento queda igual.
+		Map<String, Object> enRevision = documento(documento);
+		mvc.perform(escribir(put(RUTA), conVersion(identidadNueva, versionDelPerfilDe(madre)), madre, fam1, escuela))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.perfil.nombre").value("Laurita"))
+				.andExpect(jsonPath("$.perfil.identidadEditable").value(true));
+		assertThat(documento(documento)).isEqualTo(enRevision);
 		assertThat(jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE escuela_id = :e AND accion = 'PERFIL_ACTUALIZADO' ORDER BY id DESC LIMIT 1")
 				.param("e", escuela).query(String.class).single()).contains("nombre", "dni").doesNotContain("Laurita", "999888");
+
+		// Aprobado: la identidad queda respaldada; el perfil lo informa y el cambio se rechaza sin tocar nada.
+		jdbc.sql("UPDATE gestion_patin.documento SET estado = 'APROBADO', version = version + 1 WHERE id = :d").param("d", documento).update();
+		Map<String, Object> aprobado = documento(documento);
+		mvc.perform(get(RUTA).cookie(sesion(madre, fam1, escuela))).andExpect(jsonPath("$.perfil.identidadEditable").value(false))
+				.andExpect(jsonPath("$.perfil.estado").value("DECLARADO"));
+		mvc.perform(escribir(put(RUTA), conVersion(CUERPO, versionDelPerfilDe(madre)), madre, fam1, escuela))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("IDENTIDAD_CON_DNI_APROBADO"));
+		assertThat(jdbc.sql("SELECT nombre FROM gestion_patin.tutor WHERE id = :t").param("t", tutor).query(String.class).single())
+				.isEqualTo("Laurita");
+		// El contacto sí se actualiza, y el documento sigue igual.
+		mvc.perform(escribir(put(RUTA), conVersion(identidadNueva.replace("5555-0000", "4444-1111"), versionDelPerfilDe(madre)),
+				madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.telefono").value("11 4444-1111"));
+		assertThat(documento(documento)).isEqualTo(aprobado);
+	}
+
+	private Map<String, Object> documento(UUID id) {
+		return jdbc.sql("SELECT estado, vigente, version, tutor_id FROM gestion_patin.documento WHERE id = :d").param("d", id)
+				.query().singleRow();
+	}
+
+	private static String conVersion(String cuerpo, String version) {
+		return cuerpo.replace("}", ",\"versionEsperada\":\"" + version + "\"}");
+	}
+
+	/**
+	 * U21-BIS C2, a propósito también con la bandera de C2 apagada: si la persona ya figura en su familia (mismo DNI, o mismo
+	 * nombre sin DNI) no se crea un segundo perfil para ella; la pantalla le ofrece reclamarla («soy yo»).
+	 */
+	@Test
+	void crearElPerfilDeAlguienQueYaFiguraEnLaFamiliaEsUnDuplicadoAunqueOtrosAdultosEsteApagado() throws Exception {
+		UUID existente = datos.tutor(escuela, fam1, "Laura", "Gomez");
+		jdbc.sql("UPDATE gestion_patin.tutor SET dni = :d WHERE id = :t").param("d", DNI).param("t", existente).update();
+		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("TUTOR_DUPLICADO"));
+		mvc.perform(escribir(post(RUTA), "{\"nombre\":\"laura\",\"apellido\":\"GOMEZ\"}", madre, fam1, escuela))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("TUTOR_DUPLICADO"));
+		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.tutor WHERE familia_id = :f").param("f", fam1).query(Long.class)
+				.single()).isEqualTo(1);
+		// Otra persona sí puede declarar su perfil.
+		mvc.perform(escribir(post(RUTA), "{\"nombre\":\"Ana\",\"apellido\":\"Gomez\"}", madre, fam1, escuela)).andExpect(status().isOk());
 	}
 
 	@Test

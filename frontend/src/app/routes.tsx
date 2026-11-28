@@ -8,6 +8,8 @@ import { AthleteSheetPage } from '@/features/familia/AthleteSheetPage';
 import { TutorDocumentsPage } from '@/features/familia/TutorDocumentsPage';
 import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
 import { MisDatosPage } from '@/features/mis-datos/MisDatosPage';
+import { AdultosFamiliaPage } from '@/features/adultos-familia/AdultosFamiliaPage';
+import { AdminTutoresPorVerificarPage } from '@/features/admin-tutores-verificacion/AdminTutoresPorVerificarPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminFamiliaDetallePage } from '@/features/admin-familias/AdminFamiliaDetallePage';
 import { AdminFamiliaNuevaPage } from '@/features/admin-familias/AdminFamiliaNuevaPage';
@@ -71,6 +73,7 @@ export function AppRoutes() {
         <Route element={<FamiliaLayout />}>
           <Route path="/familia" element={<FamilyDashboardPage />} />
           <Route path="/familia/mis-datos" element={<MisDatosPage />} />
+          <Route path="/familia/adultos" element={<AdultosFamiliaPage />} />
           <Route path="/familia/deportistas" element={<AthletesPage />} />
           <Route path="/familia/deportistas/:deportistaId" element={<AthleteSheetPage />} />
           <Route path="/familia/tutores/:tutorId" element={<TutorDocumentsPage />} />
@@ -98,6 +101,7 @@ export function AppRoutes() {
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId" element={<AdminDatosDeportivosDetallePage />} />
           <Route path="/admin/deportistas/:id/temporadas/:temporadaId/editar" element={<AdminDatosDeportivosEdicionPage />} />
           <Route path="/admin/documentos/pendientes" element={<AdminDocumentosPendientesPage />} />
+          <Route path="/admin/tutores/por-verificar" element={<AdminTutoresPorVerificarPage />} />
           <Route path="/admin/temporadas" element={<AdminTemporadasPage />} />
           <Route path="/admin/invitaciones" element={<AdminInvitationsPage />} />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />

@@ -109,7 +109,7 @@ class TutorAdminControllerWebMvcTest {
 
 	private TutorRespuesta respuesta() {
 		return new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", "30111222", "11-5555-0000", "ana@example.com",
-				"Madre", true, "0");
+				"Madre", true, "0", "VERIFICADO", null, "ADMIN");
 	}
 
 	// ---------- crear ----------
@@ -373,9 +373,9 @@ class TutorAdminControllerWebMvcTest {
 	void comandosDeEstadoRecibenActorDelJwtYSoloLaRevision() throws Exception {
 		var actor = new UsuarioAutenticado(adminId, escuelaId, null, Rol.ADMIN);
 		when(servicio.desactivar(eq(actor), eq(tutorId), eq(4L), any())).thenReturn(
-				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, false, "5"));
+				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, false, "5", "VERIFICADO", null, "ADMIN"));
 		when(servicio.activar(eq(actor), eq(tutorId), eq(5L), any())).thenReturn(
-				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, true, "6"));
+				new TutorRespuesta(tutorId, familiaId, "Ana", "Perez", null, null, null, null, true, "6", "VERIFICADO", null, "ADMIN"));
 		mvc.perform(crudo(post("/api/admin/tutores/" + tutorId + "/desactivar"), admin(),
 				"{\"versionEsperada\":\"4\"}")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.activo").value(false)).andExpect(jsonPath("$.version").value("5"))

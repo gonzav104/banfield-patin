@@ -10,6 +10,7 @@ const navItems = [
   { to: '/admin/familias', label: 'Familias', end: false },
   { to: '/admin/deportistas', label: 'Deportistas', end: false },
   { to: '/admin/documentos/pendientes', label: 'Documentos pendientes', end: false },
+  { to: '/admin/tutores/por-verificar', label: 'Tutores por verificar', end: false },
   { to: '/admin/temporadas', label: 'Temporadas', end: false },
   { to: '/admin/invitaciones', label: 'Invitaciones', end: false },
 ];

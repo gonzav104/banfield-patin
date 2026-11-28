@@ -38,6 +38,12 @@ export function TutorNotFound({ familyId }: { familyId: string | undefined }) {
   );
 }
 
+const VERIFICATION_TEXT: Record<string, string> = {
+  DECLARADO: 'Datos declarados, sin verificar',
+  VERIFICADO: 'Identidad verificada',
+  OBSERVADO: 'Datos observados',
+};
+
 function Row({ label, children, breakAll = false }: { label: string; children: string | null | undefined; breakAll?: boolean }) {
   return (
     <div className="flex min-w-0 flex-wrap gap-x-2">
@@ -70,8 +76,14 @@ function Detail({ tutor, familyId, saved }: { tutor: TutorDetail; familyId: stri
           {tutor.activo ? null : (
             <span className="rounded-full border border-neutral-400 bg-neutral-100 px-2.5 py-0.5 text-xs font-bold text-neutral-800">Inactivo</span>
           )}
+          {VERIFICATION_TEXT[tutor.verificacion ?? ''] ? (
+            <span className="rounded-full border border-neutral-400 bg-neutral-100 px-2.5 py-0.5 text-xs font-bold text-neutral-800">
+              {VERIFICATION_TEXT[tutor.verificacion ?? '']}
+            </span>
+          ) : null}
         </div>
         <p className="text-sm text-muted">Son datos personales: solo los ven los administradores.</p>
+        {tutor.verificacion === 'OBSERVADO' && tutor.motivoObservacion ? <p className="text-sm text-muted">Motivo que ve la familia: {tutor.motivoObservacion}</p> : null}
         <Button asChild variant="outline">
           <Link to={`/admin/familias/${encodeURIComponent(familyId)}/tutores/${encodeURIComponent(tutor.id)}/editar`}>Editar tutor</Link>
         </Button>

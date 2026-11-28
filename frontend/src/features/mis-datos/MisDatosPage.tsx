@@ -171,6 +171,11 @@ function ProfileEditor({ identity, profile, editable, onNotice, onStale }: { ide
       ) : (
         <p className="text-sm text-muted">Con esto el club te reconoce. No hace falta nada más y no cambia a qué deportistas podés ver.</p>
       )}
+      {profile?.estado === 'OBSERVADO' && profile.motivoObservacion ? (
+        <Alert tone="warning">
+          <span className="font-semibold">Lo que pidió el club:</span> {profile.motivoObservacion} Corregí tus datos y guardá: el club los vuelve a revisar.
+        </Alert>
+      ) : null}
       <ProfileForm values={values} errors={errors} lockedIdentity={profile ? !profile.identidadEditable : false} maskedDni={profile?.dniEnmascarado ?? null} onChange={change} />
       {editable ? (
         <Button type="submit" disabled={pending || unchanged}>

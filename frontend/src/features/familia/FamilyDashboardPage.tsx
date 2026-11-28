@@ -59,6 +59,21 @@ function MyDataCard() {
   );
 }
 
+/** Entry to «Otros adultos»: adding an adult never gives access to athletes, and the card says so. */
+function OtherAdultsCard() {
+  return (
+    <section aria-labelledby="other-adults-title" className="rounded-2xl border border-line bg-white p-5">
+      <h2 id="other-adults-title" className="text-lg font-bold">
+        Otros adultos
+      </h2>
+      <p className="mt-1 text-sm text-muted">Cargá los datos de otros adultos de tu familia, aunque no tengan una cuenta. Esto no les da acceso a los deportistas.</p>
+      <Button asChild variant="outline" className="mt-3">
+        <Link to="/familia/adultos">Ver otros adultos</Link>
+      </Button>
+    </section>
+  );
+}
+
 function AthletesSummary({ identity }: { identity: FamilyIdentity }) {
   const athletes = useAthletes(identity, 0, ATHLETES_PREVIEW_SIZE);
   if (athletes.isPending) return <LoadingBlock label="Cargando deportistas…" />;
@@ -96,6 +111,7 @@ function FamilySections({ identity }: { identity: FamilyIdentity }) {
     <>
       <FamilyCard identity={identity} />
       <MyDataCard />
+      <OtherAdultsCard />
       <AthletesSummary identity={identity} />
     </>
   );
