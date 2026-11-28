@@ -162,7 +162,12 @@ function PendingList() {
   const sending = useRef(false);
   const data = query.data;
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'tutores-por-verificar'] });
+  // The tutor's detail page also shows the verification state: refresh both after any decision.
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tutores-por-verificar'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tutor-detail'] }),
+    ]);
   const decide = useMutation<void, ApiError, { tutorId: string; decision: Decision }>({ mutationFn: ({ tutorId, decision }) => resolveTutor(tutorId, decision) });
   const batch = useMutation<BatchResult[], ApiError, { tutorId: string; versionEsperada: string }[]>({ mutationFn: verifyBatch });
   const busy = decide.isPending || batch.isPending;

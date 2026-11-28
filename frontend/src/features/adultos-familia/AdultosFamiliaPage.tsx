@@ -84,7 +84,7 @@ interface FormCommon {
   onClose: () => void;
 }
 
-/** After a definitive refusal that changes what is allowed (cap, flag, someone else's change), the screen shows the current list. */
+/** After a refusal that changes what is allowed (cap, flag, someone else's change) or an uncertain outcome, the screen shows the current list. */
 const REFRESH_ON: AdultFailure[] = ['stale', 'gone', 'uncertain', 'disabled', 'cap', 'account', 'locked', 'dniApproved'];
 
 function AddAdultForm({ identity, onNotice, onRefresh, onClose }: FormCommon) {

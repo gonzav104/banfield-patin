@@ -179,6 +179,7 @@ export interface FakeAdminTutor {
   version?: number;
   /** U21-BIS C2: only in the individual detail (TutorRespuesta). */
   verificacion?: 'DECLARADO' | 'VERIFICADO' | 'OBSERVADO';
+  origen?: 'ADMIN' | 'FAMILIA';
   motivoObservacion?: string | null;
 }
 
@@ -592,7 +593,8 @@ export class FakeBackend {
 
   /** The backend's TutorRespuesta: FULL DNI and the revision (decimal string). */
   private tutorFull(t: FakeAdminTutor, familiaId: string) {
-    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dni: t.dni ?? null, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo, version: String(t.version ?? 0), ...(t.verificacion ? { verificacion: t.verificacion, motivoObservacion: t.motivoObservacion ?? null, origen: 'FAMILIA' } : {}) };
+    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dni: t.dni ?? null, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo, version: String(t.version ?? 0), // Like the backend, always present: a tutor without a seeded state is one the club loaded (VERIFICADO, ADMIN).
+      verificacion: t.verificacion ?? 'VERIFICADO', motivoObservacion: t.motivoObservacion ?? null, origen: t.origen ?? (t.verificacion ? 'FAMILIA' : 'ADMIN') };
   }
 
   private findTutor(id: string): { tutor: FakeAdminTutor; family: FakeFamily } | undefined {

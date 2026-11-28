@@ -3,6 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FakeBackend } from '@/test/fakeBackend';
 import { admin, createBackend, family, renderApp } from '@/test/render';
+import { ApiError } from '@/lib/api-error';
+import { updateAdult } from './api';
+import { classify } from './messages';
 
 // MOCK backend (src/test/fakeBackend.ts mirrors AdultosFamiliaController). Real-backend evidence: e2e/adultos-familia.real.spec.ts.
 let backend: FakeBackend;
@@ -291,7 +294,14 @@ describe('Otros adultos (mock backend)', () => {
     const foreign = backend.addAdult('familia-2', { nombre: 'Ajena', apellido: 'Otra' });
     await open();
     expect(screen.queryByText(/Ajena/)).not.toBeInTheDocument();
-    expect(foreign.familyId).toBe('familia-2');
+    // Even sending the foreign id directly (not reachable from the screen) gets the neutral «not found», nothing is changed,
+    // and the screen would treat it as «that person is no longer in your family».
+    const error = await updateAdult(foreign.id, { nombre: 'Cambiada', apellido: 'Otra', version: '0' }).then(() => null, (e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).code).toBe('TUTOR_NO_ENCONTRADO');
+    expect(classify(error as ApiError)).toBe('gone');
+    expect(foreign.nombre).toBe('Ajena');
   });
 
   it('is not shown to an administrator', async () => {

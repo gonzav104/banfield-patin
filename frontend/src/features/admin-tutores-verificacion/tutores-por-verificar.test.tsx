@@ -223,7 +223,7 @@ describe('Tutores por verificar (mock backend)', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { level: 1, name: 'Tutores por verificar' })).not.toBeInTheDocument());
   });
 
-  it('shows the verification state and the observation reason on the admin tutor page, and nothing for a tutor without the new fields', async () => {
+  it('shows the verification state and the observation reason on the admin tutor page; a tutor loaded by the club shows as verified', async () => {
     const observed = backend.addFamily('Gómez', {
       tutores: [{ id: 't-obs', nombre: 'Rosa', apellido: 'Sintética', dni: '30111222', dniEnmascarado: '••••••222', telefono: null, email: null, parentesco: null, activo: true, version: 1, verificacion: 'OBSERVADO', motivoObservacion: 'Revisá el apellido.' }],
     });
@@ -236,6 +236,8 @@ describe('Tutores por verificar (mock backend)', () => {
     });
     renderApp(`/admin/familias/${plain.id}/tutores/t-plain`);
     expect(await screen.findByRole('heading', { level: 1, name: 'Laura Plana' })).toBeInTheDocument();
-    expect(screen.queryByText(/Datos observados|Identidad verificada|Datos declarados/)).not.toBeInTheDocument();
+    // The backend always sends the state: a tutor the club loaded is VERIFICADO (origen ADMIN), never «observed» or «declared».
+    expect(screen.getByText('Identidad verificada')).toBeInTheDocument();
+    expect(screen.queryByText(/Datos observados|Datos declarados|Motivo que ve la familia/)).not.toBeInTheDocument();
   });
 });

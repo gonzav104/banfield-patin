@@ -101,9 +101,27 @@ test.describe('Otros adultos (real backend)', () => {
   });
 
   test('ADMIN sees the declared data ready to verify, verifies one, observes another with a reason and verifies the third in batch', async () => {
-    await adminPage.goto('/admin/tutores/por-verificar');
-    await expect(adminPage.getByRole('heading', { level: 1, name: 'Tutores por verificar' })).toBeVisible();
     const row = (name: string) => adminPage.getByRole('listitem').filter({ hasText: full(name) });
+    // The inbox lists the oldest first, 20 per page, and this shard seeds other declared adults before: open the page where
+    // the person actually is (asked to the real API), so the test does not depend on how many older ones exist.
+    const openPageOf = async (name: string) => {
+      let index = -1;
+      for (let page = 0; index < 0; page++) {
+        const body = (await (await adminPage.request.get(`/api/admin/tutores/por-verificar?estado=DECLARADO&page=${page}&size=100`)).json()) as {
+          contenido: { nombre: string; apellido: string }[];
+          totalElementos: number;
+        };
+        const found = body.contenido.findIndex((t) => `${t.nombre} ${t.apellido}` === full(name));
+        if (found >= 0) index = page * 100 + found;
+        else if ((page + 1) * 100 >= body.totalElementos) throw new Error(`${name} is not pending verification`);
+      }
+      const uiPage = Math.floor(index / 20);
+      await adminPage.goto(`/admin/tutores/por-verificar${uiPage > 0 ? `?pagina=${uiPage + 1}` : ''}`);
+      await expect(adminPage.getByRole('heading', { level: 1, name: 'Tutores por verificar' })).toBeVisible();
+      await expect(row(name)).toBeVisible();
+    };
+
+    await openPageOf(names.veronica);
 
     await expect(row(names.veronica)).toContainText(dniVeronica);
     await expect(row(names.veronica)).toContainText('Madre');
@@ -114,6 +132,7 @@ test.describe('Otros adultos (real backend)', () => {
     await expect(adminPage.getByText('Listo: los datos quedaron verificados.')).toBeVisible();
     await expect(row(names.veronica)).toHaveCount(0);
 
+    await openPageOf(names.gaston);
     await row(names.gaston).getByRole('button', { name: `Observar a ${full(names.gaston)}` }).click();
     const form = adminPage.getByRole('form', { name: `Observar los datos de ${full(names.gaston)}` });
     await expect(form.getByText(/La familia va a ver este motivo/)).toBeVisible();
@@ -122,6 +141,7 @@ test.describe('Otros adultos (real backend)', () => {
     await expect(adminPage.getByText('Listo: la familia va a ver tu observación.')).toBeVisible();
     await expect(row(names.gaston)).toHaveCount(0);
 
+    await openPageOf(names.hilda);
     await adminPage.getByRole('checkbox', { name: `Seleccionar a ${full(names.hilda)}` }).check();
     await adminPage.getByRole('button', { name: 'Verificar seleccionados (1)' }).click();
     const results = adminPage.getByRole('region', { name: 'Resultado de la verificación en lote' });
