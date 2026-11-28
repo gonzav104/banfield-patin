@@ -115,11 +115,6 @@ public class Tutor {
 		return "VERIFICADO".equals(verificacion);
 	}
 
-	/** Cambia solo el contacto (teléfono, correo, parentesco); devuelve los nombres de los campos que cambiaron. */
-	public List<String> actualizarContacto(String telefono, String email, String parentesco) {
-		return actualizar(nombre, apellido, dni, telefono, email, parentesco);
-	}
-
 	void activar() {
 		activo = true;
 	}

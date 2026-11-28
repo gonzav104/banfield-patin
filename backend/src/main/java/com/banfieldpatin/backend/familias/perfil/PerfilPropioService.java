@@ -123,7 +123,11 @@ public class PerfilPropioService {
 			nuevo = tutores.saveAndFlush(Tutor.crearPerfilPropio(u.escuelaId(), u.familiaId(), u.id(), s.nombre(),
 					s.apellido(), DocumentoIdentidad.normalizarDni(s.dni()), s.telefono(), s.email(), s.parentesco()));
 		} catch (DataIntegrityViolationException e) {
-			// Dos pedidos simultáneos de la misma cuenta: el índice único (uq_tutor_usuario) deja uno solo.
+			// Dos pedidos simultáneos de la misma cuenta: el índice único (uq_tutor_usuario) deja uno solo. Cualquier otra
+			// violación (un CHECK, una FK) no es «ya tenés tus datos»: se relanza para no esconder un defecto.
+			if (!esCuentaDuplicada(e)) {
+				throw e;
+			}
 			throw perfilYaExiste();
 		}
 		registrar(u, AccionAuditoria.PERFIL_DECLARADO, nuevo, Map.of("familiaId", u.familiaId().toString()), datos);
@@ -185,6 +189,15 @@ public class PerfilPropioService {
 		Tutor tutor = tutores.deCuenta(u.escuelaId(), u.familiaId(), u.id()).orElseThrow(PerfilPropioService::personaNoDisponible);
 		registrar(u, AccionAuditoria.TUTOR_RECLAMADO, tutor, Map.of("familiaId", u.familiaId().toString()), datos);
 		return new PerfilRespuesta(true, datos(tutor), List.of());
+	}
+
+	private static boolean esCuentaDuplicada(Throwable e) {
+		for (Throwable causa = e; causa != null; causa = causa.getCause()) {
+			if (causa.getMessage() != null && causa.getMessage().contains("uq_tutor_usuario")) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private PerfilDatos datos(Tutor t) {

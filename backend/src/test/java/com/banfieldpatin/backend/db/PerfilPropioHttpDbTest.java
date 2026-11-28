@@ -213,7 +213,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 	@Test
 	void editarExigeLaRevisionVistaYUnaIdentidadVerificadaNoSeCambiaSola() throws Exception {
 		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isOk());
-		String v0 = version(madre, true);
+		String v0 = versionDelPerfilDe(madre);
 
 		// Mientras está DECLARADO la persona corrige todo.
 		String cambioNombre = CUERPO.replace("Laura", "Laurita").replace("}", ",\"versionEsperada\":\"" + v0 + "\"}");
@@ -225,7 +225,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		assertThat(jdbc.sql("SELECT nombre FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class)
 				.single()).isEqualTo("Laurita");
 		// Sin DNI en el pedido (la familia nunca lo recibe completo) se conserva el cargado; no es un cambio de identidad.
-		String v05 = version(madre, true);
+		String v05 = versionDelPerfilDe(madre);
 		mvc.perform(escribir(put(RUTA), "{\"nombre\":\"Laurita\",\"apellido\":\"Gomez\",\"telefono\":\"11 7777-2222\",\"versionEsperada\":\"" + v05 + "\"}",
 				madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.dniEnmascarado").exists());
 		assertThat(jdbc.sql("SELECT dni FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class).single())
@@ -234,7 +234,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 				.param("u", madre).update();
 		// Sin cambios: no audita.
 		long antes = auditoria("PERFIL_ACTUALIZADO");
-		String v1 = version(madre, true);
+		String v1 = versionDelPerfilDe(madre);
 		mvc.perform(escribir(put(RUTA), CUERPO.replace("\"nombre\":\"Laura\"", "\"nombre\":\"Laurita\"").replace("}", ",\"versionEsperada\":\"" + v1 + "\"}"), madre,
 				fam1, escuela)).andExpect(status().isOk());
 		assertThat(auditoria("PERFIL_ACTUALIZADO")).isEqualTo(antes);
@@ -242,7 +242,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		// ADMIN verifica la identidad (C2 traerá la pantalla): ahora solo el contacto es editable por la familia.
 		jdbc.sql("UPDATE gestion_patin.tutor SET verificacion = 'VERIFICADO', version = version + 1 WHERE usuario_id = :u")
 				.param("u", madre).update();
-		String v2 = version(madre, true);
+		String v2 = versionDelPerfilDe(madre);
 		mvc.perform(escribir(put(RUTA), CUERPO.replace("Laura", "Laurita").replace("Gomez", "Perez").replace("}", ",\"versionEsperada\":\"" + v2 + "\"}"),
 				madre, fam1, escuela)).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("IDENTIDAD_VERIFICADA"));
 		mvc.perform(escribir(put(RUTA), CUERPO.replace("Laura", "Laurita").replace("30.111.222", "30.999.888").replace("}", ",\"versionEsperada\":\"" + v2 + "\"}"),
@@ -439,9 +439,9 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		return jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", usuario).query(Long.class).single();
 	}
 
-	/** Revisión del tutor del usuario ({@code porUsuario}) como cadena decimal. */
-	private String version(UUID id, boolean porUsuario) {
-		return jdbc.sql("SELECT version FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", id).query(Long.class).single().toString();
+	/** Revisión del tutor asociado a la cuenta, como cadena decimal. */
+	private String versionDelPerfilDe(UUID usuario) {
+		return jdbc.sql("SELECT version FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", usuario).query(Long.class).single().toString();
 	}
 
 	private String version(UUID tutorId) {
