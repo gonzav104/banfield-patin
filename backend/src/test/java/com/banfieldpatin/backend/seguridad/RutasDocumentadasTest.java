@@ -102,9 +102,10 @@ class RutasDocumentadasTest {
 	}
 
 	@Test
-	void laUnicaEscrituraFamiliarEsLaCargaDocumentalExplicita() throws Exception {
+	void lasUnicasEscriturasFamiliaresSonLaCargaDocumentalYElPerfilPropio() throws Exception {
 		assertThat(rutasDeLaTabla().stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia")))
-				.containsExactlyInAnyOrder("GET /api/familia/mi-familia", "GET /api/familia/deportistas",
+				.containsExactlyInAnyOrder("GET /api/familia/mi-perfil", "POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil",
+						"POST /api/familia/mi-perfil/reclamar-tutor", "GET /api/familia/mi-familia", "GET /api/familia/deportistas",
 						"GET /api/familia/deportistas/{id}", "GET /api/familia/deportistas/{id}/documentos", "GET /api/familia/deportistas/{id}/checklist-documental", "GET /api/familia/deportistas/{id}/temporadas/{temporadaId}/apto-fisico", "GET /api/familia/tutores/{id}/documentos", "GET /api/familia/deportistas/{deportistaId}/temporadas",
 						"GET /api/familia/deportistas/{deportistaId}/temporadas/{temporadaId}", "GET /api/familia/deportistas/{deportistaId}/ficha", "GET /api/familia/deportistas/{deportistaId}/responsables",
 						"GET /api/familia/documentos/disponibilidad",

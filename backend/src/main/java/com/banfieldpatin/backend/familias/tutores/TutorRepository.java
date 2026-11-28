@@ -55,4 +55,20 @@ public interface TutorRepository extends JpaRepository<Tutor, UUID> {
 			""")
 	List<ConteoTutores> contarPorFamilia(@Param("escuelaId") UUID escuelaId,
 			@Param("familiaIds") Collection<UUID> familiaIds);
+
+	/** El tutor asociado a una cuenta de esa familia y escuela (a lo sumo uno: índice único); vacío si no declaró su perfil. */
+	@Query("""
+			select t from Tutor t
+			where t.escuelaId = :escuelaId and t.familiaId = :familiaId and t.usuarioId = :usuarioId
+			""")
+	Optional<Tutor> deCuenta(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId,
+			@Param("usuarioId") UUID usuarioId);
+
+	/** Tutores activos de la familia que todavía no tienen cuenta: las personas que alguien podría reclamar («soy yo»). */
+	@Query("""
+			select t from Tutor t
+			where t.escuelaId = :escuelaId and t.familiaId = :familiaId and t.activo = true and t.usuarioId is null
+			order by lower(t.apellido), lower(t.nombre), t.id
+			""")
+	List<Tutor> sinCuentaDeLaFamilia(@Param("escuelaId") UUID escuelaId, @Param("familiaId") UUID familiaId);
 }

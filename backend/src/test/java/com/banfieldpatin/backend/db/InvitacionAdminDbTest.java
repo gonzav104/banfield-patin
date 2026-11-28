@@ -96,6 +96,44 @@ class InvitacionAdminDbTest extends BaseDbTest {
 		datos.limpiarEscuela(escuelaB);
 	}
 
+	@org.junit.jupiter.api.Test
+	void invitarAUnTutorConcretoSoloValeParaUnaPersonaActivaSinCuentaDeLaFamiliaInvitada() {
+		UUID tutor = datos.tutor(escuelaA, familiaA, "Laura", "Gomez");
+		UUID otraFamilia = datos.familia(escuelaA, "Otra familia", true);
+		UUID deOtraFamilia = datos.tutor(escuelaA, otraFamilia, "Ajena", "Otra");
+		UUID inactivo = datos.tutor(escuelaA, familiaA, "Inactivo", "Gomez");
+		jdbc.sql("UPDATE gestion_patin.tutor SET activo = false WHERE id = :t").param("t", inactivo).update();
+		UUID conCuenta = datos.tutor(escuelaA, familiaA, "Conc", "Cuenta");
+		UUID usuario = datos.usuarioFamilia(escuelaA, familiaA, "cuenta@a.example");
+		jdbc.sql("UPDATE gestion_patin.tutor SET usuario_id = :u, vinculo_cuenta = 'VERIFICADO' WHERE id = :t").param("u", usuario)
+				.param("t", conCuenta).update();
+
+		var creada = servicio.crear(admin, new CrearInvitacionSolicitud(familiaA, null, "laura@a.example", tutor, null), DATOS);
+		assertThat(jdbc.sql("SELECT tutor_id FROM gestion_patin.invitacion WHERE id = :i").param("i", creada.id()).query(UUID.class)
+				.single()).isEqualTo(tutor);
+		assertThat(jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE accion = 'INVITACION_CREADA' AND recurso_id = :i")
+				.param("i", creada.id()).query(String.class).single()).contains("\"conTutor\"").doesNotContain("Laura");
+
+		String esperado = null;
+		for (UUID objetivo : java.util.List.of(deOtraFamilia, inactivo, conCuenta, UUID.randomUUID())) {
+			var e = org.assertj.core.api.Assertions.catchThrowableOfType(ExcepcionNegocio.class,
+					() -> servicio.crear(admin, new CrearInvitacionSolicitud(familiaA, null, null, objetivo, null), DATOS));
+			assertThat(e.getCodigo()).isEqualTo("TUTOR_NO_DISPONIBLE");
+			if (esperado == null) {
+				esperado = e.getMessage();
+			}
+			assertThat(e.getMessage()).isEqualTo(esperado);
+		}
+		// Un tutor de otra escuela: el ADMIN de B no lo ve (mismo conflicto).
+		assertThat(org.assertj.core.api.Assertions.catchThrowableOfType(ExcepcionNegocio.class,
+				() -> servicio.crear(adminDeB, new CrearInvitacionSolicitud(familiaA, null, null, tutor, null), DATOS)).getCodigo())
+				.isEqualTo("FAMILIA_NO_ENCONTRADA");
+		// Con una familia nueva no hay tutor al que invitar.
+		assertThat(org.assertj.core.api.Assertions.catchThrowableOfType(ExcepcionNegocio.class,
+				() -> servicio.crear(admin, new CrearInvitacionSolicitud(null, new NuevaFamiliaSolicitud("Nueva"), null, tutor, null), DATOS))
+				.getEstado().value()).isEqualTo(400);
+	}
+
 	private static CrearInvitacionSolicitud paraFamilia(UUID familiaId, String email, Integer dias) {
 		return new CrearInvitacionSolicitud(familiaId, null, email, dias);
 	}

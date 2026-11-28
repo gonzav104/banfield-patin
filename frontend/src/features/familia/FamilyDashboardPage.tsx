@@ -44,6 +44,21 @@ function FamilyCard({ identity }: { identity: FamilyIdentity }) {
   );
 }
 
+/** Entry to «Mis datos»: short, in plain words; the detail lives on its own screen. */
+function MyDataCard() {
+  return (
+    <section aria-labelledby="my-data-title" className="rounded-2xl border border-line bg-white p-5">
+      <h2 id="my-data-title" className="text-lg font-bold">
+        Mis datos
+      </h2>
+      <p className="mt-1 text-sm text-muted">Revisá o completá tus datos de contacto para que el club pueda comunicarse con vos.</p>
+      <Button asChild variant="outline" className="mt-3">
+        <Link to="/familia/mis-datos">Ver mis datos</Link>
+      </Button>
+    </section>
+  );
+}
+
 function AthletesSummary({ identity }: { identity: FamilyIdentity }) {
   const athletes = useAthletes(identity, 0, ATHLETES_PREVIEW_SIZE);
   if (athletes.isPending) return <LoadingBlock label="Cargando deportistas…" />;
@@ -80,6 +95,7 @@ function FamilySections({ identity }: { identity: FamilyIdentity }) {
   return (
     <>
       <FamilyCard identity={identity} />
+      <MyDataCard />
       <AthletesSummary identity={identity} />
     </>
   );

@@ -132,7 +132,17 @@ public class RegistroPorInvitacionService {
 
 		vinculacion.alRegistrar(invitacion, guardado);
 
+		// Invitación a un tutor concreto (C1): la cuenta queda vinculada y verificada a esa persona, sin permisos nuevos. Si otra
+		// persona la reclamó mientras tanto, el registro sigue sin vínculo (auditado) en vez de dejar afuera a quien ya se registró.
+		Boolean tutorVinculado = null;
+		if (invitacion.getTutorId() != null) {
+			tutorVinculado = invitaciones.vincularTutor(invitacion.getId(), guardado.getId()) == 1;
+		}
+
 		Map<String, Object> detalle = new LinkedHashMap<>();
+		if (tutorVinculado != null) {
+			detalle.put("tutorVinculado", tutorVinculado);
+		}
 		detalle.put("invitacionId", invitacion.getId().toString());
 		detalle.put("familiaId", invitacion.getFamiliaId().toString());
 		auditoria.registrar(new EventoAuditoria(guardado.getEscuelaId(), guardado.getId(),

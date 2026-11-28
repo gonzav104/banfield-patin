@@ -104,6 +104,8 @@ class V15CierresVigenciasDbTest {
 
 	@Test
 	void backendProdValidaHibernateYOperaVigenciasConElLoginRuntime() {
+		// La app real valida su mapeo contra el esquema completo (V21 agrega columnas al tutor): se migra hasta la última versión.
+		flyway().load().migrate();
 		var previo = caso();
 		try (var contexto = new SpringApplicationBuilder(BackendApplication.class)
 				.profiles("test", "prod")

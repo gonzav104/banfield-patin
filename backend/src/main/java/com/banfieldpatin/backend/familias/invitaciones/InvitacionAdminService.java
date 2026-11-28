@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Collection;
+import java.util.Set;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +29,7 @@ import com.banfieldpatin.backend.compartido.web.DatosSolicitud;
 import com.banfieldpatin.backend.compartido.web.Pagina;
 import com.banfieldpatin.backend.familias.Familia;
 import com.banfieldpatin.backend.familias.FamiliaRepository;
+import com.banfieldpatin.backend.familias.tutores.TutorRepository;
 import com.banfieldpatin.backend.familias.dto.FamiliaResumen;
 import com.banfieldpatin.backend.familias.invitaciones.dto.CrearInvitacionSolicitud;
 import com.banfieldpatin.backend.familias.invitaciones.dto.InvitacionCreadaRespuesta;
@@ -43,17 +47,19 @@ public class InvitacionAdminService {
 
 	private final InvitacionRepository invitaciones;
 	private final FamiliaRepository familias;
+	private final TutorRepository tutores;
 	private final AuditoriaService auditoria;
 	private final GeneradorTokenInvitacion generador;
 	private final InvitacionesPropiedades propiedades;
 	private final Clock reloj;
 	private final String urlBaseFrontend;
 
-	public InvitacionAdminService(InvitacionRepository invitaciones, FamiliaRepository familias,
+	public InvitacionAdminService(InvitacionRepository invitaciones, FamiliaRepository familias, TutorRepository tutores,
 			AuditoriaService auditoria, GeneradorTokenInvitacion generador, InvitacionesPropiedades propiedades,
 			Clock reloj, @Value("${banfield.frontend.url-base:}") String urlBaseFrontend) {
 		this.invitaciones = invitaciones;
 		this.familias = familias;
+		this.tutores = tutores;
 		this.auditoria = auditoria;
 		this.generador = generador;
 		this.propiedades = propiedades;
@@ -97,9 +103,24 @@ public class InvitacionAdminService {
 					.orElseThrow(InvitacionAdminService::familiaNoEncontrada);
 		}
 
+		if (solicitud.tutorId() != null) {
+			if (familiaCreada) {
+				throw new ExcepcionNegocio(HttpStatus.BAD_REQUEST, "VALIDACION",
+						"Solo se puede invitar a un tutor de una familia existente.");
+			}
+			// Otra familia o escuela, inexistente, inactivo o ya con cuenta: mismo 409, sin revelar cuál.
+			boolean disponible = tutores.findByIdAndEscuelaId(solicitud.tutorId(), admin.escuelaId())
+					.filter(t -> t.getFamiliaId().equals(familia.getId()) && t.isActivo() && t.getUsuarioId() == null)
+					.isPresent();
+			if (!disponible) {
+				throw new ExcepcionNegocio(HttpStatus.CONFLICT, "TUTOR_NO_DISPONIBLE",
+						"Esa persona no está disponible para invitarla: revisá que sea de la familia, esté activa y no tenga cuenta.");
+			}
+		}
+
 		String token = generador.generar();
 		String emailSugerido = normalizarEmail(solicitud.emailSugerido());
-		Invitacion invitacion = invitaciones.save(Invitacion.crear(admin.escuelaId(), familia.getId(),
+		Invitacion invitacion = invitaciones.save(Invitacion.crear(admin.escuelaId(), familia.getId(), solicitud.tutorId(),
 				GeneradorTokenInvitacion.sha256Hex(token), emailSugerido, ahora, ahora.plus(vigencia), admin.id()));
 
 		// El detalle nunca incluye el token ni su hash.
@@ -108,6 +129,7 @@ public class InvitacionAdminService {
 		detalle.put("familiaCreada", familiaCreada);
 		detalle.put("expiraEn", invitacion.getExpiraEn().toString());
 		detalle.put("conEmailSugerido", emailSugerido != null);
+		detalle.put("conTutor", solicitud.tutorId() != null);
 		auditoria.registrar(new EventoAuditoria(admin.escuelaId(), admin.id(), AccionAuditoria.INVITACION_CREADA,
 				"INVITACION", invitacion.getId(), detalle, datos));
 
@@ -123,7 +145,8 @@ public class InvitacionAdminService {
 		Map<UUID, Familia> porId = familias
 				.findAllById(pagina.getContent().stream().map(Invitacion::getFamiliaId).collect(Collectors.toSet()))
 				.stream().collect(Collectors.toMap(Familia::getId, f -> f, (a, b) -> a, HashMap::new));
-		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora));
+		Map<UUID, UUID> cuentas = cuentasDeLasPersonas(pagina.getContent(), admin.escuelaId());
+		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora, cuentas));
 	}
 
 	/** Invitaciones de una familia de la escuela; una familia ajena o inexistente da una página vacía (sin oráculo). */
@@ -135,7 +158,8 @@ public class InvitacionAdminService {
 				estado == null ? InvitacionRepository.TODOS : estado.name(), ahora, pageable);
 		Familia familia = pagina.isEmpty() ? null
 				: familias.findByIdAndEscuelaId(familiaId, admin.escuelaId()).orElse(null);
-		return Pagina.de(pagina, i -> respuesta(i, familia, ahora));
+		Map<UUID, UUID> cuentas = cuentasDeLasPersonas(pagina.getContent(), admin.escuelaId());
+		return Pagina.de(pagina, i -> respuesta(i, familia, ahora, cuentas));
 	}
 
 	@Transactional(readOnly = true)
@@ -213,13 +237,35 @@ public class InvitacionAdminService {
 
 	private InvitacionRespuesta respuesta(Invitacion i, Instant ahora) {
 		Familia familia = familias.findByIdAndEscuelaId(i.getFamiliaId(), i.getEscuelaId()).orElse(null);
-		return respuesta(i, familia, ahora);
+		return respuesta(i, familia, ahora, cuentasDeLasPersonas(List.of(i), i.getEscuelaId()));
 	}
 
-	private static InvitacionRespuesta respuesta(Invitacion i, Familia familia, Instant ahora) {
+	/** Para las invitaciones que nombran a una persona: la cuenta que hoy tiene cada tutor invitado (null si ninguna). */
+	private Map<UUID, UUID> cuentasDeLasPersonas(Collection<Invitacion> lista, UUID escuelaId) {
+		Set<UUID> ids = lista.stream().map(Invitacion::getTutorId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+		Map<UUID, UUID> cuentas = new HashMap<>();
+		if (!ids.isEmpty()) {
+			tutores.findAllById(ids).stream().filter(t -> t.getEscuelaId().equals(escuelaId))
+					.forEach(t -> cuentas.put(t.getId(), t.getUsuarioId()));
+		}
+		return cuentas;
+	}
+
+	private static InvitacionRespuesta respuesta(Invitacion i, Familia familia, Instant ahora, Map<UUID, UUID> cuentas) {
+		String asociacion = null;
+		// Estado ACTUAL de la persona invitada: se deriva de la cuenta que hoy tiene el tutor. Una invitación revocada o vencida sin uso
+		// no tiene asociación que informar.
+		if (i.getTutorId() != null) {
+			if (i.getUsadoEn() == null) {
+				asociacion = EstadoInvitacion.desde(i, ahora) == EstadoInvitacion.PENDIENTE ? InvitacionRespuesta.PENDIENTE : null;
+			} else {
+				asociacion = i.getUsuarioId() != null && i.getUsuarioId().equals(cuentas.get(i.getTutorId()))
+						? InvitacionRespuesta.ASOCIADA : InvitacionRespuesta.NO_ASOCIADA;
+			}
+		}
 		return new InvitacionRespuesta(i.getId(),
 				familia == null ? new FamiliaResumen(i.getFamiliaId(), null) : resumen(familia),
 				i.getEmailSugerido(), EstadoInvitacion.desde(i, ahora), i.getCreadoEn(), i.getExpiraEn(),
-				i.getUsadoEn(), i.getRevocadaEn());
+				i.getUsadoEn(), i.getRevocadaEn(), i.getTutorId(), asociacion);
 	}
 }

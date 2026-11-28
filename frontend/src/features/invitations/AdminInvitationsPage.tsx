@@ -53,6 +53,18 @@ function InvitationRow({ invitation }: { invitation: Invitation }) {
               <dd>{formatDateTime(invitation.usadoEn)}</dd>
             </div>
           ) : null}
+          {invitation.asociacionDePersona === 'ASOCIADA' ? (
+            <div className="flex gap-1">
+              <dt>Persona:</dt>
+              <dd>La cuenta quedó asociada a la persona invitada.</dd>
+            </div>
+          ) : null}
+          {invitation.asociacionDePersona === 'NO_ASOCIADA' ? (
+            <div className="flex gap-1 font-semibold text-amber-900">
+              <dt>Persona:</dt>
+              <dd>La cuenta se registró, pero esa persona ya había sido reclamada por otra cuenta: quedó sin asociar. Revisalo en la familia.</dd>
+            </div>
+          ) : null}
           {invitation.revocadaEn ? (
             <div className="flex gap-1">
               <dt>Revocada:</dt>

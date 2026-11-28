@@ -126,10 +126,11 @@ Todas **aditivas**; V1–V17 no se tocan. Cada migración trae su script de conc
 |---|---|---|
 | **V18** (implementada en C0) | antes de C2 | Triggers que impiden cambiar familia, escuela, rol e id de `usuario` y `documento.cargado_por` tras la creación (**autorizado** el 2026-11-27). |
 | **V19** (implementada en C0) | C0 | `usuario.version_sesion` (generación de sesiones, claim `version_sesion` del JWT, solo crece): quitar el acceso revoca para siempre los tokens anteriores; reactivar no los revive. |
-| **V20** | C1/C2 | `tutor`: `origen` (`ADMIN`/`FAMILIA`), `verificacion` (`DECLARADO`/`VERIFICADO`/`OBSERVADO`), `vinculo_cuenta` (`NULL`/`DECLARADO`/`VERIFICADO`), `declarado_por`, `verificado_por/en`, `motivo_observacion`. `DEFAULT` que conserva los tutores existentes como `ADMIN/VERIFICADO`. CHECK: `vinculo_cuenta` ⇒ `usuario_id`; verificado ⇒ `verificado_por/en`. |
-| **V21** | C3 | `solicitud_familiar` (sobre: `id`, `escuela_id`, `familia_id`, `solicitante_id`, `tipo`, `estado`, `idempotencia`, `huella`, `version`, `motivo_codigo`, `motivo_detalle`, `resuelta_por/en`, `resultado_deportista_id`, timestamps) + `solicitud_deportista` (datos **tipados** del deportista y relación declarada) con FK por escuela, CHECK de estados y de longitudes, `uq_solicitud_idempotencia`, `uq_solicitud_abierta_familia_dni`. |
-| **V22** | C4 | `solicitud_responsabilidad` (tutor, deportista, tipo declarado) sobre el mismo sobre. |
-| **V23** | C5 | `solicitud_correccion` (campos de identidad propuestos) sobre el mismo sobre. |
+| **V20** (implementada, fuera de C0) | — | Triggers que revocan las sesiones al dar de baja una familia o una escuela (`version_sesion`). |
+| **V21** (C1, implementada) | C1/C2 | `tutor`: `origen` (`ADMIN`/`FAMILIA`), `verificacion` (`DECLARADO`/`VERIFICADO`/`OBSERVADO`), `vinculo_cuenta` (`NULL`/`DECLARADO`/`VERIFICADO`), `declarado_por`, `verificado_por/en`, `motivo_observacion`. `DEFAULT` que conserva los tutores existentes como `ADMIN/VERIFICADO`. CHECK: `vinculo_cuenta` ⇒ `usuario_id`; verificado ⇒ `verificado_por/en`. |
+| **V22** | C3 | `solicitud_familiar` (sobre: `id`, `escuela_id`, `familia_id`, `solicitante_id`, `tipo`, `estado`, `idempotencia`, `huella`, `version`, `motivo_codigo`, `motivo_detalle`, `resuelta_por/en`, `resultado_deportista_id`, timestamps) + `solicitud_deportista` (datos **tipados** del deportista y relación declarada) con FK por escuela, CHECK de estados y de longitudes, `uq_solicitud_idempotencia`, `uq_solicitud_abierta_familia_dni`. |
+| **V23** | C4 | `solicitud_responsabilidad` (tutor, deportista, tipo declarado) sobre el mismo sobre. |
+| **V24** | C5 | `solicitud_correccion` (campos de identidad propuestos) sobre el mismo sobre. |
 
 Por qué tablas **tipadas** por tipo y no un `payload jsonb`: la base puede imponer longitudes, formato y FK por escuela, las auditorías y pruebas de privacidad pueden asegurar columnas concretas, y no hay un campo libre donde se cuele un dato sensible.
 
@@ -236,11 +237,11 @@ Cada corte: backend, luego frontend, banderas apagadas, sin habilitar escrituras
 | Corte | PR | Contenido | Migración | Riesgo Gentle AI | Tamaño |
 |---|---|---|---|---|---|
 | **C0** | C0-BE, C0-FE | ADMIN lista y desactiva/reactiva usuarios de una familia | V18 + V19 | alto (item 2: cuentas y sesiones) | chico |
-| **C1** | C1-BE, C1-FE | Perfil propio, vínculo cuenta↔tutor declarativo, onboarding «Mi familia», invitación con `tutorId` | V20 (parte) | medio-alto (identidad) | mediano |
-| **C2** | C2-BE-a (tutores familiares), C2-BE-b (verificación y bandeja), C2-FE | Tutores declarados por la familia con estados y verificación ADMIN | V20 (resto) | alto (item 2: nueva superficie de escritura familiar) | grande |
-| **C3** | C3-BE-a (solicitud y duplicados sin oráculo), C3-BE-b (resolución ADMIN y vínculo), C3-FE | Solicitud de alta/vínculo, resolución | V21 + concesiones | **alto** (privacidad, concurrencia) | grande |
-| **C4** | C4-BE, C4-FE | Solicitud y confirmación de responsabilidades (reutiliza `tutor_deportista`) | V22 | medio | mediano |
-| **C5** | C5-BE, C5-FE | Edición directa de contacto, corrección de identidad, cierre y documentación | V23 | medio | mediano |
+| **C1** | C1-BE, C1-FE | Perfil propio, vínculo cuenta↔tutor declarativo, onboarding «Mi familia», invitación con `tutorId` | V21 | medio-alto (identidad) | mediano |
+| **C2** | C2-BE-a (tutores familiares), C2-BE-b (verificación y bandeja), C2-FE | Tutores declarados por la familia con estados y verificación ADMIN | — | alto (item 2: nueva superficie de escritura familiar) | grande |
+| **C3** | C3-BE-a (solicitud y duplicados sin oráculo), C3-BE-b (resolución ADMIN y vínculo), C3-FE | Solicitud de alta/vínculo, resolución | V22 + concesiones | **alto** (privacidad, concurrencia) | grande |
+| **C4** | C4-BE, C4-FE | Solicitud y confirmación de responsabilidades (reutiliza `tutor_deportista`) | V23 | medio | mediano |
+| **C5** | C5-BE, C5-FE | Edición directa de contacto, corrección de identidad, cierre y documentación | V24 | medio | mediano |
 
 Orden recomendado: **C0 → C1 → C2 → C3 → C4 → C5**. C3 es el que entrega el valor principal (ADMIN deja de tipear deportistas); C0 y C1 son habilitantes de seguridad e identidad.
 

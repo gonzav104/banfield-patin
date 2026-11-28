@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InventarioRutasTest {
 
 	/** Rutas mutantes esperadas, con el formato "METODO /ruta". */
-	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+	private static final Set<String> MUTANTES_ESPERADAS = Set.of("POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor", "POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
 			"POST /api/auth/login",
 			"POST /api/auth/admin/login",
 			"POST /api/auth/logout",
@@ -269,9 +269,12 @@ class InventarioRutasTest {
 	}
 
 	@Test
-	void laUnicaRutaMutanteFamiliarEsLaCargaAutorizada() throws Exception {
+	void lasUnicasRutasMutantesFamiliaresSonLaCargaAutorizadaYElPerfilPropio() throws Exception {
 		// La carga documental es la única excepción explícita al portal de lectura.
-		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactly("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
+		assertThat(rutas(true).stream().filter(r -> r.contains(" /api/familia/") || r.endsWith(" /api/familia"))).containsExactlyInAnyOrder("POST /api/familia/deportistas/{id}/documentos", "POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo", "POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+				// U21-BIS C1: la familia declara su PROPIO perfil de tutor y reclama a una persona de su familia (declaración: no
+				// crea cuentas, no concede permisos, no toca vínculos ni responsabilidades).
+				"POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil", "POST /api/familia/mi-perfil/reclamar-tutor");
 	}
 
 	@Test
@@ -290,6 +293,9 @@ class InventarioRutasTest {
 				// Reemplazo de un DNI observado (U18): misma carga autorizada, ruta dedicada.
 				"POST /api/familia/deportistas/{id}/documentos/{documentoId}/reemplazo",
 				// Carga y reemplazo familiar de los DNI de un tutor (U19).
-				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo");
+				"POST /api/familia/tutores/{id}/documentos", "POST /api/familia/tutores/{id}/documentos/{documentoId}/reemplazo",
+				// Perfil propio y reclamo de una persona de la familia (U21-BIS C1).
+				"GET /api/familia/mi-perfil", "POST /api/familia/mi-perfil", "PUT /api/familia/mi-perfil",
+				"POST /api/familia/mi-perfil/reclamar-tutor");
 	}
 }

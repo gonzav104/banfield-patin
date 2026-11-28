@@ -94,6 +94,10 @@ banfield:
     apellido: ${BOOTSTRAP_ADMIN_APELLIDO:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
+  autoservicio:
+    # U21-BIS C1: la familia declara su perfil de tutor y reclama a la persona que ya figura en su familia (apagado por defecto).
+    perfil-habilitado: ${AUTOSERVICIO_PERFIL_HABILITADO:false}
+
   cuentas:
     # U21-BIS C0: desactivar/reactivar cuentas familiares desde el panel ADMIN (apagado por defecto).
     gestion-habilitada: ${CUENTAS_GESTION_HABILITADA:false}

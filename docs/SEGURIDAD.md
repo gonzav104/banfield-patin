@@ -377,6 +377,36 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
 - `GET /api/admin/invitaciones?familiaId=…` filtra las invitaciones de una familia de la escuela (una familia ajena da una página vacía).
 - La pertenencia de una cuenta (familia, escuela, rol) no cambia (V18): no existe reasignación entre familias.
 
+### Perfil propio y vínculo cuenta ↔ tutor (U21-BIS C1)
+
+- `GET /api/familia/mi-perfil` devuelve `{habilitado, perfil, personasSinCuenta}`; `POST` (crea), `PUT` (edita con `versionEsperada`) y
+  `POST /api/familia/mi-perfil/reclamar-tutor` («soy esta persona») escriben. Escuela, familia y cuenta salen del token; el cuerpo es cerrado
+  (cualquier otra propiedad: `400`). El DNI solo sale enmascarado; las respuestas llevan `Cache-Control: no-store`.
+- **Declarar no autoriza:** ningún camino toca `familia_deportista`, roles ni responsabilidades. El acceso sigue siendo por familia. El reclamo es
+  una **declaración**, no acredita identidad ni representación legal, y no cambia los datos del tutor.
+- **Identidad vs contacto:** nombre, apellido y DNI son identidad; teléfono, correo y parentesco, contacto. Mientras el tutor no esté `VERIFICADO` la
+  persona corrige todo; con identidad `VERIFICADA` el cambio de identidad se rechaza (`409 IDENTIDAD_VERIFICADA`) y queda reservado a la solicitud
+  de corrección de un corte posterior.
+- **Concurrencia:** la edición exige la revisión vista (`409 EDICION_DESACTUALIZADA`); el reclamo es un `UPDATE` condicional (tutor de MI familia,
+  activo, sin cuenta, misma revisión): uno gana y los demás reciben el mismo `409 PERSONA_NO_DISPONIBLE` que un tutor ajeno, inexistente, inactivo
+  o ya reclamado (sin oráculo). Una cuenta tiene a lo sumo un perfil (índice único): no hace falta ningún tope.
+- **La base impone la coherencia (V21):** `usuario_id` nulo ⇔ `vinculo_cuenta` nulo; la cuenta es de la misma familia que el tutor (FK compuesta).
+- **Invitación a un tutor concreto:** `POST /api/admin/invitaciones` acepta `tutorId` (solo con `familiaId`): el tutor debe ser de esa familia, estar
+  activo y sin cuenta (`409 TUTOR_NO_DISPONIBLE` sin distinguir el motivo). Al registrarse, la cuenta nace vinculada y `VERIFICADA` (declarado por
+  ADMIN); si otra persona lo reclamó mientras tanto, el registro sigue sin vínculo (`tutorVinculado:false` en la auditoría).
+- **Asociar la cuenta no es verificar la identidad.** `tutor.verificacion` (los DATOS) y `tutor.vinculo_cuenta` (la CUENTA) son independientes:
+  reclamar «soy yo» deja la cuenta `DECLARADO` («sin confirmar») aunque los datos del tutor estén `VERIFICADO`, y la invitación dirigida de ADMIN
+  deja la cuenta `VERIFICADO` sin tocar nunca `tutor.verificacion`. El perfil informa `cuentaConfirmada` para que la pantalla no diga «el club
+  confirmó que sos vos» cuando solo hubo un reclamo. Quien reclama a un tutor antes de que se acepte una invitación dirigida a él conserva su
+  vínculo `DECLARADO` y no gana permisos ni confirmación; la invitación se registra igual **sin asociación** y el listado de invitaciones de ADMIN
+  lo muestra (`asociacionDePersona`: `PENDIENTE`, `ASOCIADA` o `NO_ASOCIADA`, además de `tutorId` y de la auditoría `tutorVinculado:false`).
+- **Identidad cargada por el club:** un tutor con datos `VERIFICADO` no cambia su nombre, apellido ni DNI desde el portal, tampoco después de
+  reclamarlo. Cambiar la identidad de un perfil todavía no verificado no toca los documentos del tutor (la aprobación de un documento es sobre
+  la imagen, no sobre el número) y queda auditado con los **nombres** de los campos de identidad cambiados, de modo que ADMIN puede revisarlo.
+  Limitación conocida: si una identidad cambia después de aprobar un DNI, el documento sigue aprobado y la revisión es administrativa.
+- Bandera `AUTOSERVICIO_PERFIL_HABILITADO` (`false` por defecto): apagada, se puede consultar y las escrituras responden `503
+  AUTOSERVICIO_PERFIL_DESHABILITADO`. Auditoría: `PERFIL_DECLARADO`, `PERFIL_ACTUALIZADO`, `TUTOR_RECLAMADO` (ids y nombres de campo, nunca valores).
+
 ## 10. Auditoría
 
 Tabla `auditoria` (escritura por `JdbcClient`). Eventos: `LOGIN_EXITOSO`, `LOGIN_FALLIDO`, `LOGOUT`, `ADMIN_BOOTSTRAP`,
@@ -409,6 +439,7 @@ contiene únicamente valores ficticios.
 | `FRONTEND_URL_BASE` | **sí en `prod`** (https); no en otros perfiles | Base para generar `enlaceRegistro` (`{base}/registro/invitacion#{token}`, sección 7). Vacía fuera de `prod` = sin enlace |
 | `ESCUELA_SLUG` | no | Escuela de esta instalación, `banfield-patin-san-pedro` |
 | `LOGIN_MAX_INTENTOS`, `LOGIN_VENTANA`, `LOGIN_BLOQUEO` | no | Limitador de intentos: 5, `PT15M`, `PT15M` |
+| `AUTOSERVICIO_PERFIL_HABILITADO` | no | `false` por defecto: la familia declara su perfil de tutor y reclama a una persona de su familia (U21-BIS C1) |
 | `CUENTAS_GESTION_HABILITADA` | no | `false` por defecto: desactivar/reactivar cuentas familiares desde el panel ADMIN (U21-BIS C0) |
 | `BOOTSTRAP_ADMIN_HABILITADO`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NOMBRE`, `BOOTSTRAP_ADMIN_APELLIDO`, `BOOTSTRAP_ADMIN_PASSWORD` | no | Bootstrap del primer ADMIN (sección 8); desactivado por defecto |
 

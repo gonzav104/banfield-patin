@@ -52,6 +52,25 @@ public class Tutor {
 
 	private String parentesco;
 
+	/** Cuenta asociada (V21): se escribe al crear el perfil propio y por el reclamo (UPDATE condicional); nunca por Hibernate. */
+	@Column(name = "usuario_id", updatable = false)
+	private UUID usuarioId;
+
+	/** Quién cargó el dato: ADMIN (lo existente) o FAMILIA (perfil propio). */
+	@Column(nullable = false, updatable = false)
+	private String origen = "ADMIN";
+
+	/** DECLARADO / VERIFICADO / OBSERVADO. Solo ADMIN verifica (C2); en C1 Hibernate nunca lo cambia. */
+	@Column(nullable = false, updatable = false)
+	private String verificacion = "VERIFICADO";
+
+	/** DECLARADO (la propia persona) o VERIFICADO (ADMIN invitó a ese tutor); nulo sin cuenta. */
+	@Column(name = "vinculo_cuenta", updatable = false)
+	private String vinculoCuenta;
+
+	@Column(name = "declarado_por", updatable = false)
+	private UUID declaradoPor;
+
 	@Column(nullable = false)
 	private boolean activo;
 
@@ -74,6 +93,31 @@ public class Tutor {
 		t.parentesco = parentesco;
 		t.activo = true;
 		return t;
+	}
+
+	/**
+	 * Perfil propio de una cuenta FAMILIA (U21-BIS C1): origen FAMILIA, datos DECLARADOS y cuenta vinculada por declaración.
+	 * No concede ningún permiso ni acredita identidad ni representación legal.
+	 */
+	public static Tutor crearPerfilPropio(UUID escuelaId, UUID familiaId, UUID usuarioId, String nombre, String apellido,
+			String dni, String telefono, String email, String parentesco) {
+		Tutor t = crear(escuelaId, familiaId, nombre, apellido, dni, telefono, email, parentesco);
+		t.usuarioId = usuarioId;
+		t.origen = "FAMILIA";
+		t.verificacion = "DECLARADO";
+		t.vinculoCuenta = "DECLARADO";
+		t.declaradoPor = usuarioId;
+		return t;
+	}
+
+	/** El club confirmó que la cuenta asociada ES esta persona (invitación dirigida de ADMIN); un reclamo «soy yo» no lo logra. */
+	public boolean cuentaConfirmada() {
+		return "VERIFICADO".equals(vinculoCuenta);
+	}
+
+	/** La identidad (nombre, apellido, DNI) ya fue verificada por ADMIN: la familia no la cambia sola. */
+	public boolean identidadVerificada() {
+		return "VERIFICADO".equals(verificacion);
 	}
 
 	void activar() {

@@ -16,6 +16,8 @@ export const invitationSchema = z.object({
   expiraEn: z.string(),
   usadoEn: z.string().nullable().optional(),
   revocadaEn: z.string().nullable().optional(),
+  /** Only when the invitation names a person of the family: PENDIENTE, ASOCIADA or NO_ASOCIADA (already claimed by another account). */
+  asociacionDePersona: z.string().nullable().optional(),
 });
 export type Invitation = z.infer<typeof invitationSchema>;
 
@@ -49,6 +51,8 @@ export type FamilyPage = z.infer<typeof familyPageSchema>;
 /** Body of POST /api/admin/invitaciones: exactly one of familiaId / nuevaFamilia (the backend rejects extras). */
 export interface CreateInvitationInput {
   familiaId?: string;
+  /** Only with `familiaId`: an active person of that family without an account (their account is born linked and verified). */
+  tutorId?: string;
   nuevaFamilia?: { nombreReferencia: string };
   emailSugerido?: string;
   diasVigencia?: number;

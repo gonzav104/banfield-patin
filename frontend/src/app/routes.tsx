@@ -7,6 +7,7 @@ import { AthletesPage } from '@/features/familia/AthletesPage';
 import { AthleteSheetPage } from '@/features/familia/AthleteSheetPage';
 import { TutorDocumentsPage } from '@/features/familia/TutorDocumentsPage';
 import { FamilyDashboardPage } from '@/features/familia/FamilyDashboardPage';
+import { MisDatosPage } from '@/features/mis-datos/MisDatosPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { AdminFamiliaDetallePage } from '@/features/admin-familias/AdminFamiliaDetallePage';
 import { AdminFamiliaNuevaPage } from '@/features/admin-familias/AdminFamiliaNuevaPage';
@@ -69,6 +70,7 @@ export function AppRoutes() {
       <Route element={<RequireRole role="FAMILIA" />}>
         <Route element={<FamiliaLayout />}>
           <Route path="/familia" element={<FamilyDashboardPage />} />
+          <Route path="/familia/mis-datos" element={<MisDatosPage />} />
           <Route path="/familia/deportistas" element={<AthletesPage />} />
           <Route path="/familia/deportistas/:deportistaId" element={<AthleteSheetPage />} />
           <Route path="/familia/tutores/:tutorId" element={<TutorDocumentsPage />} />
