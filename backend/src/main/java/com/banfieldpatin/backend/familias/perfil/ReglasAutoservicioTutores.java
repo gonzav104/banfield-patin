@@ -7,7 +7,9 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -76,15 +78,15 @@ public class ReglasAutoservicioTutores {
 	 * una baja concurrente de la familia espera o ya se ve. Falso si la familia no está activa.
 	 */
 	public boolean bloquearFamiliaActiva(UUID escuelaId, UUID familiaId) {
-		return jdbc.sql("SELECT id FROM gestion_patin.familia WHERE id = :f AND escuela_id = :e AND activa FOR SHARE")
-				.param("f", familiaId).param("e", escuelaId).query(UUID.class).optional().isPresent();
+		return bloqueando(() -> jdbc.sql("SELECT id FROM gestion_patin.familia WHERE id = :f AND escuela_id = :e AND activa FOR SHARE")
+				.param("f", familiaId).param("e", escuelaId).query(UUID.class).optional().isPresent());
 	}
 
 	/** Llamar con la familia ya tomada {@code FOR SHARE}, antes de leer el tope o los duplicados. */
 	public void serializarAltasDeLaFamilia(UUID escuelaId, UUID familiaId) {
 		lockTimeout.aplicar();
-		jdbc.sql("SELECT pg_advisory_xact_lock(:espacio, hashtext(:clave))").param("espacio", ESPACIO_BLOQUEO)
-				.param("clave", escuelaId + "/" + familiaId).query(Object.class).optional();
+		bloqueando(() -> jdbc.sql("SELECT pg_advisory_xact_lock(:espacio, hashtext(:clave))").param("espacio", ESPACIO_BLOQUEO)
+				.param("clave", escuelaId + "/" + familiaId).query(Object.class).optional());
 	}
 
 	/**
@@ -93,12 +95,12 @@ public class ReglasAutoservicioTutores {
 	 * las FK de los documentos nuevos (toman {@code FOR KEY SHARE}). Falso si el tutor no es de esa familia o no está activo.
 	 */
 	public boolean bloquearTutorDeLaFamilia(UUID escuelaId, UUID familiaId, UUID tutorId) {
-		return jdbc.sql("""
+		return bloqueando(() -> jdbc.sql("""
 				SELECT id FROM gestion_patin.tutor
 				WHERE id = :t AND escuela_id = :e AND familia_id = :f AND activo
 				FOR NO KEY UPDATE
 				""").param("t", tutorId).param("e", escuelaId).param("f", familiaId).query(UUID.class).optional()
-				.isPresent();
+				.isPresent());
 	}
 
 	/** Adultos activos que la familia cargó sola (origen FAMILIA). */
@@ -175,12 +177,12 @@ public class ReglasAutoservicioTutores {
 	 * Requiere {@link #bloquearTutorDeLaFamilia} antes (orden tutor → documento).
 	 */
 	public boolean tieneDniAprobado(Tutor tutor) {
-		return jdbc.sql("""
+		return bloqueando(() -> jdbc.sql("""
 				SELECT estado FROM gestion_patin.documento
 				WHERE escuela_id = :e AND tutor_id = :t AND vigente AND tipo IN ('DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO')
 				FOR SHARE
 				""").param("e", tutor.getEscuelaId()).param("t", tutor.getId()).query(String.class).list().stream()
-				.anyMatch("APROBADO"::equals);
+				.anyMatch("APROBADO"::equals));
 	}
 
 	/** Para lecturas (sin bloqueo, válido en transacciones de solo lectura): cuáles de esos tutores tienen un DNI vigente APROBADO. */
@@ -193,5 +195,23 @@ public class ReglasAutoservicioTutores {
 				WHERE escuela_id = :e AND tutor_id IN (:t) AND vigente AND estado = 'APROBADO'
 				  AND tipo IN ('DNI_TUTOR_FRENTE', 'DNI_TUTOR_DORSO')
 				""").param("e", escuelaId).param("t", tutores).query(UUID.class).list());
+	}
+
+	/**
+	 * El traductor de {@code JdbcClient} deja un plazo de bloqueo vencido (55P03), un deadlock (40P01) o un conflicto de
+	 * serialización (40001) como {@code UncategorizedSQLException}: se convierten en {@code CannotAcquireLockException} para
+	 * que respondan 409 {@code CONFLICTO_CONCURRENCIA} (y {@code OCUPADO} en el lote) y no 500. Mismo criterio que
+	 * {@code CierreVigenciasTutor}.
+	 */
+	private static <T> T bloqueando(java.util.function.Supplier<T> sentencia) {
+		try {
+			return sentencia.get();
+		} catch (UncategorizedSQLException e) {
+			String estado = e.getSQLException() == null ? null : e.getSQLException().getSQLState();
+			if ("55P03".equals(estado) || "40P01".equals(estado) || "40001".equals(estado)) {
+				throw new CannotAcquireLockException("Conflicto de concurrencia al tomar un bloqueo del autoservicio.", e);
+			}
+			throw e;
+		}
 	}
 }

@@ -7,6 +7,7 @@ export const NO_ACCESS_TEXT = 'Cargar a una persona acá no le da acceso a los d
 export const CAP_REACHED_TEXT = 'Tu familia ya cargó el máximo de adultos que se puede hacer desde acá. Si necesitás sumar a otra persona, avisale al club.';
 export const LOCKED_IDENTITY_TEXT = 'Estos datos ya los confirmó el club. Para cambiarlos, avisale al club.';
 export const OWN_ACCOUNT_TEXT = 'Esta persona tiene su propia cuenta y actualiza sus datos ella misma.';
+export const OWN_PROFILE_TEXT = 'Tus propios datos se cambian desde «Mis datos».';
 export const UNCERTAIN_TEXT = 'No pudimos confirmar si se guardó. Actualizamos la lista: revisá si figura antes de volver a intentar. Si no está, podés guardar de nuevo sin riesgo de que quede repetida.';
 
 export const STATE_TEXT: Record<string, string> = {
@@ -15,7 +16,7 @@ export const STATE_TEXT: Record<string, string> = {
   OBSERVADO: 'El club pidió una corrección',
 };
 
-export type AdultFailure = 'disabled' | 'cap' | 'duplicate' | 'stale' | 'account' | 'locked' | 'dniApproved' | 'keyReused' | 'gone' | 'uncertain' | 'other';
+export type AdultFailure = 'disabled' | 'cap' | 'duplicate' | 'stale' | 'account' | 'ownProfile' | 'locked' | 'dniApproved' | 'keyReused' | 'gone' | 'uncertain' | 'other';
 
 export function classify(error: ApiError): AdultFailure {
   switch (error.code) {
@@ -29,6 +30,8 @@ export function classify(error: ApiError): AdultFailure {
       return 'stale';
     case 'TUTOR_CON_CUENTA':
       return 'account';
+    case 'PERFIL_PROPIO':
+      return 'ownProfile';
     case 'IDENTIDAD_VERIFICADA':
       return 'locked';
     case 'IDENTIDAD_CON_DNI_APROBADO':
@@ -56,6 +59,8 @@ export function failureText(failure: AdultFailure, error: ApiError): string {
       return 'Estos datos cambiaron mientras los editabas (por ejemplo, otra persona de tu familia o el club). Los actualizamos en pantalla: revisalos y guardá de nuevo.';
     case 'account':
       return OWN_ACCOUNT_TEXT;
+    case 'ownProfile':
+      return OWN_PROFILE_TEXT;
     case 'locked':
     case 'dniApproved':
       return LOCKED_IDENTITY_TEXT;

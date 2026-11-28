@@ -48,8 +48,9 @@ import jakarta.persistence.EntityManager;
  * <li><b>Alcance:</b> escuela, familia y cuenta salen del token; solo adultos ACTIVOS de la propia familia. Cualquier otro id
  * (otra familia o escuela, inactivo, inexistente) es el mismo 404 {@code TUTOR_NO_ENCONTRADO}. Nunca se devuelve el DNI
  * completo ni se consulta otra familia (los duplicados se buscan solo en la propia).</li>
- * <li><b>Qué se edita:</b> adultos sin cuenta y el propio perfil; uno con cuenta propia actualiza sus datos él mismo (409
- * {@code TUTOR_CON_CUENTA}). La identidad respaldada (VERIFICADA o con un DNI APROBADO) no se cambia desde acá.</li>
+ * <li><b>Qué se edita:</b> solo adultos sin cuenta. El propio perfil se edita desde «Mis datos» (409 {@code PERFIL_PROPIO}: así
+ * rigen su bandera y su auditoría de C1) y uno con cuenta propia actualiza sus datos él mismo (409 {@code TUTOR_CON_CUENTA}). La
+ * identidad respaldada (VERIFICADA o con un DNI APROBADO) no se cambia desde acá.</li>
  * <li><b>Concurrencia:</b> familia {@code FOR SHARE} → bloqueo consultivo de la familia (tope y duplicados sin carreras) →
  * tutor {@code FOR NO KEY UPDATE} → documentos {@code FOR SHARE}; la edición exige la revisión observada. El alta es
  * repetible con la misma {@code Idempotency-Key}.</li>
@@ -85,6 +86,11 @@ public class AdultosFamiliaService {
 	public static ExcepcionNegocio conCuentaPropia() {
 		return new ExcepcionNegocio(HttpStatus.CONFLICT, "TUTOR_CON_CUENTA",
 				"Esta persona tiene su propia cuenta y actualiza sus datos desde ahí.");
+	}
+
+	/** Los datos propios se editan desde «Mis datos» (su bandera, su auditoría y sus reglas de C1). */
+	public static ExcepcionNegocio perfilPropio() {
+		return new ExcepcionNegocio(HttpStatus.CONFLICT, "PERFIL_PROPIO", "Tus propios datos se cambian desde «Mis datos».");
 	}
 
 	public static ExcepcionNegocio claveReutilizada() {
@@ -138,7 +144,10 @@ public class AdultosFamiliaService {
 		}
 		Tutor tutor = tutores.findByIdAndEscuelaId(id, u.escuelaId()).orElseThrow(TutorAdminService::tutorNoEncontrado);
 		em.refresh(tutor); // releído bajo el bloqueo de la fila
-		if (tutor.getUsuarioId() != null && !tutor.getUsuarioId().equals(u.id())) {
+		if (u.id().equals(tutor.getUsuarioId())) {
+			throw perfilPropio();
+		}
+		if (tutor.getUsuarioId() != null) {
 			throw conCuentaPropia();
 		}
 		if (tutor.getVersion() != s.versionEsperada()) {
@@ -157,7 +166,8 @@ public class AdultosFamiliaService {
 	private AdultoDeFamilia vista(UsuarioAutenticado u, Tutor t, boolean dniAprobado) {
 		boolean esMiPerfil = u.id().equals(t.getUsuarioId());
 		boolean cuentaPropia = t.getUsuarioId() != null && !esMiPerfil;
-		boolean editable = t.isActivo() && !cuentaPropia;
+		// Solo los adultos SIN cuenta se editan desde acá: el propio perfil va por «Mis datos» y quien tiene cuenta propia actualiza él.
+		boolean editable = t.isActivo() && t.getUsuarioId() == null;
 		return new AdultoDeFamilia(t.getId(), t.getNombre(), t.getApellido(), EnmascaradoDni.de(t.getDni()), t.getTelefono(),
 				t.getEmail(), t.getParentesco(), t.getVerificacion(), t.getMotivoObservacion(), "ADMIN".equals(t.getOrigen()),
 				esMiPerfil, cuentaPropia, editable, editable && !t.identidadVerificada() && !dniAprobado,

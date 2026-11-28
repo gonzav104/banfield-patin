@@ -295,7 +295,7 @@ class AdultosFamiliaHttpDbTest extends BaseDbTest {
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("EDICION_DESACTUALIZADA"));
 		assertThat(ultimaAuditoria("TUTOR_ACTUALIZADO_POR_FAMILIA")).contains("telefono").doesNotContain("4111");
 
-		// El perfil del padre (su cuenta) no lo edita la madre; él sí, por cualquiera de las dos rutas.
+		// El perfil del padre (su cuenta) no lo edita la madre; él tampoco por esta ruta: sus datos van por «Mis datos» (C1).
 		mvc.perform(escribir(post("/api/familia/mi-perfil"), "{\"nombre\":\"Pablo\",\"apellido\":\"Gomez\"}", padre, fam1))
 				.andExpect(status().isOk());
 		UUID perfilPadre = jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", padre).query(UUID.class)
@@ -306,8 +306,14 @@ class AdultosFamiliaHttpDbTest extends BaseDbTest {
 		mvc.perform(get(RUTA).cookie(sesion(madre, fam1)))
 				.andExpect(jsonPath("$.adultos[?(@.nombre == 'Pablo')].tieneCuentaPropia").value(true))
 				.andExpect(jsonPath("$.adultos[?(@.nombre == 'Pablo')].editable").value(false));
-		mvc.perform(escribir(put(RUTA + "/" + perfilPadre), cambio, padre, fam1)).andExpect(status().isOk())
-				.andExpect(jsonPath("$.esMiPerfil").value(true));
+		mvc.perform(escribir(put(RUTA + "/" + perfilPadre), cambio, padre, fam1)).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("PERFIL_PROPIO"));
+		mvc.perform(get(RUTA).cookie(sesion(padre, fam1)))
+				.andExpect(jsonPath("$.adultos[?(@.nombre == 'Pablo')].esMiPerfil").value(true))
+				.andExpect(jsonPath("$.adultos[?(@.nombre == 'Pablo')].editable").value(false));
+		assertThat(jdbc.sql("SELECT coalesce(telefono, '-') FROM gestion_patin.tutor WHERE id = :t").param("t", perfilPadre)
+				.query(String.class).single()).isEqualTo("-");
+		assertThat(auditorias("PERFIL_ACTUALIZADO")).isZero();
 	}
 
 	@Test

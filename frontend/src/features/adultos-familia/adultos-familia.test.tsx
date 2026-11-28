@@ -65,13 +65,14 @@ describe('Otros adultos (mock backend)', () => {
     expect(document.body.textContent).not.toContain('30111222');
   });
 
-  it('marks the own profile and keeps an adult with their own account read-only', async () => {
+  it('marks the own profile (edited from «Mis datos», PERFIL_PROPIO from here) and keeps an adult with their own account read-only', async () => {
     backend.addAdult('familia-1', { nombre: 'Lucía', apellido: 'Gómez', ownerUserId: family.id });
     backend.addAdult('familia-1', { nombre: 'Dora', apellido: 'Lima', hasAccount: true });
     await open();
     const [mine, other] = within(list()).getAllByRole('listitem') as [HTMLElement, HTMLElement];
     expect(within(mine).getByText('Sos vos')).toBeInTheDocument();
-    expect(within(mine).getByRole('button', { name: 'Editar los datos de Lucía Gómez' })).toBeInTheDocument();
+    expect(within(mine).queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument();
+    expect(within(mine).getByRole('link', { name: 'Mis datos' })).toHaveAttribute('href', '/familia/mis-datos');
     expect(within(other).queryByRole('button', { name: /Editar/ })).not.toBeInTheDocument();
     expect(within(other).getByText('Esta persona tiene su propia cuenta y actualiza sus datos ella misma.')).toBeInTheDocument();
   });

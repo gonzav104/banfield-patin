@@ -23,6 +23,8 @@ export const BATCH_RESULT_TEXT: Record<string, string> = {
   ESTADO_INCOMPATIBLE: 'No se verificó: su estado actual no lo permite',
   FAMILIA_INACTIVA: 'No se verificó: la familia está inactiva',
   OCUPADO: 'No se verificó: estaba ocupado, intentá de nuevo en un momento',
+  ERROR: 'No se verificó: hubo un problema con esta persona, intentá de nuevo',
+  NO_PROCESADO: 'No se llegó a revisar: el lote tardó demasiado, volvé a verificarla',
 };
 export const batchResultText = (result: string) => BATCH_RESULT_TEXT[result] ?? 'No se verificó: respuesta no reconocida';
 export const batchResultOk = (result: string) => result === 'VERIFICADO' || result === 'YA_VERIFICADO';

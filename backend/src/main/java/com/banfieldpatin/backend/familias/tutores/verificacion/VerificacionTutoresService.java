@@ -1,6 +1,7 @@
 package com.banfieldpatin.backend.familias.tutores.verificacion;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -9,6 +10,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.data.domain.PageImpl;
@@ -58,7 +61,11 @@ import jakarta.persistence.EntityManager;
  * <li><b>Repetición:</b> pedir el estado que el tutor ya tiene (mismo motivo, si es una observación) no cambia nada ni audita;
  * así un doble clic no falla.</li>
  * <li><b>Lote:</b> solo VERIFICAR y solo desde DECLARADO; cada tutor en su propia transacción, con su revisión y su resultado:
- * uno que falla no deshace a los demás.</li>
+ * uno que falla (incluso por una falla inesperada, {@code ERROR}) no deshace ni deja sin resultado a los demás, y pasado
+ * {@link #PLAZO_LOTE} los que faltan vuelven {@code NO_PROCESADO}.</li>
+ * <li><b>Observar</b> solo lo DECLARADO u OBSERVADO: una identidad VERIFICADA no se reabre (409 {@code ESTADO_INCOMPATIBLE}).</li>
+ * <li><b>Bloqueo vencido</b> en la decisión individual: 409 {@code CONFLICTO_CONCURRENCIA} (manejador global); en el lote,
+ * {@code OCUPADO}.</li>
  * <li><b>Auditoría:</b> {@code TUTOR_VERIFICADO} / {@code TUTOR_OBSERVADO} con la familia y el estado anterior; nunca el motivo
  * ni datos personales.</li>
  * </ul>
@@ -67,6 +74,7 @@ import jakarta.persistence.EntityManager;
 public class VerificacionTutoresService {
 
 	private static final String RECURSO = "TUTOR";
+	private static final Logger log = LoggerFactory.getLogger(VerificacionTutoresService.class);
 
 	private static final String FILAS = """
 			SELECT t.id, t.familia_id, f.nombre_referencia, t.nombre, t.apellido, t.dni, t.telefono, t.email, t.parentesco,
@@ -126,11 +134,13 @@ public class VerificacionTutoresService {
 		List<TutorPorVerificar> filas = jdbc.sql(FILAS + DESDE + " ORDER BY t.creado_en, t.id LIMIT :limite OFFSET :desde")
 				.param("escuela", admin.escuelaId()).param("estado", filtro).param("limite", pagina.getPageSize())
 				.param("desde", pagina.getOffset())
-				.query((rs, n) -> new TutorPorVerificar(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
-						rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8),
-						rs.getString(9), rs.getString(10), rs.getString(11), rs.getString(12), rs.getBoolean(13),
-						rs.getBoolean(14), rs.getString(15), rs.getString(16), rs.getLong(17),
-						rs.getTimestamp(18).toInstant(), Long.toString(rs.getLong(19))))
+				.query((rs, n) -> new TutorPorVerificar(rs.getObject("id", UUID.class), rs.getObject("familia_id", UUID.class),
+						rs.getString("nombre_referencia"), rs.getString("nombre"), rs.getString("apellido"), rs.getString("dni"),
+						rs.getString("telefono"), rs.getString("email"), rs.getString("parentesco"), rs.getString("verificacion"),
+						rs.getString("motivo_observacion"), rs.getString("origen"), rs.getBoolean("tiene_cuenta"),
+						rs.getBoolean("cuenta_confirmada"), rs.getString("dni_frente"), rs.getString("dni_dorso"),
+						rs.getLong("coincidencias"), rs.getTimestamp("creado_en").toInstant(),
+						Long.toString(rs.getLong("version"))))
 				.list();
 		long total = jdbc.sql("SELECT count(*) " + DESDE).param("escuela", admin.escuelaId()).param("estado", filtro)
 				.query(Long.class).single();
@@ -156,12 +166,37 @@ public class VerificacionTutoresService {
 		if (new HashSet<>(lote.tutores().stream().map(LoteVerificacion.Item::tutorId).toList()).size() != lote.tutores().size()) {
 			throw validacion("Un tutor aparece más de una vez en el lote.");
 		}
-		List<ResultadoLote.Item> resultados = new ArrayList<>();
-		for (LoteVerificacion.Item item : lote.tutores()) {
-			resultados.add(verificarUno(admin, item, datos));
-		}
-		return new ResultadoLote(List.copyOf(resultados));
+		Instant limite = reloj.instant().plus(PLAZO_LOTE);
+		return new ResultadoLote(procesar(lote.tutores(), item -> verificarUno(admin, item, datos), reloj, limite));
 	}
+
+	/** Tiempo total que un lote puede ocupar; los tutores no alcanzados vuelven como NO_PROCESADO para reintentarlos. */
+	static final Duration PLAZO_LOTE = Duration.ofSeconds(15);
+
+	/**
+	 * Recorre el lote en orden: un tutor nunca deja sin resultado a los demás. Una falla inesperada de uno es {@code ERROR}
+	 * (su transacción ya se revirtió; se registra solo la clase de la excepción) y, vencido el plazo, los que faltan son
+	 * {@code NO_PROCESADO} sin tocarlos: la respuesta llega acotada aunque haya esperas de bloqueos.
+	 */
+	static List<ResultadoLote.Item> procesar(List<LoteVerificacion.Item> items,
+			java.util.function.Function<LoteVerificacion.Item, ResultadoLote.Item> uno, Clock reloj, Instant limite) {
+		List<ResultadoLote.Item> resultados = new ArrayList<>();
+		for (LoteVerificacion.Item item : items) {
+			if (!reloj.instant().isBefore(limite)) {
+				resultados.add(new ResultadoLote.Item(item.tutorId(), "NO_PROCESADO", null));
+				continue;
+			}
+			try {
+				resultados.add(uno.apply(item));
+			} catch (RuntimeException e) {
+				log.warn("Verificación en lote: falla inesperada en un tutor (se informa ERROR y sigue): excepcion={}",
+						e.getClass().getName());
+				resultados.add(new ResultadoLote.Item(item.tutorId(), "ERROR", null));
+			}
+		}
+		return List.copyOf(resultados);
+	}
+
 
 	private ResultadoLote.Item verificarUno(UsuarioAutenticado admin, LoteVerificacion.Item item, DatosSolicitud datos) {
 		try {
@@ -198,6 +233,10 @@ public class VerificacionTutoresService {
 			return new Resolucion(resultado(tutor), false);
 		}
 		if (soloDeclarados && !"DECLARADO".equals(anterior)) {
+			throw estadoIncompatible();
+		}
+		// Observar es sobre lo DECLARADO: una identidad ya verificada no se reabre a la familia; la corrige ADMIN en la ficha.
+		if (decision == DecisionVerificacion.OBSERVAR && tutor.identidadVerificada()) {
 			throw estadoIncompatible();
 		}
 		if (tutor.getVersion() != versionEsperada) {

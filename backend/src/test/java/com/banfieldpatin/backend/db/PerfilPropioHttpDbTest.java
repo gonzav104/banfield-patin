@@ -368,6 +368,24 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		return cuerpo.replace("}", ",\"versionEsperada\":\"" + version + "\"}");
 	}
 
+	/**
+	 * U21-BIS C2, a propósito también con la bandera de C2 apagada: si la persona ya figura en su familia (mismo DNI, o mismo
+	 * nombre sin DNI) no se crea un segundo perfil para ella; la pantalla le ofrece reclamarla («soy yo»).
+	 */
+	@Test
+	void crearElPerfilDeAlguienQueYaFiguraEnLaFamiliaEsUnDuplicadoAunqueOtrosAdultosEsteApagado() throws Exception {
+		UUID existente = datos.tutor(escuela, fam1, "Laura", "Gomez");
+		jdbc.sql("UPDATE gestion_patin.tutor SET dni = :d WHERE id = :t").param("d", DNI).param("t", existente).update();
+		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("TUTOR_DUPLICADO"));
+		mvc.perform(escribir(post(RUTA), "{\"nombre\":\"laura\",\"apellido\":\"GOMEZ\"}", madre, fam1, escuela))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("TUTOR_DUPLICADO"));
+		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.tutor WHERE familia_id = :f").param("f", fam1).query(Long.class)
+				.single()).isEqualTo(1);
+		// Otra persona sí puede declarar su perfil.
+		mvc.perform(escribir(post(RUTA), "{\"nombre\":\"Ana\",\"apellido\":\"Gomez\"}", madre, fam1, escuela)).andExpect(status().isOk());
+	}
+
 	@Test
 	void unTutorAjenoInexistenteInactivoOYaReclamadoDanElMismoConflictoNeutro() throws Exception {
 		UUID deOtraFamilia = datos.tutor(escuela, fam2, "Ajena", "Familia");

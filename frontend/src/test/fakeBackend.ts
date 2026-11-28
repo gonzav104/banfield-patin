@@ -2401,7 +2401,8 @@ export class FakeBackend {
       cargadoPorElClub: adult.origen === 'ADMIN',
       esMiPerfil: mine,
       tieneCuentaPropia: ownAccount,
-      editable: !ownAccount || mine,
+      // Only adults WITHOUT an account are edited here: the own profile goes through «Mis datos» (PERFIL_PROPIO).
+      editable: !ownAccount && !mine,
       identidadEditable: adult.estado !== 'VERIFICADO' && !dniApproved,
       version: String(adult.version),
     };
@@ -2468,6 +2469,7 @@ export class FakeBackend {
     if (!nombre || !apellido) return this.error(400, 'VALIDACION', 'Revisá los datos.');
     if (String(input.versionEsperada) !== String(adult.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Los datos cambiaron.');
     const view = this.adultView(adult, current.id);
+    if (view.esMiPerfil) return this.error(409, 'PERFIL_PROPIO', 'Tus propios datos se cambian desde Mis datos.');
     if (!view.editable) return this.error(409, 'TUTOR_CON_CUENTA', 'Esa persona actualiza sus datos ella misma.');
     const dni = text('dni') === null ? adult.dni : text('dni')!.replace(/[.\s]/g, '');
     if (nombre !== adult.nombre || apellido !== adult.apellido || dni !== adult.dni) {

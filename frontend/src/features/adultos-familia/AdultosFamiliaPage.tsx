@@ -239,8 +239,8 @@ function AdultCard({ adult, identity, canWrite, editing, onEdit, onClose, onNoti
       {canWrite && adult.editable && !editing ? (
         <Button type="button" variant="outline" aria-label={`Editar los datos de ${fullName}`} onClick={onEdit}>Editar</Button>
       ) : null}
-      {adult.esMiPerfil && adult.editable ? (
-        <p className="text-sm text-muted">Tus propios datos también se pueden ver y cambiar en <Link className="font-semibold text-brand-700 hover:underline" to="/familia/mis-datos">Mis datos</Link>.</p>
+      {adult.esMiPerfil ? (
+        <p className="text-sm text-muted">Tus propios datos se cambian desde <Link className="font-semibold text-brand-700 hover:underline" to="/familia/mis-datos">Mis datos</Link>.</p>
       ) : null}
       {editing ? <EditAdultForm adult={adult} identity={identity} onClose={onClose} onNotice={onNotice} onRefresh={onRefresh} /> : null}
     </li>

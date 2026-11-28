@@ -38,7 +38,7 @@ import jakarta.servlet.http.Cookie;
 @Tag("db")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
 		"spring.datasource.hikari.maximum-pool-size=6", "spring.datasource.hikari.minimum-idle=1",
-		"banfield.autoservicio.tutores-habilitado=true" })
+		"banfield.autoservicio.tutores-habilitado=true", "banfield.vinculos.lock-timeout=PT0.5S" })
 @AutoConfigureMockMvc
 @ActiveProfiles({ "test", "e2e" })
 @Import(SesionVigenteHttpDbTest.Soporte.class)
@@ -53,6 +53,8 @@ class VerificacionTutoresHttpDbTest extends BaseDbTest {
 	JdbcClient jdbc;
 	@Autowired
 	ServicioTokens tokens;
+	@Autowired
+	javax.sql.DataSource fuente;
 
 	private DatosDb datos;
 	private UUID escuela;
@@ -234,6 +236,33 @@ class VerificacionTutoresHttpDbTest extends BaseDbTest {
 				.andExpect(status().isBadRequest());
 		mvc.perform(escribirAdmin(post("/api/admin/tutores/verificacion-lote"), "{\"tutores\":[]}")).andExpect(status().isBadRequest());
 		assertThat(estado(viejo)).isEqualTo("DECLARADO");
+	}
+
+	@Test
+	void unaIdentidadVerificadaNoSeObservaYUnBloqueoVencidoEsUnConflictoUOcupadoEnElLote() throws Exception {
+		UUID verificado = datos.tutor(escuela, fam1, "Rosa", "Lopez");
+		mvc.perform(escribirAdmin(post(ruta(verificado)), "{\"decision\":\"OBSERVAR\",\"motivo\":\"revisar\",\"versionEsperada\":\""
+				+ version(verificado) + "\"}")).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("ESTADO_INCOMPATIBLE"));
+		assertThat(estado(verificado)).isEqualTo("VERIFICADO");
+
+		UUID tomado = declarado(fam1, "Tomado", "PorOtro", null, "2026-01-01T10:00:00Z");
+		UUID libre = declarado(fam2, "Libre", "Sin", null, "2026-01-02T10:00:00Z");
+		try (java.sql.Connection otra = fuente.getConnection()) {
+			otra.setAutoCommit(false);
+			try (var ps = otra.prepareStatement("SELECT 1 FROM gestion_patin.tutor WHERE id = ? FOR UPDATE")) {
+				ps.setObject(1, tomado);
+				ps.executeQuery();
+			}
+			mvc.perform(escribirAdmin(post(ruta(tomado)), "{\"decision\":\"VERIFICAR\",\"versionEsperada\":\"" + version(tomado) + "\"}"))
+					.andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("CONFLICTO_CONCURRENCIA"));
+			mvc.perform(escribirAdmin(post("/api/admin/tutores/verificacion-lote"),
+					"{\"tutores\":[" + item(tomado, version(tomado)) + "," + item(libre, version(libre)) + "]}"))
+					.andExpect(status().isOk()).andExpect(jsonPath("$.resultados[0].resultado").value("OCUPADO"))
+					.andExpect(jsonPath("$.resultados[1].resultado").value("VERIFICADO"));
+			otra.rollback();
+		}
+		assertThat(estado(tomado)).isEqualTo("DECLARADO");
+		assertThat(estado(libre)).isEqualTo("VERIFICADO");
 	}
 
 	// ---------- auxiliares ----------

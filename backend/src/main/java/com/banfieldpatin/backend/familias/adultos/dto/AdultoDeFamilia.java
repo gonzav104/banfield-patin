@@ -8,8 +8,9 @@ import java.util.UUID;
  * <ul>
  * <li>{@code estado}: de los DATOS (DECLARADO, VERIFICADO u OBSERVADO con {@code motivoObservacion} del club);</li>
  * <li>{@code esMiPerfil} / {@code tieneCuentaPropia}: si la persona tiene cuenta (la mía u otra), que no da permisos;</li>
- * <li>{@code editable} / {@code identidadEditable}: qué puede cambiar quien consulta (un adulto con cuenta propia actualiza sus
- * datos él mismo; la identidad verificada o con un DNI aprobado la corrige el club).</li>
+ * <li>{@code editable} / {@code identidadEditable}: qué puede cambiar quien consulta desde acá (solo adultos sin cuenta: el propio
+ * perfil va por «Mis datos» y quien tiene cuenta propia actualiza sus datos él mismo; la identidad verificada o con un DNI aprobado
+ * la corrige el club).</li>
  * </ul>
  */
 public record AdultoDeFamilia(UUID id, String nombre, String apellido, String dniEnmascarado, String telefono, String email,

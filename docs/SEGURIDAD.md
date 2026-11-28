@@ -421,8 +421,10 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   `404 TUTOR_NO_ENCONTRADO`. Los duplicados se buscan **solo en la propia familia** (mismo DNI, o mismo nombre y apellido cuando falta un DNI;
   el correo no cuenta porque una familia suele compartirlo) y el `409 TUTOR_DUPLICADO` no dice cuál; nunca se consulta otra familia, así que
   no hay oráculo de DNI. Solo ADMIN ve en la bandeja cuántos adultos de **otras** familias tienen el mismo DNI.
-- **Qué edita la familia:** adultos sin cuenta y su propio perfil; un adulto con cuenta propia actualiza sus datos él mismo
-  (`409 TUTOR_CON_CUENTA`). El contacto siempre; la identidad solo si no está **respaldada**.
+- **Qué edita la familia:** adultos sin cuenta. Su propio perfil, desde «Mis datos» (`409 PERFIL_PROPIO` por esta ruta: así rigen la
+  bandera y la auditoría de C1); un adulto con cuenta propia actualiza sus datos él mismo (`409 TUTOR_CON_CUENTA`). El contacto
+  siempre, también el de un adulto verificado que cargó el club (diseño §4.3; queda auditado con los nombres de los campos): ningún
+  flujo usa `tutor.email` para invitar, el correo de una invitación lo escribe ADMIN. La identidad solo si no está **respaldada**.
 - **Salvaguarda de identidad:** la identidad está respaldada si el tutor está `VERIFICADO` **o** tiene un DNI (`DNI_TUTOR_FRENTE`/`DORSO`)
   vigente `APROBADO`. La familia no puede cambiarla por ningún camino (`409 IDENTIDAD_VERIFICADA` / `409 IDENTIDAD_CON_DNI_APROBADO`, también
   en «Mis datos» de C1); la corrección pasa por el club. Los documentos vigentes del tutor se leen `FOR SHARE`, de modo que una aprobación
@@ -440,9 +442,12 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   Edición con `versionEsperada` (`409 EDICION_DESACTUALIZADA`); alta repetible con `Idempotency-Key` (misma clave y datos: el original; otros
   datos: `409 IDEMPOTENCY_KEY_REUTILIZADA`).
 - **Verificación:** `VERIFICAR` u `OBSERVAR` (motivo obligatorio, ≤ 500, visible para la familia) con la revisión vista; pedir el estado que ya
-  tiene no cambia nada (doble clic). Un `OBSERVADO` corregido por la familia vuelve a `DECLARADO` y a la bandeja. **Lote:** solo `VERIFICAR`
-  y solo desde `DECLARADO`, hasta 50 tutores distintos, cada uno en su propia transacción con su revisión y su resultado
-  (`VERIFICADO`, `YA_VERIFICADO`, `EDICION_DESACTUALIZADA`, `TUTOR_NO_ENCONTRADO`, `ESTADO_INCOMPATIBLE`, `FAMILIA_INACTIVA`, `OCUPADO`).
+  tiene no cambia nada (doble clic). Solo se observa lo `DECLARADO` u `OBSERVADO`: una identidad verificada no se reabre a la familia
+  (`409 ESTADO_INCOMPATIBLE`; la corrige ADMIN en la ficha). Un `OBSERVADO` corregido por la familia vuelve a `DECLARADO` y a la bandeja.
+  Un bloqueo vencido responde `409 CONFLICTO_CONCURRENCIA`. **Lote:** solo `VERIFICAR` y solo desde `DECLARADO`, hasta 50 tutores
+  distintos, cada uno en su propia transacción con su revisión y su resultado (`VERIFICADO`, `YA_VERIFICADO`, `EDICION_DESACTUALIZADA`,
+  `TUTOR_NO_ENCONTRADO`, `ESTADO_INCOMPATIBLE`, `FAMILIA_INACTIVA`, `OCUPADO`, `ERROR` ante una falla inesperada de ese tutor); el lote
+  dura a lo sumo unos 15 s más una espera de bloqueo, y los tutores no alcanzados vuelven `NO_PROCESADO` para reintentarlos.
 - **Auditoría:** `TUTOR_DECLARADO`, `TUTOR_ACTUALIZADO_POR_FAMILIA` (nombres de campos), `TUTOR_VERIFICADO` y `TUTOR_OBSERVADO` (familia,
   estado anterior, `lote`); nunca valores personales ni el motivo.
 - **V22 (aditiva):** `verificado_por`/`verificado_en`, `motivo_observacion`, `idempotencia`/`huella_alta`, con CHECK que atan cada estado a
