@@ -17,9 +17,9 @@ Runner: Maven (`./mvnw`, `-Pdb-tests`), Vitest + FakeBackend, Playwright E2E rea
 - **Interfaz:** tarjeta «Mis datos» en el panel de la familia → pantalla simple: si hay personas de la familia sin cuenta, «¿Sos alguna de estas personas?» con «Soy yo»; si no, un formulario corto. Sin jerga (CAS, vigencias, revisiones).
 
 ## Tasks
-- [ ] T1 · S1 S2 · inline · V21 + entidad `Tutor` + servicio de perfil + endpoints + auditoría + bandera + OpenAPI/inventarios + pruebas (unitarias, WebMvc, PostgreSQL con dos familias, concurrencia, runtime real)
-- [ ] T2 · S1 · inline · Invitación con `tutorId` (backend + selector en el formulario de ADMIN)
-- [ ] T3 · S3 · inline · Frontend: «Mis datos», reclamo, Vitest/FakeBackend, E2E real
+- [x] T1 · S1 S2 · inline · V21 + entidad `Tutor` + servicio de perfil + endpoints + auditoría + bandera + OpenAPI/inventarios + pruebas (unitarias, WebMvc, PostgreSQL con dos familias, concurrencia, runtime real)
+- [x] T2 · S1 · inline · Invitación con `tutorId` (backend + selector en el formulario de ADMIN)
+- [x] T3 · S3 · inline · Frontend: «Mis datos», reclamo, Vitest/FakeBackend, E2E real
 - [ ] T4 · S4 · inline · docs, suites completas, Gentle AI, commits, Engram
 
 Route: todo inline (cadena dependiente BE → FE; sin unidades paralelas independientes).
@@ -27,3 +27,10 @@ Route: todo inline (cadena dependiente BE → FE; sin unidades paralelas indepen
 ## Log
 ### L1
 Pedido del usuario (2026-11-27): continuación automática tras integrar la revocación por familia y escuela (merge 0ff0758, CI posterior 8/8): ver S1–S4. Alcance de C1 recuperado del diseño; sin otro relevamiento general.
+
+### L2 — implementación y revisión (2026-11-27)
+- **Backend (2f15821 y correcciones):** V21; `PerfilPropioService` (crear/editar/reclamar), invitación con `tutorId`, bandera `AUTOSERVICIO_PERFIL_HABILITADO`. Decisiones: POST responde 200 (no 201); un DNI omitido o en blanco conserva el cargado (la familia nunca recibe el DNI completo); una cuenta tiene a lo sumo un perfil ⇒ sin topes. Mutaciones detectadas: sin la guarda de identidad y sin `usuario_id IS NULL` fallan pruebas.
+- **Guardas actualizadas a conciencia:** `InventarioRutasTest`, `ContratoDniTest`, `OpenApiConfig`, `RutasDocumentadasTest` + `docs/FAMILIAS-DEPORTISTAS.md`, `V2MigracionEstaticaTest`, `TutorTest` (ahora `usuario_id` se mapea solo como id, sin escritura de Hibernate), V15/V16 (la app real migra hasta la última versión).
+- **Frontend:** `features/mis-datos`, tarjeta «Mis datos», selector de persona en la invitación de ADMIN, FakeBackend, Vitest, E2E real (shard 1) y E2E con la bandera apagada (shard 3, `E2E_PERFIL_FAMILIAR=false` en el arnés y en `frontend.yml`).
+- **Gentle AI:** el candidato completo (2.284 líneas) excedió el presupuesto del revisor (`lens_context_budget_exceeded`, sin autoridad creada) y se revisó en dos, cada uno con consentimiento: backend 0ff0758..2f15821 y frontend 2f15821..2122600, ambos **aprobados y reconocidos**, sin bloqueantes, con los hallazgos guardados en Engram antes de reconocer. Hallazgo real: un symlink `frontend/node_modules` quedó commiteado por un `git add -A` (artefacto mío); se sacó del historial local no publicado (rama de respaldo `respaldo/c1-antes-de-reescribir`, diferencia = solo ese symlink). Aplicados: método sin uso eliminado, captura de cuenta duplicada tipada por restricción, prueba del registro real con invitación a un tutor, prueba de DNI en blanco, refresco tras un reclamo rechazado. No aplicado: enums para los literales de estado (mejora).
+- Pendiente: publicación (requiere autorización). C2–C5 y U22 sin empezar.
