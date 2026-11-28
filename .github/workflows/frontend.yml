@@ -122,6 +122,8 @@ jobs:
           # El shard 3 tambien prueba la carga documental APAGADA (DOCUMENTOS_CARGA_HABILITADA=false, el valor por defecto de produccion).
           E2E_CARGA_DOCUMENTAL: ${{ matrix.shard == '3' && 'false' || 'true' }}
           E2E_PERFIL_FAMILIAR: ${{ matrix.shard == '3' && 'false' || 'true' }}
+          # El shard 3 tambien prueba «Otros adultos» (U21-BIS C2) APAGADO, el valor por defecto de produccion.
+          E2E_ADULTOS_FAMILIA: ${{ matrix.shard == '3' && 'false' || 'true' }}
         run: bash .github/scripts/frontend-e2e.sh
 
       # Red de seguridad, en CADA shard: los artefactos de texto no deben contener contraseñas, secreto TOTP ni enlaces de invitación.
