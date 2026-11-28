@@ -230,6 +230,12 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 				madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.dniEnmascarado").exists());
 		assertThat(jdbc.sql("SELECT dni FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class).single())
 				.isEqualTo(DNI);
+		// Un DNI en blanco (campo vacío del formulario) equivale a no enviarlo: tampoco borra el cargado.
+		String vBlanco = versionDelPerfilDe(madre);
+		mvc.perform(escribir(put(RUTA), "{\"nombre\":\"Laurita\",\"apellido\":\"Gomez\",\"dni\":\"   \",\"telefono\":\"11 7777-2222\",\"versionEsperada\":\"" + vBlanco + "\"}",
+				madre, fam1, escuela)).andExpect(status().isOk());
+		assertThat(jdbc.sql("SELECT dni FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(String.class).single())
+				.isEqualTo(DNI);
 		jdbc.sql("UPDATE gestion_patin.tutor SET telefono = '11 5555-0000', email = 'laura@example.test', parentesco = 'Madre' WHERE usuario_id = :u")
 				.param("u", madre).update();
 		// Sin cambios: no audita.

@@ -63,7 +63,7 @@ function ProfileForm({ values, errors, lockedIdentity, maskedDni, onChange }: { 
   );
 }
 
-function ClaimList({ identity, people, onNone, onNotice }: { identity: FamilyIdentity; people: Person[]; onNone: () => void; onNotice: (notice: Notice | null) => void }) {
+function ClaimList({ identity, people, onNone, onNotice, onStale }: { identity: FamilyIdentity; people: Person[]; onNone: () => void; onNotice: (notice: Notice | null) => void; onStale: () => void }) {
   const claim = useClaimPerson(identity);
   const sending = useRef(false);
 
@@ -76,7 +76,12 @@ function ClaimList({ identity, people, onNone, onNotice }: { identity: FamilyIde
         sending.current = false;
       },
       onSuccess: () => onNotice({ tone: 'success', text: 'Listo: asociamos tus datos. Revisalos y, si hace falta, completalos.' }),
-      onError: (failure) => onNotice({ tone: 'error', text: failureText(classify(ApiError.from(failure)), ApiError.from(failure)) }),
+      onError: (failure) => {
+        const error = ApiError.from(failure);
+        onNotice({ tone: 'error', text: failureText(classify(error), error) });
+        // The person is gone (or someone else took it): show the list as it is now, not the one the person already saw.
+        onStale();
+      },
     });
   }
 
@@ -187,7 +192,7 @@ function Content({ identity }: { identity: FamilyIdentity }) {
     <div className="space-y-6">
       {habilitado ? null : <Alert tone="info">{DISABLED_TEXT}</Alert>}
       {notice ? <Alert tone={notice.tone} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</Alert> : null}
-      {showClaims ? <ClaimList identity={identity} people={personasSinCuenta} onNone={() => setDeclined(true)} onNotice={setNotice} /> : null}
+      {showClaims ? <ClaimList identity={identity} people={personasSinCuenta} onNone={() => setDeclined(true)} onNotice={setNotice} onStale={() => void state.refetch()} /> : null}
       {!showClaims && !(profile === null && !habilitado) ? (
         <ProfileEditor key={profile ? `${profile.tutorId}:${profile.version}` : 'nuevo'} identity={identity} profile={profile} editable={habilitado} onNotice={setNotice} onStale={() => void state.refetch()} />
       ) : null}

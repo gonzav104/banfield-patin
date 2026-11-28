@@ -1,4 +1,4 @@
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FakeBackend } from '@/test/fakeBackend';
@@ -97,6 +97,8 @@ describe('Mis datos (mock backend)', () => {
     const user = userEvent.setup();
     await user.click(within(list).getByRole('button', { name: 'Soy Laura Gómez' }));
     expect(await screen.findByText(/No pudimos asociarte con esa persona/)).toBeInTheDocument();
+    // «Actualizamos la lista»: it is really refreshed, so the person that is not free anymore is not offered again.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Soy Laura Gómez' })).not.toBeInTheDocument());
   });
 
   it('a stale save is refused with a plain explanation and the screen shows the current data', async () => {

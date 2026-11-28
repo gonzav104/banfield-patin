@@ -191,9 +191,17 @@ public class PerfilPropioService {
 		return new PerfilRespuesta(true, datos(tutor), List.of());
 	}
 
+	/** Índice único de V1 ({@code uq_tutor_usuario}): una cuenta tiene a lo sumo un tutor. */
+	static final String INDICE_CUENTA_UNICA = "uq_tutor_usuario";
+
+	/** Por el nombre de la restricción que informa la base (tipado) y, de respaldo, por el mensaje del controlador JDBC. */
 	private static boolean esCuentaDuplicada(Throwable e) {
 		for (Throwable causa = e; causa != null; causa = causa.getCause()) {
-			if (causa.getMessage() != null && causa.getMessage().contains("uq_tutor_usuario")) {
+			if (causa instanceof org.hibernate.exception.ConstraintViolationException violacion
+					&& INDICE_CUENTA_UNICA.equals(violacion.getConstraintName())) {
+				return true;
+			}
+			if (causa.getMessage() != null && causa.getMessage().contains(INDICE_CUENTA_UNICA)) {
 				return true;
 			}
 		}
