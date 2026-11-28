@@ -140,7 +140,21 @@ class RegistroConTutorHttpDbTest extends BaseDbTest {
 				jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", this.admin).query(Long.class).single()));
 		String lista = mvc.perform(get("/api/admin/invitaciones").param("familiaId", familia.toString()).cookie(admin)).andExpect(status().isOk())
 				.andReturn().getResponse().getContentAsString();
-		assertThat(lista).contains("\"asociacionDePersona\":\"ASOCIADA\"").contains("\"asociacionDePersona\":\"NO_ASOCIADA\"");
+		var arbol = new com.fasterxml.jackson.databind.ObjectMapper().readTree(lista).path("contenido");
+		java.util.Map<String, String> porTutor = new java.util.HashMap<>();
+		arbol.forEach(n -> porTutor.put(n.path("tutorId").asText(), n.path("asociacionDePersona").asText()));
+		assertThat(porTutor).containsEntry(declarado.toString(), "ASOCIADA").containsEntry(reclamado.toString(), "NO_ASOCIADA");
+		// Una invitación todavía pendiente a una persona libre lo dice; una revocada no tiene asociación que informar.
+		UUID libre = datos.tutor(escuela, familia, "Libre", "Gomez");
+		invitacion(libre);
+		UUID revocada = datos.tutor(escuela, familia, "Revocada", "Gomez");
+		invitacion(revocada);
+		jdbc.sql("UPDATE gestion_patin.invitacion SET revocada_en = now(), revocada_por = :a WHERE tutor_id = :t").param("a", this.admin).param("t", revocada).update();
+		var lista2 = new com.fasterxml.jackson.databind.ObjectMapper().readTree(mvc.perform(get("/api/admin/invitaciones").param("familiaId", familia.toString()).cookie(admin))
+				.andReturn().getResponse().getContentAsString()).path("contenido");
+		java.util.Map<String, String> porTutor2 = new java.util.HashMap<>();
+		lista2.forEach(n -> porTutor2.put(n.path("tutorId").asText(), n.path("asociacionDePersona").isNull() ? "null" : n.path("asociacionDePersona").asText()));
+		assertThat(porTutor2).containsEntry(libre.toString(), "PENDIENTE").containsEntry(revocada.toString(), "null");
 	}
 
 	private org.springframework.test.web.servlet.ResultActions registrar(String token, String email) throws Exception {

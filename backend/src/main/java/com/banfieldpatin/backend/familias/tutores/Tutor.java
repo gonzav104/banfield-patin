@@ -110,6 +110,11 @@ public class Tutor {
 		return t;
 	}
 
+	/** El club confirmó que la cuenta asociada ES esta persona (invitación dirigida de ADMIN); un reclamo «soy yo» no lo logra. */
+	public boolean cuentaConfirmada() {
+		return "VERIFICADO".equals(vinculoCuenta);
+	}
+
 	/** La identidad (nombre, apellido, DNI) ya fue verificada por ADMIN: la familia no la cambia sola. */
 	public boolean identidadVerificada() {
 		return "VERIFICADO".equals(verificacion);

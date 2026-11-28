@@ -253,9 +253,11 @@ public class InvitacionAdminService {
 
 	private static InvitacionRespuesta respuesta(Invitacion i, Familia familia, Instant ahora, Map<UUID, UUID> cuentas) {
 		String asociacion = null;
+		// Estado ACTUAL de la persona invitada: se deriva de la cuenta que hoy tiene el tutor. Una invitación revocada o vencida sin uso
+		// no tiene asociación que informar.
 		if (i.getTutorId() != null) {
 			if (i.getUsadoEn() == null) {
-				asociacion = InvitacionRespuesta.PENDIENTE;
+				asociacion = EstadoInvitacion.desde(i, ahora) == EstadoInvitacion.PENDIENTE ? InvitacionRespuesta.PENDIENTE : null;
 			} else {
 				asociacion = i.getUsuarioId() != null && i.getUsuarioId().equals(cuentas.get(i.getTutorId()))
 						? InvitacionRespuesta.ASOCIADA : InvitacionRespuesta.NO_ASOCIADA;
