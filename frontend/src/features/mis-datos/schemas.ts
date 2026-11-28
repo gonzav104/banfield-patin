@@ -11,6 +11,8 @@ export const profileSchema = z.object({
   parentesco: z.string().nullable().optional(),
   /** DECLARADO / VERIFICADO / OBSERVADO. */
   estado: z.string(),
+  /** True only when the club invited this very person: the club confirmed that this account is them. Claiming «Soy yo» never sets it. */
+  cuentaConfirmada: z.boolean(),
   /** False once the club verified the identity: name and DNI can no longer be changed from here. */
   identidadEditable: z.boolean(),
   version: z.string(),

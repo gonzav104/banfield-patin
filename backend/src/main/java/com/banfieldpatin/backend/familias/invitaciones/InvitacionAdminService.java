@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Collection;
+import java.util.Set;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -142,7 +145,8 @@ public class InvitacionAdminService {
 		Map<UUID, Familia> porId = familias
 				.findAllById(pagina.getContent().stream().map(Invitacion::getFamiliaId).collect(Collectors.toSet()))
 				.stream().collect(Collectors.toMap(Familia::getId, f -> f, (a, b) -> a, HashMap::new));
-		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora));
+		Map<UUID, UUID> cuentas = cuentasDeLasPersonas(pagina.getContent(), admin.escuelaId());
+		return Pagina.de(pagina, i -> respuesta(i, porId.get(i.getFamiliaId()), ahora, cuentas));
 	}
 
 	/** Invitaciones de una familia de la escuela; una familia ajena o inexistente da una página vacía (sin oráculo). */
@@ -154,7 +158,8 @@ public class InvitacionAdminService {
 				estado == null ? InvitacionRepository.TODOS : estado.name(), ahora, pageable);
 		Familia familia = pagina.isEmpty() ? null
 				: familias.findByIdAndEscuelaId(familiaId, admin.escuelaId()).orElse(null);
-		return Pagina.de(pagina, i -> respuesta(i, familia, ahora));
+		Map<UUID, UUID> cuentas = cuentasDeLasPersonas(pagina.getContent(), admin.escuelaId());
+		return Pagina.de(pagina, i -> respuesta(i, familia, ahora, cuentas));
 	}
 
 	@Transactional(readOnly = true)
@@ -232,13 +237,33 @@ public class InvitacionAdminService {
 
 	private InvitacionRespuesta respuesta(Invitacion i, Instant ahora) {
 		Familia familia = familias.findByIdAndEscuelaId(i.getFamiliaId(), i.getEscuelaId()).orElse(null);
-		return respuesta(i, familia, ahora);
+		return respuesta(i, familia, ahora, cuentasDeLasPersonas(List.of(i), i.getEscuelaId()));
 	}
 
-	private static InvitacionRespuesta respuesta(Invitacion i, Familia familia, Instant ahora) {
+	/** Para las invitaciones que nombran a una persona: la cuenta que hoy tiene cada tutor invitado (null si ninguna). */
+	private Map<UUID, UUID> cuentasDeLasPersonas(Collection<Invitacion> lista, UUID escuelaId) {
+		Set<UUID> ids = lista.stream().map(Invitacion::getTutorId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+		Map<UUID, UUID> cuentas = new HashMap<>();
+		if (!ids.isEmpty()) {
+			tutores.findAllById(ids).stream().filter(t -> t.getEscuelaId().equals(escuelaId))
+					.forEach(t -> cuentas.put(t.getId(), t.getUsuarioId()));
+		}
+		return cuentas;
+	}
+
+	private static InvitacionRespuesta respuesta(Invitacion i, Familia familia, Instant ahora, Map<UUID, UUID> cuentas) {
+		String asociacion = null;
+		if (i.getTutorId() != null) {
+			if (i.getUsadoEn() == null) {
+				asociacion = InvitacionRespuesta.PENDIENTE;
+			} else {
+				asociacion = i.getUsuarioId() != null && i.getUsuarioId().equals(cuentas.get(i.getTutorId()))
+						? InvitacionRespuesta.ASOCIADA : InvitacionRespuesta.NO_ASOCIADA;
+			}
+		}
 		return new InvitacionRespuesta(i.getId(),
 				familia == null ? new FamiliaResumen(i.getFamiliaId(), null) : resumen(familia),
 				i.getEmailSugerido(), EstadoInvitacion.desde(i, ahora), i.getCreadoEn(), i.getExpiraEn(),
-				i.getUsadoEn(), i.getRevocadaEn());
+				i.getUsadoEn(), i.getRevocadaEn(), i.getTutorId(), asociacion);
 	}
 }

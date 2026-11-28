@@ -68,6 +68,7 @@ test.describe('Mis datos (real backend)', () => {
     await expect(page.getByLabel(/^Nombre/)).toHaveValue(personName);
     await expect(page.getByLabel(/^Nombre/)).toBeDisabled();
     await expect(page.getByText(/El club ya verificó tu nombre y tu DNI/)).toBeVisible();
+    await expect(page.getByText(/Todavía tiene que confirmar que esta cuenta es tuya/)).toBeVisible();
     // Contact stays editable; the DNI only ever appears masked.
     await page.getByLabel(/^Teléfono/).fill('11 5555-0101');
     await page.getByRole('button', { name: 'Guardar cambios' }).click();
@@ -128,6 +129,11 @@ test.describe('Mis datos (real backend)', () => {
     await expect(page.getByRole('heading', { name: 'Tus datos' })).toBeVisible();
     await expect(page.getByLabel(/^Nombre/)).toHaveValue(`Martin${suffix}`);
     await expect(page.getByRole('heading', { name: '¿Sos alguna de estas personas?' })).toHaveCount(0);
+    // The club invited this very person, so the club did confirm the account (unlike a «Soy yo» claim, tested above).
+    await expect(page.getByText('El club confirmó que esta cuenta es tuya.')).toBeVisible();
+    // ADMIN sees in the invitation list that the invited person was associated.
+    const list = (await (await adminContext.request.get(`/api/admin/invitaciones?familiaId=${familyA.familyId}`)).json()) as { contenido: { tutorId: string | null; asociacionDePersona: string | null }[] };
+    expect(list.contenido.find((i) => i.tutorId === invited.id)?.asociacionDePersona).toBe('ASOCIADA');
     // Inviting the same person again is refused: they already have an account.
     const again = await adminContext.request.post('/api/admin/invitaciones', {
       data: { familiaId: familyA.familyId, tutorId: invited.id },

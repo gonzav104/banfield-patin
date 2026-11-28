@@ -40,6 +40,14 @@ describe('invite a person who already figures in the family (mock backend)', () 
     expect(write?.body).toMatchObject({ familiaId: family.id, tutorId: 'tut-1' });
   });
 
+  it('ADMIN sees when a used invitation left the invited person unassociated, in plain words', async () => {
+    backend.seedInvitation({ status: 'USADA', family: 'Gómez', email: 'a@example.test', person: 'NO_ASOCIADA' });
+    backend.seedInvitation({ status: 'USADA', family: 'Gómez', email: 'b@example.test', person: 'ASOCIADA' });
+    renderApp('/admin/invitaciones');
+    expect(await screen.findByText(/esa persona ya había sido reclamada por otra cuenta: quedó sin asociar/)).toBeInTheDocument();
+    expect(screen.getByText('La cuenta quedó asociada a la persona invitada.')).toBeInTheDocument();
+  });
+
   it('a new family never offers a person to invite', async () => {
     renderApp('/admin/invitaciones');
     const user = userEvent.setup();

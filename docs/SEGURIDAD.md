@@ -394,6 +394,16 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
 - **Invitación a un tutor concreto:** `POST /api/admin/invitaciones` acepta `tutorId` (solo con `familiaId`): el tutor debe ser de esa familia, estar
   activo y sin cuenta (`409 TUTOR_NO_DISPONIBLE` sin distinguir el motivo). Al registrarse, la cuenta nace vinculada y `VERIFICADA` (declarado por
   ADMIN); si otra persona lo reclamó mientras tanto, el registro sigue sin vínculo (`tutorVinculado:false` en la auditoría).
+- **Asociar la cuenta no es verificar la identidad.** `tutor.verificacion` (los DATOS) y `tutor.vinculo_cuenta` (la CUENTA) son independientes:
+  reclamar «soy yo» deja la cuenta `DECLARADO` («sin confirmar») aunque los datos del tutor estén `VERIFICADO`, y la invitación dirigida de ADMIN
+  deja la cuenta `VERIFICADO` sin tocar nunca `tutor.verificacion`. El perfil informa `cuentaConfirmada` para que la pantalla no diga «el club
+  confirmó que sos vos» cuando solo hubo un reclamo. Quien reclama a un tutor antes de que se acepte una invitación dirigida a él conserva su
+  vínculo `DECLARADO` y no gana permisos ni confirmación; la invitación se registra igual **sin asociación** y el listado de invitaciones de ADMIN
+  lo muestra (`asociacionDePersona`: `PENDIENTE`, `ASOCIADA` o `NO_ASOCIADA`, además de `tutorId` y de la auditoría `tutorVinculado:false`).
+- **Identidad cargada por el club:** un tutor con datos `VERIFICADO` no cambia su nombre, apellido ni DNI desde el portal, tampoco después de
+  reclamarlo. Cambiar la identidad de un perfil todavía no verificado no toca los documentos del tutor (la aprobación de un documento es sobre
+  la imagen, no sobre el número) y queda auditado con los **nombres** de los campos de identidad cambiados, de modo que ADMIN puede revisarlo.
+  Limitación conocida: si una identidad cambia después de aprobar un DNI, el documento sigue aprobado y la revisión es administrativa.
 - Bandera `AUTOSERVICIO_PERFIL_HABILITADO` (`false` por defecto): apagada, se puede consultar y las escrituras responden `503
   AUTOSERVICIO_PERFIL_DESHABILITADO`. Auditoría: `PERFIL_DECLARADO`, `PERFIL_ACTUALIZADO`, `TUTOR_RECLAMADO` (ids y nombres de campo, nunca valores).
 

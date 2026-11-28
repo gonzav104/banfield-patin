@@ -76,6 +76,9 @@ describe('Mis datos (mock backend)', () => {
     expect(writes()).toHaveLength(1);
     expect(writes()[0]!.url).toBe('/familia/mi-perfil/reclamar-tutor');
     expect(writes()[0]!.body).toMatchObject({ versionEsperada: '0' });
+    // Claiming is a declaration: the data are the club's, but the club has NOT confirmed that this account is that person.
+    expect(screen.getByText(/Todavía tiene que confirmar que esta cuenta es tuya/)).toBeInTheDocument();
+    expect(screen.queryByText(/El club confirmó que esta cuenta es tuya/)).not.toBeInTheDocument();
     // The identity came from the club: it is read-only for the family.
     expect(screen.getByLabelText(/^Nombre/)).toBeDisabled();
     expect(screen.getByText(/El club ya verificó tu nombre y tu DNI/)).toBeInTheDocument();

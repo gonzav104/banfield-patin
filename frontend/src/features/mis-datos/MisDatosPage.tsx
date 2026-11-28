@@ -162,7 +162,11 @@ function ProfileEditor({ identity, profile, editable, onNotice, onStale }: { ide
       <h2 id="data-title" className="text-lg font-bold">{profile ? 'Tus datos' : 'Cargá tus datos'}</h2>
       {profile ? (
         <p className="text-sm text-muted">
-          {profile.estado === 'VERIFICADO' ? 'El club ya verificó tu identidad.' : 'El club todavía tiene que revisar tus datos.'}
+          {profile.cuentaConfirmada
+            ? 'El club confirmó que esta cuenta es tuya.'
+            : profile.estado === 'VERIFICADO'
+              ? 'Estos datos los cargó el club. Todavía tiene que confirmar que esta cuenta es tuya.'
+              : 'El club todavía tiene que revisar tus datos.'}
         </p>
       ) : (
         <p className="text-sm text-muted">Con esto el club te reconoce. No hace falta nada más y no cambia a qué deportistas podés ver.</p>

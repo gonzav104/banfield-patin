@@ -49,6 +49,8 @@ class RegistroConTutorHttpDbTest extends BaseDbTest {
 	MockMvc mvc;
 	@Autowired
 	JdbcClient jdbc;
+	@Autowired
+	com.banfieldpatin.backend.seguridad.ServicioTokens tokens;
 
 	private DatosDb datos;
 	private UUID escuela;
@@ -106,6 +108,39 @@ class RegistroConTutorHttpDbTest extends BaseDbTest {
 		assertThat(jdbc.sql("SELECT usuario_id FROM gestion_patin.tutor WHERE id = :t").param("t", tutor).query(UUID.class).single()).isEqualTo(otro);
 		assertThat(jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE accion = 'REGISTRO_POR_INVITACION' AND usuario_id = :u")
 				.param("u", usuario).query(String.class).single()).contains("\"tutorVinculado\": false");
+	}
+
+	/**
+	 * La invitación dirigida decide la ASOCIACIÓN de la cuenta, no la verificación de los datos del tutor: un tutor DECLARADO sigue
+	 * DECLARADO. Y ADMIN ve en el listado, sin mirar auditorías, si la persona invitada quedó asociada o no.
+	 */
+	@Test
+	void laAsociacionDeLaCuentaNoCambiaLaVerificacionDelTutorYAdminVeCuandoQuedoSinAsociar() throws Exception {
+		UUID declarado = datos.tutor(escuela, familia, "Declarado", "Gomez");
+		jdbc.sql("UPDATE gestion_patin.tutor SET verificacion = 'DECLARADO', origen = 'FAMILIA' WHERE id = :t").param("t", declarado).update();
+		UUID reclamado = datos.tutor(escuela, familia, "Reclamado", "Gomez");
+		String t1 = invitacion(declarado);
+		String t2 = invitacion(reclamado);
+		// Una cuenta de la familia reclama a la segunda persona ANTES de que se acepte su invitación.
+		UUID quienReclama = datos.usuarioFamilia(escuela, familia, "reclama-" + UUID.randomUUID() + "@example.invalid");
+		jdbc.sql("UPDATE gestion_patin.tutor SET usuario_id = :u, vinculo_cuenta = 'DECLARADO', declarado_por = :u WHERE id = :t")
+				.param("u", quienReclama).param("t", reclamado).update();
+
+		registrar(t1, "uno-" + UUID.randomUUID() + "@example.invalid").andExpect(status().isCreated());
+		registrar(t2, "dos-" + UUID.randomUUID() + "@example.invalid").andExpect(status().isCreated());
+
+		assertThat(jdbc.sql("SELECT vinculo_cuenta || '/' || verificacion FROM gestion_patin.tutor WHERE id = :t").param("t", declarado)
+				.query(String.class).single()).isEqualTo("VERIFICADO/DECLARADO");
+		// Quien reclamó antes no sube de categoría ni gana nada por la invitación ajena.
+		assertThat(jdbc.sql("SELECT usuario_id || '/' || vinculo_cuenta || '/' || verificacion FROM gestion_patin.tutor WHERE id = :t").param("t", reclamado)
+				.query(String.class).single()).isEqualTo(quienReclama + "/DECLARADO/VERIFICADO");
+		assertThat(jdbc.sql("SELECT count(*) FROM gestion_patin.familia_deportista WHERE escuela_id = :e").param("e", escuela).query(Long.class).single()).isZero();
+
+		Cookie admin = new Cookie("BP_SESION", tokens.emitir(this.admin, com.banfieldpatin.backend.usuarios.Rol.ADMIN, escuela, null,
+				jdbc.sql("SELECT version_sesion FROM gestion_patin.usuario WHERE id = :u").param("u", this.admin).query(Long.class).single()));
+		String lista = mvc.perform(get("/api/admin/invitaciones").param("familiaId", familia.toString()).cookie(admin)).andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+		assertThat(lista).contains("\"asociacionDePersona\":\"ASOCIADA\"").contains("\"asociacionDePersona\":\"NO_ASOCIADA\"");
 	}
 
 	private org.springframework.test.web.servlet.ResultActions registrar(String token, String email) throws Exception {

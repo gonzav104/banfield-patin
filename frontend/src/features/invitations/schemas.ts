@@ -16,6 +16,8 @@ export const invitationSchema = z.object({
   expiraEn: z.string(),
   usadoEn: z.string().nullable().optional(),
   revocadaEn: z.string().nullable().optional(),
+  /** Only when the invitation names a person of the family: PENDIENTE, ASOCIADA or NO_ASOCIADA (already claimed by another account). */
+  asociacionDePersona: z.string().nullable().optional(),
 });
 export type Invitation = z.infer<typeof invitationSchema>;
 

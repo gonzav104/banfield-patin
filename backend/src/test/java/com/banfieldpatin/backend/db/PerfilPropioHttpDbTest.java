@@ -107,6 +107,7 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 
 	@AfterEach
 	void limpiar() {
+		jdbc.sql("DELETE FROM gestion_patin.documento WHERE escuela_id = :e").param("e", escuela).update();
 		datos.limpiarEscuela(escuela);
 		datos.limpiarEscuela(otraEscuela);
 	}
@@ -297,6 +298,49 @@ class PerfilPropioHttpDbTest extends BaseDbTest {
 		UUID otro = datos.tutor(escuela, fam1, "Otra", "Persona");
 		mvc.perform(escribir(post(RUTA + "/reclamar-tutor"), "{\"tutorId\":\"" + otro + "\",\"versionEsperada\":\"" + version(otro) + "\"}", madre,
 				fam1, escuela)).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("PERSONA_NO_DISPONIBLE"));
+	}
+
+	/**
+	 * Reclamar un tutor cuyos datos ADMIN ya verificó NO confirma que la cuenta sea esa persona (la cuenta queda «sin confirmar»), no
+	 * concede nada y tampoco permite cambiar la identidad cargada por el club.
+	 */
+	@Test
+	void reclamarUnTutorConDatosVerificadosNoConfirmaLaCuentaNiPermiteCambiarSuIdentidad() throws Exception {
+		UUID tutor = datos.tutor(escuela, fam1, "Laura", "Gomez");
+		mvc.perform(escribir(post(RUTA + "/reclamar-tutor"), "{\"tutorId\":\"" + tutor + "\",\"versionEsperada\":\"" + version(tutor) + "\"}", madre,
+				fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.estado").value("VERIFICADO"))
+				.andExpect(jsonPath("$.perfil.cuentaConfirmada").value(false)).andExpect(jsonPath("$.perfil.identidadEditable").value(false));
+		assertThat(jdbc.sql("SELECT vinculo_cuenta FROM gestion_patin.tutor WHERE id = :t").param("t", tutor).query(String.class).single())
+				.isEqualTo("DECLARADO");
+
+		String cambio = "{\"nombre\":\"Otra\",\"apellido\":\"Persona\",\"dni\":\"30999888\",\"versionEsperada\":\"" + versionDelPerfilDe(madre) + "\"}";
+		mvc.perform(escribir(put(RUTA), cambio, madre, fam1, escuela)).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.codigo").value("IDENTIDAD_VERIFICADA"));
+		assertThat(jdbc.sql("SELECT nombre || ' ' || apellido FROM gestion_patin.tutor WHERE id = :t").param("t", tutor).query(String.class).single())
+				.isEqualTo("Laura Gomez");
+	}
+
+	/** Cambiar la identidad de un perfil todavía no verificado no toca los documentos del tutor (ni su estado ni su vigencia). */
+	@Test
+	void cambiarLaIdentidadDeUnPerfilNoVerificadoNoAlteraLosDocumentosDelTutor() throws Exception {
+		mvc.perform(escribir(post(RUTA), CUERPO, madre, fam1, escuela)).andExpect(status().isOk());
+		UUID tutor = jdbc.sql("SELECT id FROM gestion_patin.tutor WHERE usuario_id = :u").param("u", madre).query(UUID.class).single();
+		UUID documento = jdbc.sql("""
+				INSERT INTO gestion_patin.documento(escuela_id, tutor_id, tipo, nombre_original, storage_key, mime_type, tamanio_bytes, cargado_por)
+				VALUES (:e, :t, 'DNI_TUTOR_FRENTE', 'sintetico.png', :k, 'image/png', 10, :u) RETURNING id
+				""").param("e", escuela).param("t", tutor).param("k", UUID.randomUUID().toString()).param("u", madre).query(UUID.class).single();
+		jdbc.sql("UPDATE gestion_patin.documento SET estado = 'APROBADO', version = version + 1 WHERE id = :d").param("d", documento).update();
+		Map<String, Object> antes = jdbc.sql("SELECT estado, vigente, version, tutor_id FROM gestion_patin.documento WHERE id = :d").param("d", documento)
+				.query().singleRow();
+
+		String cambio = CUERPO.replace("Laura", "Laurita").replace("30.111.222", "30.999.888").replace("}", ",\"versionEsperada\":\"" + versionDelPerfilDe(madre) + "\"}");
+		mvc.perform(escribir(put(RUTA), cambio, madre, fam1, escuela)).andExpect(status().isOk()).andExpect(jsonPath("$.perfil.nombre").value("Laurita"));
+
+		assertThat(jdbc.sql("SELECT estado, vigente, version, tutor_id FROM gestion_patin.documento WHERE id = :d").param("d", documento).query().singleRow())
+				.isEqualTo(antes);
+		// El cambio queda auditado con los NOMBRES de los campos de identidad, para que ADMIN lo vea (nunca los valores).
+		assertThat(jdbc.sql("SELECT detalle::text FROM gestion_patin.auditoria WHERE escuela_id = :e AND accion = 'PERFIL_ACTUALIZADO' ORDER BY id DESC LIMIT 1")
+				.param("e", escuela).query(String.class).single()).contains("nombre", "dni").doesNotContain("Laurita", "999888");
 	}
 
 	@Test

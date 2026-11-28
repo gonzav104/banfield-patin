@@ -210,7 +210,7 @@ public class PerfilPropioService {
 
 	private PerfilDatos datos(Tutor t) {
 		return new PerfilDatos(t.getId(), t.getNombre(), t.getApellido(), EnmascaradoDni.de(t.getDni()),
-				t.getTelefono(), t.getEmail(), t.getParentesco(), t.getVerificacion(), !t.identidadVerificada(),
+				t.getTelefono(), t.getEmail(), t.getParentesco(), t.getVerificacion(), "VERIFICADO".equals(t.getVinculoCuenta()), !t.identidadVerificada(),
 				Long.toString(t.getVersion()));
 	}
 

@@ -182,6 +182,8 @@ interface FakeInvitation {
   expiraEn: string;
   usadoEn: string | null;
   revocadaEn: string | null;
+  /** Only when the invitation names a person of the family. */
+  asociacionDePersona?: string;
 }
 
 /** An athlete as the ADMIN endpoints of FE-05/U7 see it (DeportistaDetalle). The list only shows the masked DNI; the detail the full one. */
@@ -386,7 +388,7 @@ export class FakeBackend {
   }
 
   /** Inserts an invitation in the given state and returns its (plaintext) token, as the link would carry it. */
-  seedInvitation(options: { status: FakeInvitationStatus; family?: string; email?: string | null }): string {
+  seedInvitation(options: { status: FakeInvitationStatus; family?: string; email?: string | null; person?: 'PENDIENTE' | 'ASOCIADA' | 'NO_ASOCIADA' }): string {
     const family = this.families.find((f) => f.nombreReferencia === options.family) ?? this.addFamily(options.family ?? `Familia ${this.counter + 1}`);
     const now = Date.now();
     const invitation: FakeInvitation = {
@@ -402,6 +404,7 @@ export class FakeBackend {
     if (options.status === 'EXPIRADA') invitation.expiraEn = new Date(now - DAY).toISOString();
     if (options.status === 'USADA') invitation.usadoEn = new Date(now - DAY).toISOString();
     if (options.status === 'REVOCADA') invitation.revocadaEn = new Date(now - DAY).toISOString();
+    if (options.person) invitation.asociacionDePersona = options.person;
     this.invitations.push(invitation);
     return invitation.token;
   }
@@ -438,6 +441,7 @@ export class FakeBackend {
       expiraEn: i.expiraEn,
       usadoEn: i.usadoEn,
       revocadaEn: i.revocadaEn,
+      asociacionDePersona: i.asociacionDePersona ?? null,
     };
   }
 
@@ -2233,6 +2237,7 @@ export class FakeBackend {
             email: profile.email,
             parentesco: profile.parentesco,
             estado: profile.estado,
+            cuentaConfirmada: false,
             identidadEditable: profile.estado !== 'VERIFICADO',
             version: String(profile.version),
           }
