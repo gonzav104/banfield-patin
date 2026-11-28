@@ -44,6 +44,36 @@ class LoteVerificacionTest {
 		assertThat(intentos[0]).isZero();
 	}
 
+	@Test
+	void siElPlazoVenceAMitadDelLoteLosPrimerosTienenSuResultadoYElRestoNoSeIntenta() {
+		List<LoteVerificacion.Item> items = List.of(item(), item(), item(), item());
+		// Cada tutor «tarda» 6 s: el tercero empieza a los 12 s (antes del límite de 15 s) y el cuarto a los 18 s.
+		Instant[] reloj = { ahora };
+		Clock avanza = new Clock() {
+			@Override
+			public java.time.ZoneId getZone() {
+				return ZoneOffset.UTC;
+			}
+
+			@Override
+			public Clock withZone(java.time.ZoneId zona) {
+				return this;
+			}
+
+			@Override
+			public Instant instant() {
+				return reloj[0];
+			}
+		};
+		List<ResultadoLote.Item> r = VerificacionTutoresService.procesar(items, i -> {
+			reloj[0] = reloj[0].plusSeconds(6);
+			return new ResultadoLote.Item(i.tutorId(), "VERIFICADO", "1");
+		}, avanza, ahora.plusSeconds(15));
+		assertThat(r).extracting(ResultadoLote.Item::resultado).containsExactly("VERIFICADO", "VERIFICADO", "VERIFICADO",
+				"NO_PROCESADO");
+		assertThat(r).extracting(ResultadoLote.Item::tutorId).containsExactlyElementsOf(items.stream().map(LoteVerificacion.Item::tutorId).toList());
+	}
+
 	private static LoteVerificacion.Item item() {
 		return new LoteVerificacion.Item(UUID.randomUUID(), 0L);
 	}

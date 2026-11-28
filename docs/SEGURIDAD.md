@@ -446,7 +446,7 @@ podía vencer antes de `confirmar` (`401 NO_AUTENTICADO`, que ni llega a registr
   (`409 ESTADO_INCOMPATIBLE`; la corrige ADMIN en la ficha). Un `OBSERVADO` corregido por la familia vuelve a `DECLARADO` y a la bandeja.
   Un bloqueo vencido responde `409 CONFLICTO_CONCURRENCIA`. **Lote:** solo `VERIFICAR` y solo desde `DECLARADO`, hasta 50 tutores
   distintos, cada uno en su propia transacción con su revisión y su resultado (`VERIFICADO`, `YA_VERIFICADO`, `EDICION_DESACTUALIZADA`,
-  `TUTOR_NO_ENCONTRADO`, `ESTADO_INCOMPATIBLE`, `FAMILIA_INACTIVA`, `OCUPADO`, `ERROR` ante una falla inesperada de ese tutor); el lote
+  `TUTOR_NO_ENCONTRADO`, `ESTADO_INCOMPATIBLE`, `FAMILIA_INACTIVA`, `OCUPADO`, `ERROR` ante una falla inesperada de ese tutor, que si ocurrió al confirmar deja un resultado incierto: reintentar es seguro); el lote
   dura a lo sumo unos 15 s más una espera de bloqueo, y los tutores no alcanzados vuelven `NO_PROCESADO` para reintentarlos.
 - **Auditoría:** `TUTOR_DECLARADO`, `TUTOR_ACTUALIZADO_POR_FAMILIA` (nombres de campos), `TUTOR_VERIFICADO` y `TUTOR_OBSERVADO` (familia,
   estado anterior, `lote`); nunca valores personales ni el motivo.

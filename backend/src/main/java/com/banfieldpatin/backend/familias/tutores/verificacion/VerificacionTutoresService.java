@@ -174,8 +174,9 @@ public class VerificacionTutoresService {
 	static final Duration PLAZO_LOTE = Duration.ofSeconds(15);
 
 	/**
-	 * Recorre el lote en orden: un tutor nunca deja sin resultado a los demás. Una falla inesperada de uno es {@code ERROR}
-	 * (su transacción ya se revirtió; se registra solo la clase de la excepción) y, vencido el plazo, los que faltan son
+	 * Recorre el lote en orden: un tutor nunca deja sin resultado a los demás. Una falla inesperada de uno es {@code ERROR}:
+	 * casi siempre su transacción se revirtió, pero si falló al confirmar el resultado es incierto; reintentar es seguro
+	 * (devuelve YA_VERIFICADO o EDICION_DESACTUALIZADA). Vencido el plazo, los que faltan son
 	 * {@code NO_PROCESADO} sin tocarlos: la respuesta llega acotada aunque haya esperas de bloqueos.
 	 */
 	static List<ResultadoLote.Item> procesar(List<LoteVerificacion.Item> items,
@@ -189,8 +190,11 @@ public class VerificacionTutoresService {
 			try {
 				resultados.add(uno.apply(item));
 			} catch (RuntimeException e) {
-				log.warn("Verificación en lote: falla inesperada en un tutor (se informa ERROR y sigue): excepcion={}",
-						e.getClass().getName());
+				// Clase, causa raíz y SQLState para diagnosticar; nunca el mensaje (puede llevar SQL o valores personales).
+				Throwable raiz = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(e);
+				log.warn("Verificación en lote: falla inesperada en un tutor (se informa ERROR y sigue): excepcion={} causa={} sqlState={}",
+						e.getClass().getName(), raiz.getClass().getName(),
+						raiz instanceof java.sql.SQLException sql ? sql.getSQLState() : "-");
 				resultados.add(new ResultadoLote.Item(item.tutorId(), "ERROR", null));
 			}
 		}
