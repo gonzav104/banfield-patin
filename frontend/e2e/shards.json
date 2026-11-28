@@ -32,12 +32,14 @@
       "vinculos-consulta.real.spec.ts",
       "vinculos-gestion.real.spec.ts",
       "vinculos-vinculacion.real.spec.ts",
-      "responsables-admin.real.spec.ts"
+      "responsables-admin.real.spec.ts",
+      "adultos-familia.real.spec.ts"
     ],
     "3": [
       "responsables-alta-deshabilitada.real.spec.ts",
       "documentos-apto-fisico-carga-deshabilitada.real.spec.ts",
-      "mis-datos-deshabilitado.real.spec.ts"
+      "mis-datos-deshabilitado.real.spec.ts",
+      "adultos-familia-deshabilitado.real.spec.ts"
     ]
   }
 }

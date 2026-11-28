@@ -95,6 +95,36 @@ export interface FakePendingDocument {
   reemplazo: boolean;
 }
 
+/** U21-BIS C2: an adult of a family as the (mock) server stores it; the views derive everything else from this. */
+export interface FakeAdult {
+  id: string;
+  familyId: string;
+  nombre: string;
+  apellido: string;
+  dni: string | null;
+  telefono: string | null;
+  email: string | null;
+  parentesco: string | null;
+  estado: 'DECLARADO' | 'VERIFICADO' | 'OBSERVADO';
+  motivoObservacion: string | null;
+  /** Who loaded it: FAMILIA counts against the cap, ADMIN does not. */
+  origen: 'FAMILIA' | 'ADMIN';
+  /** The user whose own profile this is (esMiPerfil for that user). */
+  ownerUserId: string | null;
+  /** Another account (not the viewer's) is this person. */
+  hasAccount: boolean;
+  /** State of the current DNI images (null = not loaded). Approving one never verifies the identity. */
+  dniFrente: FakeDocumentStatus | null;
+  dniDorso: FakeDocumentStatus | null;
+  activo: boolean;
+  version: number;
+  /** Insertion order: the admin inbox lists the oldest first. */
+  order: number;
+  declaradoEn: string;
+}
+
+export type FakeAdultSeed = Partial<Omit<FakeAdult, 'id' | 'familyId' | 'order' | 'version'>> & { nombre: string; apellido: string };
+
 export type FakeInvitationStatus = 'PENDIENTE' | 'USADA' | 'REVOCADA' | 'EXPIRADA';
 
 interface FakeFamily {
@@ -118,7 +148,10 @@ interface FakeProfile {
   telefono: string | null;
   email: string | null;
   parentesco: string | null;
-  estado: 'DECLARADO' | 'VERIFICADO';
+  estado: 'DECLARADO' | 'VERIFICADO' | 'OBSERVADO';
+  /** U21-BIS C2: what the club asked to correct (only with OBSERVADO) and whether it approved a DNI image of this person. */
+  motivoObservacion?: string | null;
+  dniAprobado?: boolean;
   version: number;
 }
 
@@ -144,6 +177,9 @@ export interface FakeAdminTutor {
   /** Only the individual tutor detail (GET /admin/tutores/{id}) carries the FULL DNI and the revision; the family summary never does. */
   dni?: string | null;
   version?: number;
+  /** U21-BIS C2: only in the individual detail (TutorRespuesta). */
+  verificacion?: 'DECLARADO' | 'VERIFICADO' | 'OBSERVADO';
+  motivoObservacion?: string | null;
 }
 
 export type FakeLinkState = 'PENDIENTE' | 'ACTIVO' | 'RECHAZADO' | 'REVOCADO';
@@ -332,6 +368,11 @@ export class FakeBackend {
   documentUpload: { enabled: boolean; maxBytes: number } = { enabled: false, maxBytes: 5_000_000 };
   /** Mirrors `AUTOSERVICIO_PERFIL_HABILITADO` (U21-BIS C1): off by default, like the real backend. */
   profileSelfService: { enabled: boolean } = { enabled: false };
+  /** Mirrors `AUTOSERVICIO_TUTORES_HABILITADO` and the cap (U21-BIS C2): off by default, like the real backend. */
+  adultsSelfService: { enabled: boolean; cap: number } = { enabled: false, cap: 10 };
+  private adults: FakeAdult[] = [];
+  private adultKeys = new Map<string, { signature: string; id: string }>();
+  private busyAdults = new Set<string>();
   private profiles = new Map<string, FakeProfile>();
   private peopleWithoutAccount: FakePerson[] = [];
 
@@ -342,10 +383,64 @@ export class FakeBackend {
     return person;
   }
 
+
+  /** An adult already loaded (by the club, by the family, with or without account). */
+  addAdult(familyId: string, seed: FakeAdultSeed): FakeAdult {
+    const adult: FakeAdult = {
+      id: `adu-${++this.counter}`,
+      familyId,
+      dni: null,
+      telefono: null,
+      email: null,
+      parentesco: null,
+      estado: 'DECLARADO',
+      motivoObservacion: null,
+      origen: 'FAMILIA',
+      ownerUserId: null,
+      hasAccount: false,
+      dniFrente: null,
+      dniDorso: null,
+      activo: true,
+      declaradoEn: new Date(1_700_000_000_000 + this.counter * 60_000).toISOString(),
+      ...seed,
+      version: 0,
+      order: this.counter,
+    };
+    this.adults.push(adult);
+    return adult;
+  }
+
+  adultById(id: string): FakeAdult | undefined {
+    return this.adults.find((a) => a.id === id);
+  }
+
+  /** What another process did to the adult meanwhile (a stale revision on the next save). */
+  touchAdult(id: string): void {
+    const adult = this.adultById(id);
+    if (adult) adult.version += 1;
+  }
+
+  /** The next batch finds this adult locked by another operation (`OCUPADO`). */
+  markAdultBusy(id: string): void {
+    this.busyAdults.add(id);
+  }
+
   /** The club verified the account's profile identity (name and DNI become read-only for the family). */
   verifyProfileIdentity(userId: string): void {
     const profile = this.profiles.get(userId);
     if (profile) profile.estado = 'VERIFICADO';
+  }
+
+  /** The club observed the account's profile data (U21-BIS C2): the family sees the reason. */
+  observeProfile(userId: string, motivo: string): void {
+    const profile = this.profiles.get(userId);
+    if (profile) Object.assign(profile, { estado: 'OBSERVADO', motivoObservacion: motivo });
+  }
+
+  /** The club approved a DNI image of the account's person: the identity is backed even though the data are not verified. */
+  approveProfileDni(userId: string): void {
+    const profile = this.profiles.get(userId);
+    if (profile) profile.dniAprobado = true;
   }
 
   /** Sets what another process did to the profile meanwhile (a stale revision on the next save). */
@@ -497,7 +592,7 @@ export class FakeBackend {
 
   /** The backend's TutorRespuesta: FULL DNI and the revision (decimal string). */
   private tutorFull(t: FakeAdminTutor, familiaId: string) {
-    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dni: t.dni ?? null, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo, version: String(t.version ?? 0) };
+    return { id: t.id, familiaId, nombre: t.nombre, apellido: t.apellido, dni: t.dni ?? null, telefono: t.telefono, email: t.email, parentesco: t.parentesco, activo: t.activo, version: String(t.version ?? 0), ...(t.verificacion ? { verificacion: t.verificacion, motivoObservacion: t.motivoObservacion ?? null, origen: 'FAMILIA' } : {}) };
   }
 
   private findTutor(id: string): { tutor: FakeAdminTutor; family: FakeFamily } | undefined {
@@ -2044,6 +2139,9 @@ export class FakeBackend {
     // U21-BIS C1: the profile is the portal's writable exception, like the document upload.
     if (path === '/familia/mi-perfil' || path === '/familia/mi-perfil/reclamar-tutor') return this.profileRoute(method, path, current, family?.id ?? null, body);
 
+    // U21-BIS C2: the other adults of the family are the portal's second writable exception.
+    if (path === '/familia/tutores' || /^\/familia\/tutores\/[^/]+$/.test(path)) return this.adultsFamilyRoute(method, path, current, family?.id ?? null, body, idempotencyKey);
+
     if (method !== 'get') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
 
     const familySeasons = /^\/familia\/deportistas\/([^/]+)\/temporadas$/.exec(path);
@@ -2237,8 +2335,9 @@ export class FakeBackend {
             email: profile.email,
             parentesco: profile.parentesco,
             estado: profile.estado,
+            motivoObservacion: profile.estado === 'OBSERVADO' ? (profile.motivoObservacion ?? null) : null,
             cuentaConfirmada: false,
-            identidadEditable: profile.estado !== 'VERIFICADO',
+            identidadEditable: profile.estado !== 'VERIFICADO' && !profile.dniAprobado,
             version: String(profile.version),
           }
         : null,
@@ -2275,10 +2374,207 @@ export class FakeBackend {
       const dni = text('dni') === null ? own.dni : text('dni')!.replace(/[.\s]/g, '');
       const identityChanged = text('nombre') !== own.nombre || text('apellido') !== own.apellido || dni !== own.dni;
       if (identityChanged && own.estado === 'VERIFICADO') return this.error(409, 'IDENTIDAD_VERIFICADA', 'Tu nombre y tu DNI ya fueron verificados.');
+      if (identityChanged && own.dniAprobado) return this.error(409, 'IDENTIDAD_CON_DNI_APROBADO', 'El club ya aprobó un DNI de esta persona.');
       Object.assign(own, { nombre: text('nombre'), apellido: text('apellido'), dni, telefono: text('telefono'), email: text('email')?.toLowerCase() ?? null, parentesco: text('parentesco'), version: own.version + 1 });
+      // A correction by the family sends an observed profile back to the club.
+      if (own.estado === 'OBSERVADO') Object.assign(own, { estado: 'DECLARADO', motivoObservacion: null });
       return { status: 200, body: view(own) };
     }
     return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
+  }
+
+
+  private adultView(adult: FakeAdult, viewerId: string) {
+    const mine = adult.ownerUserId === viewerId;
+    const ownAccount = adult.ownerUserId !== null || adult.hasAccount;
+    const dniApproved = adult.dniFrente === 'APROBADO' || adult.dniDorso === 'APROBADO';
+    return {
+      id: adult.id,
+      nombre: adult.nombre,
+      apellido: adult.apellido,
+      dniEnmascarado: adult.dni ? `••••${adult.dni.slice(-3)}` : null,
+      telefono: adult.telefono,
+      email: adult.email,
+      parentesco: adult.parentesco,
+      estado: adult.estado,
+      motivoObservacion: adult.estado === 'OBSERVADO' ? adult.motivoObservacion : null,
+      cargadoPorElClub: adult.origen === 'ADMIN',
+      esMiPerfil: mine,
+      tieneCuentaPropia: ownAccount,
+      editable: !ownAccount || mine,
+      identidadEditable: adult.estado !== 'VERIFICADO' && !dniApproved,
+      version: String(adult.version),
+    };
+  }
+
+  /** Same DNI, or the same name when either side has no DNI (name and surname compared without case or extra spaces). The e-mail never counts. */
+  private adultDuplicate(familyId: string, excludeId: string | null, nombre: string, apellido: string, dni: string | null): boolean {
+    const norm = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+    return this.adults.some(
+      (a) =>
+        a.familyId === familyId &&
+        a.activo &&
+        a.id !== excludeId &&
+        ((dni !== null && a.dni === dni) || ((dni === null || a.dni === null) && norm(a.nombre) === norm(nombre) && norm(a.apellido) === norm(apellido))),
+    );
+  }
+
+  /**
+   * Mirrors AdultosFamiliaController (U21-BIS C2): only ACTIVE adults of the session's family (ONE 404 TUTOR_NO_ENCONTRADO for every other
+   * id), the DNI only masked, writes 503 while the flag is off, POST repeatable with the same Idempotency-Key, PUT with the observed revision.
+   */
+  private adultsFamilyRoute(method: string, path: string, current: FakeUser, familyId: string | null, body: unknown, idempotencyKey: string | null) {
+    if (!familyId) return this.error(404, 'FAMILIA_NO_ENCONTRADA', 'La familia no existe.');
+    const mine = () => this.adults.filter((a) => a.familyId === familyId && a.activo);
+    if (method === 'get' && path === '/familia/tutores') {
+      return {
+        status: 200,
+        body: {
+          habilitado: this.adultsSelfService.enabled,
+          tope: this.adultsSelfService.cap,
+          cargadosPorLaFamilia: mine().filter((a) => a.origen === 'FAMILIA').length,
+          adultos: mine().map((a) => this.adultView(a, current.id)),
+        },
+      };
+    }
+    if (method !== 'post' && method !== 'put') return this.error(405, 'METODO_NO_PERMITIDO', 'Método no permitido.');
+    if (!this.adultsSelfService.enabled) return this.error(503, 'AUTOSERVICIO_TUTORES_DESHABILITADO', 'Cargar adultos desde acá todavía no está habilitado.');
+    const input = (body ?? {}) as Record<string, unknown>;
+    const text = (key: string) => (typeof input[key] === 'string' && (input[key]).trim() !== '' ? (input[key]).trim() : null);
+    const nombre = text('nombre');
+    const apellido = text('apellido');
+    if (method === 'post' && path === '/familia/tutores') {
+      if (!idempotencyKey || !UUID_FORMAT.test(idempotencyKey)) return this.error(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.');
+      if (!nombre || !apellido) return this.error(400, 'VALIDACION', 'Revisá los datos.');
+      const dni = text('dni')?.replace(/[.\s]/g, '') ?? null;
+      const signature = JSON.stringify([current.id, nombre, apellido, dni, text('telefono'), text('email')?.toLowerCase() ?? null, text('parentesco')]);
+      const scope = `${current.id}|${idempotencyKey}`;
+      const previous = this.adultKeys.get(scope);
+      if (previous) {
+        const original = this.adultById(previous.id);
+        return previous.signature === signature && original
+          ? { status: 201, body: this.adultView(original, current.id) }
+          : this.error(409, 'IDEMPOTENCY_KEY_REUTILIZADA', 'La clave ya se usó con otros datos.');
+      }
+      if (mine().filter((a) => a.origen === 'FAMILIA').length >= this.adultsSelfService.cap) return this.error(409, 'TOPE_TUTORES_ALCANZADO', 'Tu familia ya tiene el máximo de adultos.');
+      if (this.adultDuplicate(familyId, null, nombre, apellido, dni)) return this.error(409, 'TUTOR_DUPLICADO', 'Ya existe un adulto con esos datos.');
+      const created = this.addAdult(familyId, { nombre, apellido, dni, telefono: text('telefono'), email: text('email')?.toLowerCase() ?? null, parentesco: text('parentesco') });
+      this.adultKeys.set(scope, { signature, id: created.id });
+      return { status: 201, body: this.adultView(created, current.id) };
+    }
+    const id = path.split('/').pop()!;
+    const adult = method === 'put' ? mine().find((a) => a.id === id) : undefined;
+    if (method !== 'put' || !adult) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'La persona no existe.');
+    if (!nombre || !apellido) return this.error(400, 'VALIDACION', 'Revisá los datos.');
+    if (String(input.versionEsperada) !== String(adult.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Los datos cambiaron.');
+    const view = this.adultView(adult, current.id);
+    if (!view.editable) return this.error(409, 'TUTOR_CON_CUENTA', 'Esa persona actualiza sus datos ella misma.');
+    const dni = text('dni') === null ? adult.dni : text('dni')!.replace(/[.\s]/g, '');
+    if (nombre !== adult.nombre || apellido !== adult.apellido || dni !== adult.dni) {
+      if (adult.estado === 'VERIFICADO') return this.error(409, 'IDENTIDAD_VERIFICADA', 'La identidad ya fue verificada.');
+      if (!view.identidadEditable) return this.error(409, 'IDENTIDAD_CON_DNI_APROBADO', 'El club ya aprobó un DNI de esta persona.');
+      if (this.adultDuplicate(familyId, adult.id, nombre, apellido, dni)) return this.error(409, 'TUTOR_DUPLICADO', 'Ya existe un adulto con esos datos.');
+    }
+    Object.assign(adult, { nombre, apellido, dni, telefono: text('telefono'), email: text('email')?.toLowerCase() ?? null, parentesco: text('parentesco'), version: adult.version + 1 });
+    // A correction by the family sends an observed adult back to the club's inbox.
+    if (adult.estado === 'OBSERVADO') Object.assign(adult, { estado: 'DECLARADO', motivoObservacion: null });
+    return { status: 200, body: this.adultView(adult, current.id) };
+  }
+
+  /**
+   * Mirrors VerificacionTutoresController (U21-BIS C2): GET /admin/tutores/por-verificar (DECLARADO by default, oldest first, with the full
+   * DNI and the matches in OTHER families), POST /admin/tutores/{id}/verificacion and POST /admin/tutores/verificacion-lote (VERIFICAR only,
+   * up to 50, each tutor with its own revision and its own outcome).
+   */
+  private adultsAdminRoute(method: string, path: string, params: URLSearchParams, current: FakeUser | undefined, body: unknown) {
+    const single = method === 'post' ? /^\/admin\/tutores\/([^/]+)\/verificacion$/.exec(path) : null;
+    const inbox = method === 'get' && path === '/admin/tutores/por-verificar';
+    const batch = method === 'post' && path === '/admin/tutores/verificacion-lote';
+    if (!inbox && !single && !batch) return null;
+    if (!this.session || !current) return this.error(401, 'NO_AUTENTICADO');
+    if (this.session.pending || current.rol !== 'ADMIN') return this.error(403, 'ACCESO_DENEGADO', 'No tenés permiso para realizar esta acción.');
+    const familyName = (familyId: string) => this.portalFamilies.get(familyId)?.nombreReferencia ?? this.families.find((f) => f.id === familyId)?.nombreReferencia ?? null;
+    const familyActive = (familyId: string) => (this.portalFamilies.get(familyId)?.activa ?? this.families.find((f) => f.id === familyId)?.activa) !== false;
+    const resultOf = (a: FakeAdult) => ({ tutorId: a.id, estado: a.estado, motivoObservacion: a.motivoObservacion, version: String(a.version) });
+
+    if (inbox) {
+      const estado = params.get('estado') ?? 'DECLARADO';
+      if (estado !== 'DECLARADO' && estado !== 'OBSERVADO') return this.error(400, 'VALIDACION', 'Estado inválido.');
+      const page = Number(params.get('page') ?? '0');
+      const size = Number(params.get('size') ?? '20');
+      const rows = this.adults.filter((a) => a.activo && a.estado === estado).sort((x, y) => x.order - y.order);
+      return {
+        status: 200,
+        body: {
+          contenido: rows.slice(page * size, page * size + size).map((a) => ({
+            tutorId: a.id,
+            familiaId: a.familyId,
+            familiaNombre: familyName(a.familyId),
+            nombre: a.nombre,
+            apellido: a.apellido,
+            dni: a.dni,
+            telefono: a.telefono,
+            email: a.email,
+            parentesco: a.parentesco,
+            estado: a.estado,
+            motivoObservacion: a.motivoObservacion,
+            origen: a.origen,
+            tieneCuenta: a.hasAccount || a.ownerUserId !== null,
+            cuentaConfirmada: false,
+            dniFrente: a.dniFrente,
+            dniDorso: a.dniDorso,
+            coincidenciasEnOtrasFamilias: a.dni ? this.adults.filter((o) => o.activo && o.familyId !== a.familyId && o.dni === a.dni).length : 0,
+            declaradoEn: a.declaradoEn,
+            version: String(a.version),
+          })),
+          pagina: page,
+          tamanio: size,
+          totalElementos: rows.length,
+        },
+      };
+    }
+
+    if (single) {
+      const input = (body ?? {}) as Record<string, unknown>;
+      const motivo = typeof input.motivo === 'string' && input.motivo.trim() !== '' ? input.motivo.trim() : null;
+      if (input.decision !== 'VERIFICAR' && input.decision !== 'OBSERVAR') return this.error(400, 'VALIDACION', 'Decisión inválida.');
+      if (input.decision === 'OBSERVAR' && (!motivo || motivo.length > 500)) return this.error(400, 'VALIDACION', 'Para observar hay que indicar qué debe corregir la familia.');
+      if (input.decision === 'VERIFICAR' && motivo) return this.error(400, 'VALIDACION', 'Verificar no lleva motivo.');
+      const adult = this.adultById(single[1]!);
+      if (!adult) return this.error(404, 'TUTOR_NO_ENCONTRADO', 'La persona no existe.');
+      if (!familyActive(adult.familyId)) return this.error(409, 'FAMILIA_INACTIVA', 'La familia está inactiva.');
+      if (!adult.activo) return this.error(409, 'ESTADO_INCOMPATIBLE', 'No se puede resolver en este estado.');
+      const already = input.decision === 'VERIFICAR' ? adult.estado === 'VERIFICADO' : adult.estado === 'OBSERVADO' && adult.motivoObservacion === motivo;
+      if (already) return { status: 200, body: resultOf(adult) };
+      if (String(input.versionEsperada) !== String(adult.version)) return this.error(409, 'EDICION_DESACTUALIZADA', 'Los datos cambiaron.');
+      if (input.decision === 'VERIFICAR') Object.assign(adult, { estado: 'VERIFICADO', motivoObservacion: null });
+      else Object.assign(adult, { estado: 'OBSERVADO', motivoObservacion: motivo });
+      adult.version += 1;
+      return { status: 200, body: resultOf(adult) };
+    }
+
+    const items = ((body ?? {}) as { tutores?: { tutorId?: unknown; versionEsperada?: unknown }[] }).tutores;
+    if (!Array.isArray(items) || items.length === 0 || items.length > 50) return this.error(400, 'VALIDACION', 'El lote debe tener entre 1 y 50 tutores.');
+    if (new Set(items.map((i) => i.tutorId)).size !== items.length) return this.error(400, 'VALIDACION', 'Un tutor aparece más de una vez en el lote.');
+    const resultados = items.map((item) => {
+      const tutorId = String(item.tutorId);
+      const outcome = (resultado: string, version: string | null = null) => ({ tutorId, resultado, version });
+      const adult = this.adultById(tutorId);
+      if (this.busyAdults.has(tutorId)) {
+        this.busyAdults.delete(tutorId);
+        return outcome('OCUPADO');
+      }
+      if (!adult) return outcome('TUTOR_NO_ENCONTRADO');
+      if (!familyActive(adult.familyId)) return outcome('FAMILIA_INACTIVA');
+      if (!adult.activo) return outcome('ESTADO_INCOMPATIBLE');
+      if (adult.estado === 'VERIFICADO') return outcome('YA_VERIFICADO', String(adult.version));
+      if (adult.estado !== 'DECLARADO') return outcome('ESTADO_INCOMPATIBLE');
+      if (String(item.versionEsperada) !== String(adult.version)) return outcome('EDICION_DESACTUALIZADA');
+      Object.assign(adult, { estado: 'VERIFICADO', motivoObservacion: null });
+      adult.version += 1;
+      return outcome('VERIFICADO', String(adult.version));
+    });
+    return { status: 200, body: { resultados } };
   }
 
   /**
@@ -2382,6 +2678,8 @@ export class FakeBackend {
     const parsed = new URL(url, 'http://fake.local');
     const responsables = this.responsablesAdminRoute(method, parsed.pathname, parsed.searchParams, current, body, idempotencyKey);
     if (responsables) return responsables;
+    const adultsAdmin = this.adultsAdminRoute(method, parsed.pathname, parsed.searchParams, current, body);
+    if (adultsAdmin) return adultsAdmin;
     const adminDocuments = this.adminDocumentsRoute(method, parsed.pathname, parsed.searchParams, current, csrfHeader, body);
     if (adminDocuments) return adminDocuments;
     const handled = this.invitationsRoute(method, parsed.pathname, parsed.searchParams, body, current);

@@ -146,6 +146,60 @@ describe('Mis datos (mock backend)', () => {
     expect(writes()).toHaveLength(0);
   });
 
+  async function saveOwnProfile(extra: { dni?: string } = {}) {
+    await open();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Nombre/), 'Laura');
+    await user.type(screen.getByLabelText(/^Apellido/), 'Gómez');
+    if (extra.dni) await user.type(screen.getByLabelText(/^DNI/), extra.dni);
+    await user.click(screen.getByRole('button', { name: 'Guardar mis datos' }));
+    await screen.findByRole('heading', { name: 'Tus datos' });
+    return user;
+  }
+
+  it('shows the reason the club gave when the data were observed, and a correction hides it again', async () => {
+    const user = await saveOwnProfile();
+    backend.observeProfile(family.id, 'Falta tu segundo apellido.');
+    cleanup();
+    renderApp('/familia/mis-datos');
+    expect(await screen.findByText(/Falta tu segundo apellido\./)).toBeInTheDocument();
+    expect(screen.getByText(/Lo que pidió el club/)).toBeInTheDocument();
+    await user.type(await screen.findByLabelText(/^Teléfono/), '11 5555-0000');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await screen.findByText('Listo: guardamos tus datos.');
+    expect(screen.queryByText(/Falta tu segundo apellido/)).not.toBeInTheDocument();
+  });
+
+  it('does not show an observation block for data that are not observed', async () => {
+    await saveOwnProfile();
+    expect(screen.queryByText(/Lo que pidió el club/)).not.toBeInTheDocument();
+  });
+
+  it('locks the identity when the club approved a DNI image, even if the data are not verified', async () => {
+    await saveOwnProfile({ dni: '30111222' });
+    backend.approveProfileDni(family.id);
+    cleanup();
+    renderApp('/familia/mis-datos');
+    expect(await screen.findByLabelText(/^Nombre/)).toBeDisabled();
+    expect(screen.getByText(/DNI: ••••222/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['IDENTIDAD_CON_DNI_APROBADO', 'El club ya verificó tu nombre y tu DNI'],
+    ['TOPE_TUTORES_ALCANZADO', 'máximo de adultos'],
+    ['TUTOR_DUPLICADO', 'Ya hay una persona cargada con esos datos'],
+  ])('shows a fixed friendly message for %s without echoing the server text', async (code, expected) => {
+    await open();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Nombre/), 'Laura');
+    await user.type(screen.getByLabelText(/^Apellido/), 'Gómez');
+    backend.override('post', '/familia/mi-perfil', { status: 409, body: { codigo: code, mensaje: 'TEXTO-DEL-SERVIDOR' } });
+    await user.click(screen.getByRole('button', { name: 'Guardar mis datos' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(expected);
+    expect(alert.textContent).not.toContain('TEXTO-DEL-SERVIDOR');
+  });
+
   it('an administrator never reaches it', () => {
     backend = createBackend();
     backend.signIn('marcos@example.com');
